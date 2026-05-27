@@ -49,3 +49,14 @@ RAA=$(find "$D/atomic/target" -name librzat.a | head -1)
 zc=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=zig_atomic_add "$B/at.o" 2>/dev/null | grep -c s32c1i)
 rc=$(disa "$RAA" rs_atomic_add | grep -c s32c1i)
 echo "  zig_atomic_add s32c1i=$zc   rs_atomic_add s32c1i=$rc   (both native CAS + memw; no libcall)"
+
+echo "== (e) optional pointers: Rust Option<NonNull<T>> <-> Zig ?*T =="
+"$ZIG" build-obj $ZT -O ReleaseSmall -fno-emit-bin -femit-llvm-ir="$B/opt.ll" "$D/opt.zig" >/dev/null 2>&1
+"$ZIG" build-obj $ZT -O ReleaseSmall -femit-bin="$B/opt.o" "$D/opt.zig"
+( cd "$D/opt" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target xtensa-esp32-none-elf >/dev/null 2>&1 )
+echo "  zig_opt IR: $(grep -hoE 'i32 @opt.zig_opt\([^)]*\)' "$B/opt.ll" | head -1)  (Rust Option<NonNull> lowers to the same single ptr)"
+printf '#include "semihost.h"\nextern int rs_check_opt(void);\nint xmain(void){int ok=rs_check_opt();puts_(ok==1?"\\n  opt-ptr: Some(&x)->addr, None->0  OK\\n":"\\n  opt-ptr FAIL\\n");sys_exit(ok==1?0:1);return 0;}\n' > "$B/optmain.c"
+"$CLANG" $CT -ffreestanding -Os -I"$QR" -c "$B/optmain.c" -o "$B/optmain.o"
+cp "$(find "$D/opt/target" -name librzopt.a | head -1)" "$B/"
+ld.lld -T "$QR/sim.ld" -o "$B/opt.elf" "$B/start.o" "$B/optmain.o" "$B/opt.o" --start-group "$B/librzopt.a" "$RTLIB" --end-group
+timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$B/opt.elf" || true

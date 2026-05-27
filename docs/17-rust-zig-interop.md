@@ -33,6 +33,23 @@ $ run.sh   # Rust builds two u128, calls zig_add_u128, checks carry across 4 wor
 (Contrast the earlier `mul_f64` case, docs/04: IR differs, machine ABI matches —
 same lesson. The byval-vs-direct difference is *not* an ABI difference here.)
 
+### Optional/nullable pointers — direct interop
+
+Both languages represent "maybe a pointer" as a single **nullable pointer** (the
+C `T*`-with-null convention), so they interoperate without any wrapper:
+
+| Rust (FFI-safe) | Zig | IR |
+|-----------------|-----|----|
+| `Option<&T>` / `Option<NonNull<T>>` | `?*T` | `ptr` (null ⇒ None/null) |
+| `Option<extern "C" fn()>` | `?*const fn() callconv(.c)` | `ptr` |
+
+Rust's null-pointer optimization makes `Option<NonNull<u8>>` a single `i32 ptr`
+(rustc even confirms it's **FFI-safe** — no `improper_ctypes`), identical to Zig's
+`?*const u8`. Runtime-verified (`experiments/rust-zig/opt`): Rust passes
+`Some(&X)`→address and `None`→0 to a Zig `?*const u8` and both arrive correctly.
+So a nullable pointer crosses Rust↔Zig (and ↔C) transparently — no `*mut T` +
+manual null dance needed.
+
 ## 2. The one real clash: by-value **struct arguments**
 
 This is the single Rust↔Zig FFI break, and it's Zig's: Zig's experimental ESP
@@ -93,7 +110,8 @@ deadlock, not an atomic-lowering mismatch — the lowering itself is consistent.
 
 Rust ⇄ Zig FFI on Xtensa is **as strong as Rust ⇄ C, and in one way stronger**:
 the two frontends agree on every scalar ABI, *including* `u128`/`f128`/`f16` that
-C can't even express on Xtensa (object-linked and runtime-verified). The only
+C can't even express on Xtensa, and **nullable pointers** (`Option<&T>` ↔ `?*T`)
+interop directly (object-linked and runtime-verified). The only
 caveats are (1) **by-value struct arguments** — Zig's experimental ESP ABI bug,
 so pass structs by pointer — and (2) **no cross-language LTO** until Zig's LLVM
 (21.1.0) matches Rust's (21.1.3); object-level FFI has no such constraint.
