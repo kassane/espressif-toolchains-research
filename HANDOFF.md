@@ -31,6 +31,12 @@ output.
       < clang 192 (C) / 204 (C++) < zig **443** for the 9-fn lib (the 647 figure
       counted zig's default `.eh_frame`; use `llvm-size -A`).
 
+- [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
+      has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
+      autovectorization** in any toolchain — vectorizable loops stay scalar and
+      `vector_size`/`@Vector` scalarize (no q-reg codegen class). Inline asm is the
+      only path; clang/gcc/zig all assemble `EE.*`. Confirmed Zig 0.15+ struct-form
+      asm clobbers `.{ .memory = true, .q0 = true, … }` (q-register clobbers).
 - [x] **Compiler-driver parity** (docs/15, `experiments/compiler-parity/run.sh`):
       `zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler (espressif
       clang/LLVM 21; near-identical Xtensa code, differ only in driver defaults —
