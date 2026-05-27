@@ -62,8 +62,10 @@ output.
       stack args — fixed; all toolchains agree on 4-byte slots), esp-rs/rust
       #278/#18, and closed miscompiles (#38/#41/#33 stay fixed on clang 21.1.3).
 - [x] **Upstream Zig comparison** (`pip install ziglang`, docs/10): upstream Zig
-      has no esp32/esp32c3 CPUs (bootstrap required); the RISC-V `[2 x i64]`
-      struct bug reproduces on upstream Zig → it's an upstream Zig frontend bug.
+      **0.16.0** has no esp32/esp32c3 CPUs (bootstrap required). Zig **0.17.0-dev**
+      (Codeberg) adds an `esp32` CPU via upstream LLVM, but still not s2/s3 — only
+      the fork has all Xtensa targets, like the Rust fork. The RISC-V `[2 x i64]`
+      struct bug reproduces on upstream Zig → an upstream Zig frontend bug.
 - [x] **Cross-language LTO** (docs/04): C↔Zig LTO inlines + constant-folds across
       the boundary on riscv when one LLVM version is used (upstream zig cc -flto).
 - [x] **Bare-metal Rust+Zig mixin use-case** (docs/11,

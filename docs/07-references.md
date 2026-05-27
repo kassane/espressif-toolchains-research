@@ -58,10 +58,18 @@ work, not a dependency of the experiments.
 
 ## Zig on Xtensa & Zig's C-ABI lowering
 
+> **Zig's repo moved to Codeberg** (`codeberg.org/ziglang/zig`). Like Rust,
+> upstream Zig support is **partial and version-gated**: 0.16.0 (tested here) has
+> *no* esp32 CPU, but **0.17.0-dev adds an `esp32` CPU model** built on upstream
+> LLVM's Xtensa (esp32/esp8266 only). The full esp32/s2/s3 set still requires the
+> espressif-bootstrap **fork** — mirroring the esp-rs/rust fork situation.
+
 - **ziglang/zig #5467 — Xtensa Support** —
-  <https://github.com/ziglang/zig/issues/5467> — Zig's Xtensa tracking issue
-  (no native upstream Xtensa codegen; needs the LLVM fork). Explains why we use
-  the espressif-bootstrap Zig.
+  <https://github.com/ziglang/zig/issues/5467> — Zig's Xtensa tracking issue.
+  Upstream Zig 0.16 has no esp32 codegen; 0.17.0-dev adds `esp32` (upstream LLVM),
+  but s2/s3 need the fork — so we use the espressif-bootstrap Zig.
+- **Zig on Codeberg** — <https://codeberg.org/ziglang/zig> — upstream Zig's home;
+  the 0.17.0-dev commit adding the `esp32` CPU target lives here.
 - **kassane/zig-espressif-bootstrap (xtensa)** —
   <https://github.com/kassane/zig-espressif-bootstrap/blob/xtensa/README.md> —
   the exact Zig used: Zig 0.16 + Espressif LLVM 21.1.0.

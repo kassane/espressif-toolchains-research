@@ -10,7 +10,7 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 | version | 1.95.0-nightly | 0.16.0 | 21.1.3 | 15.2.0 |
 | backend | LLVM **21.1.3** | LLVM **21.1.0** | LLVM **21.1.3** | GCC (own) |
 | Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` |
-| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | ✗ — upstream Zig has no esp32 CPU at all | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif |
+| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | partial — Zig 0.16 has no esp32; 0.17.0-dev (Codeberg) adds `esp32` only (no s2/s3); **fork** has all three | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial (esp32/esp8266 only) | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif |
 | esp32 / s2 / s3 | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ |
 | `core`/libc model | no prebuilt core → `-Zbuild-std=core` + rust-src | freestanding (no std) | freestanding | newlib + libgcc |
 
@@ -19,9 +19,12 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 > *upstream* `rustc` cannot build for Xtensa even though it carries Tier-3 target
 > specs. Likewise **`espressif/llvm-project` ≠ upstream LLVM**: the espressif fork
 > has the complete esp32/s2/s3 backend; upstream LLVM's Xtensa target is still
-> experimental. Zig needs the espressif bootstrap fork (upstream Zig has no esp32
-> CPU). Only GCC's Xtensa core is upstream — and even then the ESP core configs
-> ship via `espressif/crosstool-NG`.
+> experimental (only esp32/esp8266). Zig needs the espressif bootstrap fork too:
+> upstream Zig 0.16 has no esp32 CPU, and while 0.17.0-dev (now on
+> `codeberg.org/ziglang/zig`) adds `esp32` via upstream LLVM, it still lacks
+> esp32-s2/s3 — **only the fork has all three, exactly like the Rust fork.** Only
+> GCC's Xtensa core is upstream — and even then the ESP core configs ship via
+> `espressif/crosstool-NG`.
 
 ## How to target an esp32 core
 

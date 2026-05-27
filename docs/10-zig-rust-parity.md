@@ -89,18 +89,24 @@ ABI" framing.
 Comparing stock upstream **Zig 0.16.0** (built against upstream LLVM) with
 `kassane/zig-espressif-bootstrap` 0.16.0 (built against espressif LLVM 21.1.0):
 
-- **Upstream Zig cannot target ESP.** `zig targets` lists only `generic` for the
-  `xtensa` arch (`error: unknown CPU: 'esp32'`), and has no `esp32c3` riscv CPU.
-  The espressif bootstrap is **required** — it bundles the espressif LLVM fork
-  that adds the esp32/esp32s2/esp32s3 (and esp32c*) CPU models and the Xtensa
-  codegen. (This mirrors Rust: stock rustc has no Xtensa; esp-rs/rust adds it.)
+- **Upstream Zig 0.16.0 cannot target ESP.** `zig targets` lists only `generic`
+  for the `xtensa` arch (`error: unknown CPU: 'esp32'`), and has no `esp32c3`
+  riscv CPU. **But this is version-dependent:** Zig **0.17.0-dev** (the repo now
+  lives at `codeberg.org/ziglang/zig`) adds an **`esp32`** CPU model based on
+  *upstream* LLVM's Xtensa support. Since upstream LLVM only carries esp32/esp8266
+  (esp32-s2/s3 are fork-side, docs/07), upstream Zig gets `esp32` but **not the
+  full esp32/s2/s3 set** — **only the espressif bootstrap fork has all Xtensa
+  targets**, exactly mirroring Rust (stock rustc has Tier-3 specs / partial
+  upstream; the esp-rs *fork* has the complete, working set). So the espressif
+  bootstrap remains **required** for s2/s3 (and for the production backend).
 - **The RISC-V `{i32,i32}` → `[2 x i64]` bug is upstream, not the fork.** Built
   with a generic `riscv32 -mcpu=generic_rv32+m+c`, **both** upstream Zig and the
   bootstrap emit `i32 @zig_point_dot([2 x i64], [2 x i64])`. So the small-struct
   RISC-V C-ABI mis-lowering is an upstream **Zig frontend** bug, reproducible with
   stock `pip install ziglang` on any RISC-V target — independent of the espressif
-  LLVM fork. (The Xtensa `[24]u8` bug can only be exercised via the bootstrap,
-  since upstream Zig has no esp32 Xtensa target at all.)
+  LLVM fork. (The Xtensa `[24]u8` bug is exercised via the bootstrap here, since
+  upstream Zig 0.16.0 has no esp32 target; Zig 0.17.0-dev adds `esp32` but still
+  not s2/s3.)
 
 Net parity: Rust's ESP story (esp-rs/rust) is a complete C-ABI implementation;
 Zig's is experimental, with a frontend struct-ABI gap that is in part *upstream*
