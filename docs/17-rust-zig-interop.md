@@ -48,6 +48,20 @@ So a Rust↔Zig call passing such a struct **by value** corrupts data. Struct
 *returns* (sret) are fine. **Mitigation:** pass structs **by pointer** across any
 Rust↔Zig boundary — then everything (incl. u128/f128) interoperates.
 
+**Provenance — it's upstream Zig, not the espressif fork.** The
+`kassane/zig-espressif-bootstrap` README enumerates its 7 patches and **every one
+targets LLVM/LLD/Clang/zlib build plumbing — none touch Zig's `src/`**. The fork
+builds an upstream Zig 0.16.0-era commit (which already carries the `esp32`/s2/s3
+CPU *models* — present in its `lib/std/Target/xtensa.zig`, absent from the tagged
+0.16.0) against espressif LLVM 21.1.0. So the by-value aggregate mis-lowering is
+in **upstream Zig's frontend C-ABI handling** (it defers to LLVM's default instead
+of coercing per the platform C ABI), not a fork regression — consistent with the
+RISC-V case reproducing on stock upstream Zig (docs/10). It's tracked upstream by
+**ziglang/zig #5467 "Xtensa Support" (milestone 0.17.0)** — Xtensa is still being
+finalized for the next Zig release; the latest fork tag is `0.16.0-xtensa` (no
+0.17.x exists yet), so no current build fixes it. (Cf. the *data-layout* gap
+upstream #16616 / PR #16632, already fixed.)
+
 ## 3. Linking & LTO
 
 - **Object-level FFI: works.** A Rust `staticlib` links with a Zig object under

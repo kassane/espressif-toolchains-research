@@ -72,7 +72,15 @@ work, not a dependency of the experiments.
   the 0.17.0-dev commit adding the `esp32` CPU target lives here.
 - **kassane/zig-espressif-bootstrap (xtensa)** —
   <https://github.com/kassane/zig-espressif-bootstrap/blob/xtensa/README.md> —
-  the exact Zig used: Zig 0.16 + Espressif LLVM 21.1.0.
+  the exact Zig used: Zig 0.16 + Espressif LLVM 21.1.0. Its README's 7 patches all
+  target **LLVM/LLD/Clang/zlib — none touch Zig `src/`**, so it builds an upstream
+  Zig commit (carrying the esp32 CPU models) unmodified; the struct-ABI gap is
+  therefore *upstream Zig's*, not a fork change (latest tag `0.16.0-xtensa`; no
+  0.17.x). Confirms docs/17.
+- **ziglang/zig #16616 + PR #16632** —
+  <https://github.com/ziglang/zig/issues/16616> — upstream fix for the Xtensa
+  *data-layout* string (a different ABI bug, already fixed); referenced by the
+  fork's issue #1.
 - **zig `src/codegen/llvm.zig`** —
   <https://github.com/ziglang/zig/blob/master/src/codegen/llvm.zig> — where Zig
   lowers C calling conventions (aggregate by-value / byval handling); the area the
