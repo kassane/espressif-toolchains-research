@@ -12,7 +12,7 @@ Rust-specific bug, a shared-backend bug, or fixed. Sources +
 |-------|------|----------------|------------------|-------------------------|---------------|
 | **#95** | enum/match `Not supported instr` (LLVM 12) | CLOSED | ✓ compiles (fixed) | ✓ compiles | ✓ compiles |
 | **#137** | `u128` miscompile at `opt-level=z` | CLOSED | ✓ compiles | **— `__int128` unsupported on xtensa** | ✓ compiles |
-| **#277** | ICE `Cannot select XtensaISD::PCREL_WRAPPER` (serde `Vec<f32>`) | **OPEN** | not reproduced by minimal no_std float-pool code | ✓ compiles (float pool fine) | ✓ compiles |
+| **#277** | ICE `Cannot select XtensaISD::PCREL_WRAPPER` (serde `Vec<f32>`) | **OPEN** | narrowed to the **espidf (std) target** — the exact serde repro builds fine on `*-none-elf` | ✓ compiles (float pool fine) | ✓ compiles |
 | **#161** | `Iterator::position` miscompile at `opt-level=s` | CLOSED | ✓ **fixed** (runtime: index 1) | ✓ (manual loop, index 1) | — |
 | **#177** | C variadics garbage on Xtensa | CLOSED | ✓ **fixed** (runtime: sum 100) | ✓ baseline (sum 100) | — |
 
@@ -39,11 +39,14 @@ the `xtensa-esp32s3-espidf` std target. Minimal no_std attempts —
 `static [f32;2]` indexing, `f32::clamp(-1.0,1.0)`, `if c {-1.0} else {1.0}` —
 **all compile** (no ICE) on rustc 1.95. clang and gcc also compile a `[2 x float]`
 constant pool fine (clang indexes it via `l32r`+`addx4`+`l32i`). So this is a
-narrow backend ISel gap hit only by the specific serde-generated IR on the espidf
-target; reproducing it needs the full serde + serde_json + `build-std=std` +
-esp-idf-framework setup (crates.io + ldproxy), which is out of scope for this
-toolchain-only repo. As a *backend* (LLVM Xtensa) bug it would affect any frontend
-emitting the same node — but no frontend emits it from simple float-pool code.
+narrow backend ISel gap. **Further narrowed here:** the *exact* repro — serde
+`1.0.228` + serde_json `1.0.150`, the `#[serde(tag="kind")]` enum with
+`Vec<Inner{x:f32}>`, `from_slice` — **builds cleanly on `xtensa-esp32s3-none-elf`**
+(no_std + alloc, `build-std=core,alloc`; `experiments/esp-rs-issues/issue277`). So
+the ICE is **specific to the `xtensa-esp32s3-espidf` (std) target**, not to serde,
+the chip, or the source pattern. Reproducing it therefore needs the espidf std
+target = the full esp-idf framework + ldproxy + `build-std=std` (out of scope for
+this toolchain-only repo). It is the one remaining untested *frontend config*.
 
 ### #161 / #177 — runtime miscompiles, both now fixed (qemu)
 
