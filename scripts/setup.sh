@@ -15,6 +15,10 @@ CLANG_URL="https://github.com/espressif/llvm-project/releases/download/esp-21.1.
 RUST_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz"
 RUST_SRC_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-src-1.95.0.0.tar.xz"
 GCC_URL="https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20251204/xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz"
+# qemu (optional; only needed for scripts/run-qemu.sh). Both softmmu builds.
+QEMU_BASE="https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417"
+QEMU_XT_URL="$QEMU_BASE/qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz"
+QEMU_RV_URL="$QEMU_BASE/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz"
 
 fetch() { # url outfile
     [ -f "$2" ] && { echo "have $(basename "$2")"; return; }
@@ -51,4 +55,16 @@ SYS="$TC/rust-esp"
 mkdir -p "$SYS/lib/rustlib/src"
 ln -sfn "$TC/rust-src-nightly/rust-src/lib/rustlib/src/rust" "$SYS/lib/rustlib/src/rust"
 
+# qemu (optional): only fetched if QEMU=1, since run-qemu.sh is the only consumer.
+if [ "${QEMU:-0}" = 1 ]; then
+    fetch "$QEMU_XT_URL" "$DL/qemu-xtensa.tar.xz"
+    fetch "$QEMU_RV_URL" "$DL/qemu-riscv.tar.xz"
+    mkdir -p "$TC/qemu"
+    [ -x "$TC/qemu/qemu/bin/qemu-system-xtensa" ]  || tar xf "$DL/qemu-xtensa.tar.xz" -C "$TC/qemu"
+    [ -x "$TC/qemu/qemu/bin/qemu-system-riscv32" ] || tar xf "$DL/qemu-riscv.tar.xz"  -C "$TC/qemu"
+    echo "qemu installed. NOTE: it needs libSDL2 + libslirp even headless:"
+    echo "  apt-get install -y libsdl2-2.0-0 libslirp0"
+fi
+
 echo "setup complete. source scripts/env.sh to use the toolchains."
+echo "(run scripts/setup.sh with QEMU=1 to also fetch the espressif qemu fork.)"
