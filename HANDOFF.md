@@ -72,6 +72,11 @@ output.
       esp32c3 (riscv) and esp32 (xtensa) qemu.
 - [x] **`-lc` vs C-ABI** (docs/10): `-lc` only links libc; it does not fix Zig's
       struct ABI (verified `[2 x i64]` persists with `-lc` and real musl libc).
+- [x] **Mangled-symbol FFI from Zig** (docs/12, `experiments/mangled-ffi`): Zig
+      calls non-`extern "C"` C++ (`@"_Z…"`, runs `19 OK`, even picks an overload)
+      and Rust v0 (`@"_R…"`, runs `21 OK`) symbols. C++ is clean; Rust needs the
+      symbol exported global (v0 + rlib + opt-level=0; staticlib/`-O`/legacy
+      internalize it) and the v0 hash is unstable — so prefer `#[no_mangle]`.
 - [ ] Remaining: **espidf** targets (`xtensa-*-espidf`); file the Zig struct-ABI
       gaps upstream (ziglang/zig) with the `experiments/abi-structs` repro.
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
