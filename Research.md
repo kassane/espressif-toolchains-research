@@ -21,8 +21,9 @@ language frontends consume (a fork of) it:
 All three are **Espressif forks**, not stock toolchains: `espressif/llvm-project`
 ≠ upstream LLVM (upstream's Xtensa backend is still experimental), `esp-rs/rust`
 is a fork of rustc (stock `rustc` has only Tier-3 target *specs*, no working
-Xtensa codegen), and upstream Zig has no esp32 CPU at all. "Shared backend"
-throughout this report means *the espressif LLVM fork*.
+Xtensa codegen), and upstream Zig 0.16 has no esp32 CPU (0.17.0-dev adds `esp32`
+only — not s2/s3; the fork has all three). "Shared backend" throughout this
+report means *the espressif LLVM fork*.
 
 A fourth toolchain, **GCC 15.2** from `espressif/crosstool-NG`, shares *no* code
 with LLVM and acts as an independent control for ABI questions.
@@ -158,7 +159,8 @@ site, clang stages the words in `a10..a15`; Zig does `movsp` to grow the stack a
 spills the under-aligned struct to memory → a clang/rust/gcc ↔ zig call reads the
 bytes from the wrong place ⇒ silent corruption on hardware. (The host test passes
 only because x86_64 SysV memory-passes these structs where both agree.) Code-size
-symptom: Zig's 9-function lib is **647 B** vs clang **196 B** / gcc **174 B**.
+symptom: Zig's 9-function lib is **443 B** of `.text` vs clang **192 B** / gcc
+**174 B** (real `.text` via `llvm-size -A`; docs/06/15).
 
 Root cause: Zig's experimental ESP targets don't implement the C-ABI aggregate
 coercion clang/rust do; they defer to LLVM's default lowering. This is **not

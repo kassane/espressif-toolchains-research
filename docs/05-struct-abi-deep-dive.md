@@ -87,8 +87,10 @@ platform C ABI in the frontend (which clang and rust both do).
 
 ## Cost & mitigation
 
-- Code-size symptom on esp32: Zig's 9-function lib is **647 B** vs clang **196 B**
-  / gcc **174 B** — the bloat is the byte-by-byte stack marshalling above.
+- Code-size symptom on esp32: Zig's 9-function lib is **443 B** of `.text` vs
+  clang **192 B** / gcc **174 B** (real `.text`, `llvm-size -A`; the often-quoted
+  647 B counted zig's default `.eh_frame` — docs/15) — the bloat is the
+  byte-by-byte stack marshalling above.
 - **Mitigations** (any one): keep cross-language structs **word-aligned** (the
   common case — any struct with an `int`/pointer member already is); or pass
   byte-array/packed/`align(1)` structs **by pointer**; or avoid by-value

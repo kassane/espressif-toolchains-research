@@ -20,15 +20,16 @@ output.
       callbacks `callx8` — identical clang/rust/zig/gcc (doc 03).
 - [x] LLVM IR comparison: clang/rust lower aggregates to the C ABI in-frontend;
       zig defers to the backend (doc 04).
-- [x] **Headline finding** — **under-aligned** (`align(1)`) by-value struct
-      **arguments** are ABI-incompatible with Zig; proven at the call site, and
-      shown by a size×alignment sweep to be alignment- (not size-) driven and
-      Xtensa-specific (Zig matches on RISC-V esp32c3). (doc 05,
-      `experiments/abi-structs/sweep.sh`).
+- [x] **Headline finding** — by-value struct **arguments** are ABI-incompatible
+      with Zig on Xtensa for **under-aligned** (`align(1)`) structs (alignment-,
+      not size-driven; proven at the call site). NOTE: also broken differently on
+      RISC-V (small `{i32,i32}` → `[2 x i64]`) — see the corrected entry below;
+      not Xtensa-only. (doc 05/09, `experiments/abi-structs/sweep.sh`).
 - [x] IR mixing: `llc` consumes all frontends; clang↔rust cross-language **LTO**
       links; clang↔zig LTO blocked by 21.1.0 vs 21.1.3 bitcode skew (doc 04).
-- [x] Binary/size/mangling comparison (doc 06): gcc 174 B < clang 196/212 B <<
-      zig 647 B for the 9-fn lib.
+- [x] Binary/size/mangling comparison (doc 06): real `.text` rust ~171 ≈ gcc 174
+      < clang 192 (C) / 204 (C++) < zig **443** for the 9-fn lib (the 647 figure
+      counted zig's default `.eh_frame`; use `llvm-size -A`).
 
 - [x] **Compiler-driver parity** (docs/15, `experiments/compiler-parity/run.sh`):
       `zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler (espressif
