@@ -119,45 +119,45 @@ in `a2`; Zig returns the aggregate by value in IR, but the LLVM backend lowers
 that to the *same* sret-pointer-in-`a2` convention. Zig just builds the result in
 its own frame and memcpys it to the caller's buffer (less efficient, same ABI).
 
-## 5. The one real incompatibility: large by-value struct *arguments*
+## 5. The one real incompatibility: under-aligned by-value struct *arguments*
 
-This is the single place the "shared backend ⇒ shared ABI" implication leaks, and
-it is worth stating precisely.
+This is the single place the "shared backend ⇒ shared ABI" implication leaks. The
+trigger is **struct alignment, not size**, and it affects only by-value struct
+*arguments* (returns are fine).
 
-clang and rust **lower aggregates to the Xtensa C ABI in the frontend**:
-
-```llvm
-; clang and rust, identical:
-define i32 @c_blob_sum([6 x i32] %0)      ; 24-byte struct flattened to 6 words → a2..a7
-define i32 @rs_blob_sum([6 x i32] %0)
-```
-
-Zig passes the **raw aggregate** and lets the LLVM backend pick a convention:
+clang and rust **lower aggregates to the Xtensa C ABI in the frontend** — any
+≤ 6-word struct is flattened to `[N x i32]` and passed in `a2..a7`, *regardless of
+alignment*:
 
 ```llvm
-define i32 @zig_blob_sum(%Blob %0)        ; backend default lowering
+define i32 @c_blob_sum([6 x i32] %0)      ; rust identical; 24-byte [24]u8 → registers
 ```
 
-For the 8-byte `Point` the backend default happens to coincide with `[2 x i32]`,
-so Zig matches. For the 24-byte `Blob` it does **not**. Reverse-engineering the
-two call sites (`experiments/abi-structs`, both passing `Blob` to an external
-`blob_sum`) shows the divergence directly:
+Zig forwards the **raw aggregate** (`i32 @zig_blob_sum(%Blob)`) and inherits
+LLVM's default lowering, which only register-passes a *naturally word-aligned*
+aggregate. A size×alignment sweep (`experiments/abi-structs/sweep.sh`) isolates it:
 
 ```
-clang caller:  moves all 6 words into a10..a15  →  register-passed (matches C ABI)
-zig caller:    movsp (grows stack), spills 18 words to the stack + 6 in regs
+struct      align   clang        zig            FFI
+[8]u8         1     REGISTERS    STACK (movsp)   MISMATCH    <- even 8 bytes
+[16]u8        1     REGISTERS    STACK (movsp)   MISMATCH
+[24]u8        1     REGISTERS    STACK (movsp)   MISMATCH
+{2 x u32}     4     REGISTERS    REGISTERS       ok
+{6 x u32}     4     REGISTERS    REGISTERS       ok          <- 24 bytes, fine
 ```
 
-A clang↔zig call with a `>16 B` by-value struct argument therefore reads from the
-wrong place → silent data corruption on hardware. (The host test passes only
-because x86_64 SysV happens to put a 24-byte struct in memory where both agree.)
-The cost is visible in code size too: Zig's `blob_sum`/`make_blob` bloat the
-9-function library to **647 B** vs clang's **196 B** and gcc's **174 B**.
+So the earlier intuition "small OK / large broken" was a confound: `Point` (8 B)
+is `{i32,i32}` (align 4) and `Blob` (24 B) is `[24]u8` (align 1). At the call
+site, clang stages the words in `a10..a15`; Zig does `movsp` to grow the stack and
+spills the under-aligned struct to memory → a clang/rust/gcc ↔ zig call reads the
+bytes from the wrong place ⇒ silent corruption on hardware. (The host test passes
+only because x86_64 SysV memory-passes these structs where both agree.) Code-size
+symptom: Zig's 9-function lib is **647 B** vs clang **196 B** / gcc **174 B**.
 
-Root cause: Zig's Xtensa target is experimental and does not yet implement the
-C-ABI aggregate coercion that clang/rust do; it defers to LLVM's default
-calling-convention lowering, which is not the platform C ABI for large by-value
-struct args. Full teardown: [docs/05-struct-abi-deep-dive.md](docs/05-struct-abi-deep-dive.md).
+The gap is **Xtensa-specific**: the same `[8]u8` caller on RISC-V esp32c3 passes
+in `a0`/`a1` for *both* clang and Zig. Root cause: Zig's experimental Xtensa
+target does not yet implement the C-ABI aggregate coercion clang/rust do. Full
+teardown: [docs/05-struct-abi-deep-dive.md](docs/05-struct-abi-deep-dive.md).
 
 ## 6. Mixing LLVM IR across frontends — is it possible?
 
@@ -186,11 +186,10 @@ Yes, with a version caveat.
    Cross-language FFI on Xtensa is real and practical today.
 2. **Linkers are interchangeable.** lld and GNU ld each link both object
    families; GCC and LLVM objects coexist in one image.
-3. **The leak is narrow and identifiable.** Large (`>16 B`) by-value struct
-   *arguments* are mishandled by Zig's experimental Xtensa target. Until fixed,
-   FFI signatures crossing into/out of Zig should pass big structs **by pointer**
-   (which is universally compatible) — a one-line API guideline that sidesteps
-   the whole problem.
+3. **The leak is narrow and identifiable.** *Under-aligned* (`align(1)`,
+   e.g. byte-array/packed) by-value struct *arguments* are mishandled by Zig's
+   experimental Xtensa target — at any size, and Xtensa-only. Word-aligned
+   structs (the common case) are fine; otherwise pass them **by pointer**.
 4. **IR is portable; tooling versions are the gotcha.** Identical datalayout
    makes IR mixing sound in principle; in practice keep the `llvm-link`/LTO tool
    at the *same* LLVM version as the bitcode producers.
@@ -198,9 +197,9 @@ Yes, with a version caveat.
 ## 8. Practical FFI guidance for ESP32 polyglot projects
 
 - Stick to the C ABI (`extern "C"` / `#[no_mangle]` / `export fn`) — done here.
-- Scalars, pointers, enums, small structs, callbacks: free to cross any boundary.
-- **Pass/return large structs by pointer**, not by value, on any boundary that
-  touches Zig.
+- Scalars, pointers, enums, callbacks, word-aligned structs: free to cross any boundary.
+- On boundaries that touch Zig, keep by-value structs **word-aligned**, or pass
+  **under-aligned/packed/byte-array structs by pointer** (returns are already safe).
 - For cross-language LTO, build every participant with the *same* LLVM point
   release, or don't LTO across the mismatched one.
 - GCC interoperates fine at the object/link level; you don't have to go all-LLVM.

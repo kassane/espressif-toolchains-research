@@ -33,7 +33,8 @@ The Xtensa C ABI (as implemented by clang/rust/gcc):
 | struct > 16 B returned | hidden `sret` pointer in `a2` | `ptr sret(...)` |
 
 Zig's experimental target does **not** reproduce all of these (it passes raw
-aggregates); the large by-value-argument case is where it diverges — see
+aggregates); it diverges for **under-aligned** (`align(1)`) by-value struct
+*arguments* — driven by alignment, not size — see
 [05-struct-abi-deep-dive.md](05-struct-abi-deep-dive.md).
 
 ## CPU feature parity across frontends

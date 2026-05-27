@@ -12,10 +12,11 @@ The central question:
 
 Short answer, established empirically in this repo:
 
-> **Yes for scalars, floats, pointers, callbacks, small structs and struct
+> **Yes for scalars, floats, pointers, callbacks, word-aligned structs and struct
 > returns — all four toolchains agree bit-for-bit on the Xtensa windowed ABI.
-> The one real hole is large by-value struct *arguments*, where Zig's
-> experimental Xtensa target diverges from clang/rust/gcc.**
+> The one real hole is *under-aligned* (e.g. byte-array / `align(1)`) by-value
+> struct *arguments*, where Zig's experimental Xtensa target diverges from
+> clang/rust/gcc — at any size, even 8 bytes.**
 
 See **[Research.md](Research.md)** for the full write-up and **[docs/](docs/)** for
 the detailed evidence.
@@ -71,6 +72,8 @@ CLAUDE.md          orientation for future automated sessions
   identical across clang, rust, zig and gcc.
 - **Identical LLVM `target datalayout`** across clang/rust/zig; same-version
   (21.1.3) bitcode is LTO-mergeable (clang↔rust), proving IR-level interop.
-- **One genuine incompatibility**: passing a struct **larger than 16 bytes by
-  value as an argument**, where Zig uses a stack-based layout instead of the
-  `[6 x i32]`-in-registers convention used by clang/rust/gcc.
+- **One genuine incompatibility**: passing an **under-aligned (`align(1)`,
+  e.g. byte-array) struct by value as an argument**, where Zig stack-spills
+  instead of using the `[N x i32]`-in-registers convention of clang/rust/gcc.
+  Driven by **alignment, not size** (a `[8]u8` breaks; a 24-byte `{6 x u32}`
+  is fine), and **Xtensa-specific** (Zig matches on RISC-V esp32c3).
