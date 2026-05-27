@@ -159,6 +159,13 @@ in `a0`/`a1` for *both* clang and Zig. Root cause: Zig's experimental Xtensa
 target does not yet implement the C-ABI aggregate coercion clang/rust do. Full
 teardown: [docs/05-struct-abi-deep-dive.md](docs/05-struct-abi-deep-dive.md).
 
+**Confirmed at runtime.** Running the matrix on `qemu-system-xtensa`
+(`experiments/qemu-run`, `scripts/run-qemu.sh`) reproduces the prediction live:
+scalars and the align-4 `Point` interoperate across all four languages, while the
+align-1 `Blob` passed by value yields `zig FAIL (got=242 want=300)` — Zig misreads
+the under-aligned struct on the emulated core, exactly as the disassembly says.
+See [docs/08-qemu-execution.md](docs/08-qemu-execution.md).
+
 ## 6. Mixing LLVM IR across frontends — is it possible?
 
 Yes, with a version caveat.

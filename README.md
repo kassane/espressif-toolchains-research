@@ -77,3 +77,6 @@ CLAUDE.md          orientation for future automated sessions
   instead of using the `[N x i32]`-in-registers convention of clang/rust/gcc.
   Driven by **alignment, not size** (a `[8]u8` breaks; a 24-byte `{6 x u32}`
   is fine), and **Xtensa-specific** (Zig matches on RISC-V esp32c3).
+- **Confirmed at runtime on `qemu-system-xtensa`**: the matrix runs on an
+  emulated core — scalars and align-4 structs pass for all four languages, while
+  the align-1 `blob_sum` gives `zig FAIL (got=242 want=300)`.

@@ -40,42 +40,50 @@ window-ABI enable and semihosting are all working.
 (Note: qemu's semihosting console swallows the very first output byte after
 reset, so messages lead with a `\n`.)
 
-## What doesn't (yet): the full FFI matrix run
+## The full FFI matrix run — and the ABI bug, live
 
-`qemu_main.c` calls `c_/cpp_/rs_/zig_` functions and reports per language. It
-passes the first checks then hangs. The exception log
-(`-d int`) shows the window overflow/underflow handlers firing **once**, then an
-unhandled general exception cascading into a **double-exception loop**:
+`qemu_main.c` calls the `c_/cpp_/rs_/zig_` functions and reports per language.
+`scripts/run-qemu.sh` runs it on `-machine sim -cpu dc233c`:
 
 ```
-do_interrupt(5)  pc=fe006a15   ; window handler runs
-do_interrupt(10) pc=fe006a4e
-do_interrupt(12) pc=fe0007fa   ; then loops here ~forever
+== FFI runtime on qemu-system-xtensa (windowed ABI) ==
+- scalar add_i32(3,4)==7 [expect all ok]:
+ c    ok (7)
+ cpp  ok (7)
+ rs   ok (7)
+ zig  ok (7)
+- point_dot: 8B align-4 struct by value ==11 [expect all ok]:
+ c    ok (11)
+ rs   ok (11)
+ zig  ok (11)
+- blob_sum: 24B align-1 struct by value ==300 [zig expected to FAIL]:
+ c    ok (300)
+ cpp  ok (300)
+ rs   ok (300)
+ zig  FAIL (got=242 want=300)
+total failures: 1
 ```
 
-Root cause: the harness installs only the **window** vectors, not the
-kernel/user/double **exception** vectors. Deep windowed-ABI call nesting plus the
-library runtime needs the full XEA2 exception vector table and handlers (or a
-`-mabi=call0` rebuild that avoids register windows entirely). That is a complete
-bare-metal RTOS-style bring-up — out of scope for this static-ABI study, and it
-would only re-confirm what the disassembly already proves.
+This is the docs/05 prediction confirmed **at runtime on an emulated Xtensa
+core**: scalars and the align-4 `Point` interoperate across all four languages;
+the align-1 `Blob` passed by value to `zig_blob_sum` is **misread by Zig**
+(`242 ≠ 300`) because Zig stack-spills the under-aligned struct while the clang
+driver passed it in registers. Static disassembly (docs/05) and live execution
+agree.
 
-## Status & options to finish it
+### Two bring-up issues solved to get here
 
-The runtime execution is **not required** for the conclusions: the ABI agreement
-(and the under-aligned-struct divergence) is established statically and
-unambiguously in docs 03–05. To complete a runtime demonstration later, easiest
-first:
+1. **Window exceptions need handlers.** Deep windowed-ABI nesting raises
+   WindowOverflow/Underflow; `start.S` installs the canonical XEA2 handlers at
+   `VECBASE+0x000..0x140`, sets `VECBASE`, and pads the table to `0x400` so
+   program code never overlaps a vector slot.
+2. **Interrupts must be masked** (`PS.INTLEVEL=15`) or a stray IRQ vectors into
+   the (then-unhandled) exception slots.
+3. **ISA mismatch:** the `dc233c` sim core lacks esp32's `mul32high` (`muluh`),
+   which the compiler emits for divide-by-10. The semihosting `putdec` therefore
+   avoids `/` and `%` (subtraction + powers-of-ten table). The FFI functions
+   under test use only common Xtensa ISA, so the esp32-built objects run as-is.
 
-1. **Use `-machine esp32` with the real ROM** (`esp32-v3-rom.bin` ships in the
-   qemu package) — the ROM sets up vectors/handlers — packaged as a proper
-   esp-idf flash image.
-2. **Add the XEA2 kernel/user/double exception vectors** to `start.S` and a
-   minimal handler, extending the window-only table already present.
-3. **Rebuild the matrix with `-mabi=call0`** (no register windows ⇒ no window
-   exceptions) for a simpler bring-up — at the cost of testing the call0 rather
-   than the default windowed ABI.
-
-The expected runtime result, once it executes, is the docs/05 prediction: scalar
-and align-4 struct calls pass for all four languages; the align-1 `blob_sum`
-by-value call fails for Zig only.
+(`-cpu esp32` itself can't be used on the `sim` machine: it resets to the esp32
+vector `0x50000000`, which `sim` doesn't map. A full `-machine esp32` + ROM +
+flash-image run is the way to exercise the exact esp32 core, left as follow-up.)

@@ -32,14 +32,16 @@ output.
 
 ## Not done / next steps
 
-- [~] **Execute** the Xtensa images on qemu. The espressif qemu fork
-      (`esp-develop-9.2.2-20260417`) is downloaded; a bare-metal harness
-      (`experiments/qemu-run`) **runs a semihosting "hello" on the `sim` machine**
-      (proves the toolchain output executes on an emulated core). The full FFI
-      matrix run still hangs — the harness installs only the window vectors, not
-      the kernel/user/double exception vectors, so deep call nesting double-faults.
-      Finish via full XEA2 vectors, the `-machine esp32` ROM, or a `-mabi=call0`
-      rebuild. Details + log in docs/08-qemu-execution.md.
+- [x] **Execute** the Xtensa images on qemu. The espressif qemu fork
+      (`esp-develop-9.2.2-20260417`) is downloaded; the bare-metal harness
+      (`experiments/qemu-run`, `scripts/run-qemu.sh`) **runs the full FFI matrix
+      on `-machine sim -cpu dc233c`** and reproduces the docs/05 prediction at
+      runtime: scalars + align-4 `Point` pass for all 4 languages; the align-1
+      `blob_sum` by value gives `zig FAIL (got=242 want=300)` — the ABI bug, live.
+      (Bring-up: XEA2 window handlers + VECBASE, `PS.INTLEVEL=15`, and a
+      div-free `putdec` to dodge dc233c's missing `mul32high`.) docs/08.
+      Remaining nicety: a full `-machine esp32` + ROM + flash-image run to use the
+      exact esp32 core (sim can't, it resets to the unmapped 0x50000000).
 - [x] **Struct-ABI boundary sweep** — done (`experiments/abi-structs/sweep.sh`).
       Found the trigger is **alignment, not size**: align-1 structs mismatch at
       every size, align-4 match at every size.

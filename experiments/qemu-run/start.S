@@ -5,10 +5,11 @@
 _reset:
     j _start
 
-    /* Window overflow/underflow handlers at VECBASE-relative offsets.
-       Canonical Xtensa sequences (ISA RM). Required or deep windowed-ABI call
-       nesting traps with no handler. Only window vectors are needed: qemu
-       handles `simcall` semihosting directly (not via an exception vector). */
+    /* Full VECBASE-relative vector table. Window over/underflow handlers are
+       canonical Xtensa sequences (ISA RM). Interrupts are masked in _start
+       (PS.INTLEVEL=15), so the L2-L7 / interrupt slots are just contained
+       stubs; same for the kernel/user/double exception vectors. The table is
+       padded to 0x400 so program code never overlaps a vector slot. */
     .section .vectors,"ax",@progbits
     .balign 1024
     .global _vectors
@@ -77,6 +78,14 @@ _vectors:
     l32e a10, a11, -24
     l32e a11, a11, -20
     rfwu
+    .org 0x300          /* KernelException - contained (should never fire) */
+    j .
+    .org 0x340          /* UserException */
+    j .
+    .org 0x3C0          /* DoubleException */
+    j .
+    .org 0x3FC
+    .word 0             /* pad table to full 0x400 so code starts at VECBASE+0x400 */
 
     .section .text,"ax",@progbits
     .global _start
@@ -91,7 +100,7 @@ _start:
     movi a0, 1
     wsr  a0, windowstart
     rsync
-    movi a0, 0x40000          /* PS.WOE = 1 */
+    movi a0, 0x4000F          /* PS.WOE=1, PS.INTLEVEL=15 (mask all interrupts) */
     wsr  a0, ps
     rsync
     movi a1, _stack_top

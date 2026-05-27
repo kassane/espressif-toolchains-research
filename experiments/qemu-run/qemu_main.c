@@ -13,12 +13,23 @@
 
 static int fails;
 
+/* No / or % : the dc233c sim core lacks esp32's mul32high (`muluh`), which the
+   compiler would emit for divide-by-10. Decimal via subtraction + a powers
+   table keeps this runnable on the generic sim core. */
 static void putdec(long v) {
-    char t[12]; int n = 0; unsigned long u = (v < 0) ? -(unsigned long)v : (unsigned long)v;
+    static const unsigned long pw[10] = {
+        1000000000UL, 100000000UL, 10000000UL, 1000000UL, 100000UL,
+        10000UL, 1000UL, 100UL, 10UL, 1UL
+    };
+    unsigned long u = (v < 0) ? -(unsigned long)v : (unsigned long)v;
     if (v < 0) puts_("-");
-    if (u == 0) { puts_("0"); return; }
-    while (u) { t[n++] = (char)('0' + u % 10); u /= 10; }
-    char b[12]; int i = 0; while (n) b[i++] = t[--n]; b[i] = 0; puts_(b);
+    char b[12]; int i = 0, started = 0;
+    for (int k = 0; k < 10; k++) {
+        int d = 0;
+        while (u >= pw[k]) { u -= pw[k]; d++; }
+        if (d || started || k == 9) { b[i++] = (char)('0' + d); started = 1; }
+    }
+    b[i] = 0; puts_(b);
 }
 
 static void check(const char* name, long got, long want) {
