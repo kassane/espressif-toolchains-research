@@ -80,8 +80,17 @@ output.
       (`export fn @"_Z…"`, 19 OK); (3) Zig calls **libc++** via `extern "c++"`
       **plus** `-lc++` (operator new/delete, 42 OK) — `extern "c++"` names the dep
       but Zig still requires `-lc++`; arbitrary `extern "<lib>"` → `-l<lib>`.
-- [ ] Remaining: **espidf** targets (`xtensa-*-espidf`); file the Zig struct-ABI
-      gaps upstream (ziglang/zig) with the `experiments/abi-structs` repro.
+- [x] **Re-test & port esp-rs/rust issues across frontends** (docs/13,
+      `experiments/esp-rs-issues/run.sh`): #95 enum/match FIXED (all frontends);
+      #137 u128 compiles (cross-frontend: C/gcc reject `__int128` on xtensa, rust
+      & zig support u128 identically); #277 PCREL_WRAPPER ICE still OPEN but NOT
+      minimally reproducible (serde/espidf-specific); #161 position & #177 C
+      variadics both FIXED — verified at runtime on qemu (index 1 / sum 100,
+      rust == C). 4/5 fixed; #277 needs the full serde+espidf+build-std=std repro.
+- [ ] Remaining: **espidf** targets (`xtensa-*-espidf`) — needed to reproduce
+      #277 (serde) and is the only untested frontend config; file the Zig
+      struct-ABI gaps upstream (ziglang/zig) with the `experiments/abi-structs`
+      repro.
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
       once reduced to a minimal repro (start from `experiments/abi-structs`).
 - [ ] Get a version-matched LLVM-21 `llvm-link`/`opt` to demonstrate true

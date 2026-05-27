@@ -1,0 +1,11 @@
+[package]
+name="rt"
+version="0.0.0"
+edition="2021"
+[lib]
+name="rt"
+path="rt.rs"
+crate-type=["staticlib"]
+[profile.release]
+panic="abort"
+opt-level="s"

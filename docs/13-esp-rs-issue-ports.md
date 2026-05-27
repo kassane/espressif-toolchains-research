@@ -13,8 +13,8 @@ Rust-specific bug, a shared-backend bug, or fixed. Sources +
 | **#95** | enum/match `Not supported instr` (LLVM 12) | CLOSED | ✓ compiles (fixed) | ✓ compiles | ✓ compiles |
 | **#137** | `u128` miscompile at `opt-level=z` | CLOSED | ✓ compiles | **— `__int128` unsupported on xtensa** | ✓ compiles |
 | **#277** | ICE `Cannot select XtensaISD::PCREL_WRAPPER` (serde `Vec<f32>`) | **OPEN** | not reproduced by minimal no_std float-pool code | ✓ compiles (float pool fine) | ✓ compiles |
-| **#161** | `Iterator::position` miscompile at `opt-level=s` | CLOSED | see docs (runtime) | ported (manual loop) | ported |
-| **#177** | C variadics garbage on Xtensa | CLOSED | see docs (runtime) | n/a (C is the caller) | — |
+| **#161** | `Iterator::position` miscompile at `opt-level=s` | CLOSED | ✓ **fixed** (runtime: index 1) | ✓ (manual loop, index 1) | — |
+| **#177** | C variadics garbage on Xtensa | CLOSED | ✓ **fixed** (runtime: sum 100) | ✓ baseline (sum 100) | — |
 
 ## Per-issue notes
 
@@ -45,9 +45,33 @@ esp-idf-framework setup (crates.io + ldproxy), which is out of scope for this
 toolchain-only repo. As a *backend* (LLVM Xtensa) bug it would affect any frontend
 emitting the same node — but no frontend emits it from simple float-pool code.
 
-### #161 / #177 — runtime miscompiles
-`#161` (`Iterator::position(...).unwrap()` returning the wrong index at
-`opt-level=s`) and `#177` (C calling a Rust **variadic** function reads garbage
-args on Xtensa) are *runtime* miscompiles, not compile errors. They are tested by
-execution on qemu and ported to C/Zig where applicable — see the runtime section
-below / `experiments/esp-rs-issues`.
+### #161 / #177 — runtime miscompiles, both now fixed (qemu)
+
+These are *runtime* miscompiles, not compile errors, so they're tested by
+execution on `qemu-system-xtensa` (`experiments/esp-rs-issues/runtime`, built into
+the bare-metal semihosting harness). Both are **fixed** on rustc 1.95 / LLVM 21:
+
+```
+#177 C variadics on Xtensa:
+  c_vsum(10,20,30,40)  = 100  ok          (C baseline)
+  rs_vsum(10,20,30,40) = 100  ok          (Rust C-variadic, #[feature(c_variadic)])
+#161 Iterator::position (opt=s):
+  c_find_pos  = 1  ok                      (C manual loop)
+  rs_find_pos = 1  ok                      (Rust .iter().position())
+```
+
+- **#177**: a C caller invoking a Rust `unsafe extern "C" fn(n, ...)` variadic now
+  reads its args correctly on Xtensa (historically garbage). Rust's c_variadic
+  va-list lowering matches the C ABI. Note Rust c_variadic is nightly-only
+  (`#![feature(c_variadic)]`); Zig has no portable C-variadic *definition*, so the
+  port is C↔Rust here.
+- **#161**: `Iterator::position(...).unwrap()` at `opt-level=s` returns the correct
+  index (1), matching the C loop. The old wrong-index/None miscompile is gone.
+
+## How to reproduce
+
+`experiments/esp-rs-issues/run.sh` (compile/codegen ports) and the runtime build
+in `experiments/esp-rs-issues/runtime` (built + run via the qemu harness, same as
+`scripts/run-qemu.sh`). Net: of the five issues, four are fixed on the current
+toolchain and behave identically across the applicable frontends; **#277** is the
+only one still open, and only under its specific serde/espidf configuration.

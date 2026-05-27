@@ -18,3 +18,13 @@ echo "   (#137 u128 OMITTED for C: __int128 is unsupported by clang & gcc on xte
 
 echo "== Port #95/#137/#277 to Zig (xtensa) =="
 "$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -femit-bin="$B/pz.o" "$D/ports.zig" && echo "   zig   OK (u128 supported, like Rust)"
+
+echo "== Runtime miscompile tests on qemu-system-xtensa: #161 + #177 =="
+RT=experiments/esp-rs-issues/runtime; QR=experiments/qemu-run; RB=build/esp-rs-rt; mkdir -p "$RB"
+RTLIB="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/libclang_rt.builtins.a"
+( cd "$RT" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target xtensa-esp32-none-elf >/dev/null 2>&1 )
+"$CLANG" $CTX -ffreestanding -Os -I"$QR" -c "$RT/rt_main.c" -o "$RB/rt_main.o"
+"$CLANG" $CTX -ffreestanding -Os -c "$QR/start.S" -o "$RB/start.o"
+cp "$RT/target/xtensa-esp32-none-elf/release/librt.a" "$RB/"
+ld.lld -T "$QR/sim.ld" -o "$RB/rt.elf" "$RB/start.o" "$RB/rt_main.o" --start-group "$RB/librt.a" "$RTLIB" --end-group
+timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$RB/rt.elf" || true
