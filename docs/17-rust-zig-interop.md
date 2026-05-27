@@ -106,6 +106,33 @@ So a Rust `AtomicU32` and a Zig `@atomicRmw`/`@cmpxchg` on the same location
 interoperate. (esp-rs #258's atomics symptom was a higher-level async/runtime
 deadlock, not an atomic-lowering mismatch — the lowering itself is consistent.)
 
+## 5. `packed` is a naming trap — different concepts
+
+Rust `#[repr(packed)]` and Zig `packed struct` are **not** the same thing:
+
+| | meaning | `{u8,u8}` | sub-byte fields |
+|---|---------|-----------|-----------------|
+| Rust `#[repr(packed)]` | byte-packed, padding removed, align 1 | 2 bytes | ✗ (no `u4`) |
+| Zig `packed struct` | **bit-packed into a backing integer** | 2 (backing `u16`) | ✓ (`{u4,u4}` = 1 byte) |
+
+So mapping a Zig `packed struct` onto a Rust `#[repr(packed)]` (or a C struct) is
+wrong. Two saving graces:
+
+- **Zig guards the boundary**: passing a `packed struct` *by value* through a
+  C-ABI (`export`/`callconv(.c)`) function is a **hard compile error** —
+  *"not allowed in function with calling convention 'xtensa_call0'"* (its backing
+  integer's signedness is unspecified). So you can't accidentally FFI one — pass
+  it **by pointer**. (Contrast: `extern struct` by value *is* allowed, and that's
+  where the silent §2 mis-lowering lives.)
+- **Use the C-layout types for FFI**: Zig `extern struct` ⇄ Rust `#[repr(C)]`
+  (natural alignment + padding). Zig `packed struct` ≈ C bitfields (Rust has no
+  native equivalent); Rust `#[repr(packed)]` ≈ a `__attribute__((packed))` C
+  struct (Zig models that with `extern struct` + explicit alignment, not
+  `packed`).
+
+(For the 2-byte `extern struct {u8,u8}` itself, the §2 pattern recurs: Rust
+coerces it to `i32`, Zig passes the raw aggregate — same byval-vs-direct story.)
+
 ## Verdict
 
 Rust ⇄ Zig FFI on Xtensa is **as strong as Rust ⇄ C, and in one way stronger**:

@@ -60,3 +60,11 @@ printf '#include "semihost.h"\nextern int rs_check_opt(void);\nint xmain(void){i
 cp "$(find "$D/opt/target" -name librzopt.a | head -1)" "$B/"
 ld.lld -T "$QR/sim.ld" -o "$B/opt.elf" "$B/start.o" "$B/optmain.o" "$B/opt.o" --start-group "$B/librzopt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$B/opt.elf" || true
+
+echo "== (f) packed structs: Rust #[repr(packed)] vs Zig packed struct (different!) =="
+"$ZIG" build-obj $ZT -O ReleaseSmall -fno-emit-bin -femit-llvm-ir="$B/pk.ll" "$D/packed.zig" >/dev/null 2>&1
+echo "  zig @sizeOf: packed{u8,u8}=2(backing u16)  extern{u8,u8}=2  packed{u4,u4}=1 (sub-byte; Rust can't)"
+printf 'const P=packed struct{a:u8,b:u8};\nexport fn bad(s:P) u8 {return s.a;}\n' > "$B/bad.zig"
+pkerr=$("$ZIG" build-obj $ZT -fno-emit-bin -femit-llvm-ir="$B/b.ll" "$B/bad.zig" 2>&1 || true)
+echo "  packed-by-value in C-ABI fn: $(printf '%s' "$pkerr" | grep -oE "not allowed in .*calling convention '[a-z0-9_]+'" | head -1 || echo '(allowed?!)')"
+echo "  => use Zig extern struct <-> Rust #[repr(C)] for FFI; packed means different things"
