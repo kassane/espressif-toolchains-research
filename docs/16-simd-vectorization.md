@@ -17,17 +17,20 @@ Reproduce with `experiments/simd/run.sh`.
 - **Inline assembly is the only way** to use S3 SIMD — and all three toolchains
   (clang, gcc, zig) assemble `EE.*` fine.
 
-## Autovectorization (esp32s3, `-O3`)
+## Autovectorization (esp32s3, `-O3`) — all four scalarize
 
 ```
-vadd_i8 / i16 / i32 / mul_f32   →  clang: 0 EE.*   gcc: 0 EE.*   (scalar loops)
+vadd loop (i8/i16/i32/f32)       →  clang 0 · gcc 0 · zig 0 · rust 0  EE.*  (scalar)
 vector_size(16) int8 add (clang) →  0 EE.*, 16 scalar add.n
 @Vector(16,i8) add (zig)         →  0 EE.*, 17 scalar adds
+core::simd i8x16 add (rust)      →  0 EE.*, 18 scalar adds
 ```
 
 A `vadd_i8` body is a plain byte loop — `l8ui` / `add.n` / `s8i` / `addi.n` /
 `bnez` — not a single `ee.*`. So for compute-heavy ESP32-S3 code you do **not**
-get free SIMD from `-O3`; the compiler emits scalar Xtensa.
+get free SIMD from `-O3`; the compiler emits scalar Xtensa. Rust's portable
+`core::simd` (`i8x16`) scalarizes exactly like clang's `vector_size` and Zig's
+`@Vector` — same backend limitation.
 
 ## Inline asm — the real path (clang / gcc / zig)
 
@@ -66,6 +69,27 @@ Verified on Zig 0.16 (espressif bootstrap): assembles the same 4 `EE.*`
 instructions, operands routed to `a2/a3/a4`, with q-register clobbers accepted.
 (Old `: "memory"` string form is gone in 0.15+.)
 
+### Rust: `core::arch::asm!` (needs `asm_experimental_arch`)
+
+Same path in Rust (`experiments/simd/rs`), with two nightly caveats:
+
+```rust
+#![feature(asm_experimental_arch)]   // Xtensa asm! is experimental → required
+core::arch::asm!(
+    "ee.vld.128.ip q0, {a}, 0",
+    "ee.vld.128.ip q1, {b}, 0",
+    "ee.vadds.s8   q2, q0, q1",
+    "ee.vst.128.ip q2, {d}, 0",
+    a = in(reg) a, b = in(reg) b, d = in(reg) d,
+);
+```
+
+Assembles the same 4 `EE.*` (q0/q1/q2, operands `a2/a3/a4`). The q registers are
+**hardcoded** in the template — there is **no `qreg` register class** in rustc's
+xtensa `asm!`, so you can't write `out(qreg) _` to let the compiler allocate or
+declare them clobbered (this is exactly esp-rs/rust **#265**). In practice the
+compiler never *uses* q regs, so hardcoding q0–q2 is safe.
+
 ## Why it's this way & how to actually SIMD on S3
 
 The `EE.*`/PIE extension is a **non-standard Xtensa option**; the LLVM Xtensa
@@ -81,6 +105,9 @@ In practice you get S3 SIMD through:
   *allocate* q registers instead of hardcoding `q0`/`q1` — i.e. better inline-asm
   ergonomics, still not autovectorization.
 
-So on the SIMD axis the four toolchains are at **parity**: none autovectorize for
-Xtensa; all three LLVM frontends + gcc reach the S3 unit only through hand-written
-`EE.*` (Zig with the modern struct clobbers, C/C++ with a `"memory"` clobber).
+So on the SIMD axis all four toolchains are at **parity**: none autovectorize for
+Xtensa (Rust `core::simd`, Zig `@Vector` and clang `vector_size` all scalarize),
+and each reaches the S3 unit only through hand-written `EE.*` —
+C/C++ with a `"memory"` clobber, **Zig** with the modern struct clobbers
+(`.{ .memory = true, .q0 = true, … }`), **Rust** with `core::arch::asm!` under
+`#![feature(asm_experimental_arch)]` (no `qreg` class yet — esp-rs #265).

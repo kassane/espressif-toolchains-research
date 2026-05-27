@@ -33,10 +33,12 @@ output.
 
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
-      autovectorization** in any toolchain — vectorizable loops stay scalar and
-      `vector_size`/`@Vector` scalarize (no q-reg codegen class). Inline asm is the
-      only path; clang/gcc/zig all assemble `EE.*`. Confirmed Zig 0.15+ struct-form
-      asm clobbers `.{ .memory = true, .q0 = true, … }` (q-register clobbers).
+      autovectorization** in any of the four — vectorizable loops stay scalar and
+      `vector_size` (clang) / `@Vector` (zig) / `core::simd` (rust) all scalarize
+      (no q-reg codegen class). Inline asm is the only path; **clang, gcc, zig AND
+      rust all assemble `EE.*` (4/4/4/4)**. Zig 0.15+ struct-form clobbers
+      `.{ .memory = true, .q0 = true, … }`; Rust needs
+      `#![feature(asm_experimental_arch)]` and has no `qreg` class (esp-rs #265).
 - [x] **Compiler-driver parity** (docs/15, `experiments/compiler-parity/run.sh`):
       `zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler (espressif
       clang/LLVM 21; near-identical Xtensa code, differ only in driver defaults —
