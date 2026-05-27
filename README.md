@@ -54,6 +54,8 @@ experiments/
                    driver calls all of them. Builds for host + xtensa.
   abi-structs/     minimal caller comparison that isolates the large-struct ABI bug
   llvm-ir-mix/     cross-language LTO / IR-merge probes
+  baremetal-mixin/ runnable use-case: Rust app + Zig kernel in one no_std ELF
+  qemu-run/        bare-metal semihosting harnesses (xtensa + riscv) for qemu
 scripts/           setup / env / build / analyze
 docs/              detailed findings (toolchains, ABI, IR, FFI matrix, binaries)
 Research.md        headline write-up

@@ -64,6 +64,14 @@ output.
 - [x] **Upstream Zig comparison** (`pip install ziglang`, docs/10): upstream Zig
       has no esp32/esp32c3 CPUs (bootstrap required); the RISC-V `[2 x i64]`
       struct bug reproduces on upstream Zig → it's an upstream Zig frontend bug.
+- [x] **Cross-language LTO** (docs/04): C↔Zig LTO inlines + constant-folds across
+      the boundary on riscv when one LLVM version is used (upstream zig cc -flto).
+- [x] **Bare-metal Rust+Zig mixin use-case** (docs/11,
+      `experiments/baremetal-mixin/run.sh`): Rust app + Zig kernel + Zig→Rust
+      callback, buffers by pointer, one no_std ELF, runs `816 OK` on **both**
+      esp32c3 (riscv) and esp32 (xtensa) qemu.
+- [x] **`-lc` vs C-ABI** (docs/10): `-lc` only links libc; it does not fix Zig's
+      struct ABI (verified `[2 x i64]` persists with `-lc` and real musl libc).
 - [ ] Remaining: **espidf** targets (`xtensa-*-espidf`); file the Zig struct-ABI
       gaps upstream (ziglang/zig) with the `experiments/abi-structs` repro.
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
