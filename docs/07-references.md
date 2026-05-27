@@ -34,9 +34,17 @@ work, not a dependency of the experiments.
 
 ## LLVM Xtensa backend (status / upstreaming)
 
+> **`espressif/llvm-project` ≠ upstream LLVM.** The espressif fork carries the
+> complete, production esp32/esp32s2/esp32s3 backend used here (and embedded by
+> the esp-rs Rust and espressif-bootstrap Zig forks). Upstream LLVM's Xtensa
+> target is still experimental — it only recently gained esp32/esp8266 `-mcpu`
+> parsing, with esp32-s2/s3 fork-side. So "shared backend" means the *espressif
+> fork*, not stock LLVM.
+
 - **espressif/llvm-project releases** —
   <https://github.com/espressif/llvm-project/releases> — the fork providing the
-  WIP Xtensa target (`-mcpu=esp32/esp32s2/esp32s3`) shared by clang, rust and zig.
+  production Xtensa target (`-mcpu=esp32/esp32s2/esp32s3`) shared by clang, rust
+  and zig. **Distinct from upstream LLVM.**
 - **RFC: Request for upstream Tensilica/Xtensa ESP32 backend** (LLVM Discourse) —
   <https://discourse.llvm.org/t/rfc-request-for-upstream-tensilica-xtensa-esp32-backend/65355>
   — Espressif's upstreaming request.
@@ -72,15 +80,24 @@ work, not a dependency of the experiments.
 > — does not appear to be separately reported. #22515/#18916 are the nearest
 > existing reports (non-Xtensa, not alignment-triggered).
 
-## Rust on Xtensa (esp-rs)
+## Rust on Xtensa (esp-rs — a *fork*, not upstream)
 
-- **esp-rs/rust** — <https://github.com/esp-rs/rust> — the rust-xtensa fork
-  (built-in `xtensa-esp32-none-elf` etc.), source of the toolchain used here.
+> Xtensa Rust is the **`esp-rs/rust` fork**, built against `espressif/llvm-project`.
+> **Upstream `rustc` cannot build for Xtensa** — it carries only Tier-3 *target
+> specifications* (a JSON/triple), but its bundled upstream LLVM lacks the
+> production Xtensa backend. You need the esp-rs fork (e.g. via `espup`), not a
+> stock toolchain.
+
+- **esp-rs/rust** — <https://github.com/esp-rs/rust> — the rust-xtensa **fork**
+  (built-in `xtensa-esp32-none-elf` etc.), built against espressif's LLVM; the
+  toolchain used here. This is *the* way to compile Rust for Xtensa.
 - **rustc platform support: Xtensa** —
-  <https://doc.rust-lang.org/rustc/platform-support/xtensa.html> — Tier-3 targets;
-  notes `build-std` usage (matches our setup).
+  <https://doc.rust-lang.org/rustc/platform-support/xtensa.html> — documents the
+  Tier-3 *target specs* + `build-std`, but the targets are maintained by esp-rs;
+  stock upstream `rustc` still can't codegen Xtensa.
 - **rust-lang/rust #125141** — <https://github.com/rust-lang/rust/pull/125141> —
-  upstreaming of the no_std Xtensa targets.
+  adds the no_std Xtensa *target specs* upstream (specs only — not a working
+  upstream Xtensa backend).
 - **esp-rs/esp-hal** — <https://github.com/esp-rs/esp-hal> — the no_std Rust HAL
   for ESP32/Xtensa + ESP32-C/RISC-V; the practical consumer of `xtensa-*-none-elf`
   and a real-world setting for the C/Rust FFI studied here.

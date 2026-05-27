@@ -9,10 +9,19 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 |---|---|---|---|---|
 | version | 1.95.0-nightly | 0.16.0 | 21.1.3 | 15.2.0 |
 | backend | LLVM **21.1.3** | LLVM **21.1.0** | LLVM **21.1.3** | GCC (own) |
-| Xtensa via | `esp-rs/rust` fork | `kassane/zig-espressif-bootstrap` | `espressif/llvm-project` | `espressif/crosstool-NG` |
-| upstream Xtensa? | Tier-3, upstreaming | ✗ (needs the fork) | WIP, upstreaming | ✓ (origin of Xtensa GCC) |
+| Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` |
+| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | ✗ — upstream Zig has no esp32 CPU at all | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif |
 | esp32 / s2 / s3 | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ |
 | `core`/libc model | no prebuilt core → `-Zbuild-std=core` + rust-src | freestanding (no std) | freestanding | newlib + libgcc |
+
+> **All three LLVM toolchains require an Espressif *fork* for usable ESP/Xtensa
+> support.** `esp-rs/rust` is a fork of rustc (built against espressif's LLVM) —
+> *upstream* `rustc` cannot build for Xtensa even though it carries Tier-3 target
+> specs. Likewise **`espressif/llvm-project` ≠ upstream LLVM**: the espressif fork
+> has the complete esp32/s2/s3 backend; upstream LLVM's Xtensa target is still
+> experimental. Zig needs the espressif bootstrap fork (upstream Zig has no esp32
+> CPU). Only GCC's Xtensa core is upstream — and even then the ESP core configs
+> ship via `espressif/crosstool-NG`.
 
 ## How to target an esp32 core
 

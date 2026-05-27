@@ -18,6 +18,12 @@ language frontends consume (a fork of) it:
 - **rustc** — esp-rs ships a rustc built against the same LLVM (1.95-nightly, *LLVM 21.1.3*).
 - **zig** — kassane's `zig-espressif-bootstrap` builds Zig against the same LLVM (0.16.0, *clang/LLVM 21.1.0*).
 
+All three are **Espressif forks**, not stock toolchains: `espressif/llvm-project`
+≠ upstream LLVM (upstream's Xtensa backend is still experimental), `esp-rs/rust`
+is a fork of rustc (stock `rustc` has only Tier-3 target *specs*, no working
+Xtensa codegen), and upstream Zig has no esp32 CPU at all. "Shared backend"
+throughout this report means *the espressif LLVM fork*.
+
 A fourth toolchain, **GCC 15.2** from `espressif/crosstool-NG`, shares *no* code
 with LLVM and acts as an independent control for ABI questions.
 

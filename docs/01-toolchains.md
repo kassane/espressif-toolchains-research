@@ -43,6 +43,10 @@ object-level FFI but blocks cross-language **LTO** with Zig (see
   `esp-clang/lib/clang-runtimes/xtensa-esp-unknown-elf/<cpu>/lib/libclang_rt.builtins.a`.
 
 ### rustc (esp-rs/rust-build)
+- A **fork of rustc**, built against `espressif/llvm-project`. **Stock upstream
+  `rustc` cannot compile for Xtensa** — it has Tier-3 target *specs* only, and its
+  bundled upstream LLVM lacks the production Xtensa backend. Use the esp-rs fork
+  (e.g. via `espup`), not a regular toolchain.
 - Targets: `xtensa-esp32-none-elf`, `xtensa-esp32s2-none-elf`,
   `xtensa-esp32s3-none-elf` (+ `*-espidf`, `xtensa-esp8266-none-elf`).
 - Ships **only** `rust-std-x86_64-unknown-linux-gnu` — **no precompiled xtensa
