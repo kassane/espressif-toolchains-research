@@ -31,6 +31,13 @@ output.
       < clang 192 (C) / 204 (C++) < zig **443** for the 9-fn lib (the 647 figure
       counted zig's default `.eh_frame`; use `llvm-size -A`).
 
+- [x] **Address spaces** (docs/18, `experiments/addrspace/run.sh`): the Xtensa
+      backend is single-flat-address-space (datalayout `p:32:32` only), so
+      `addrspace(N)` is annotation-only/no-op. clang accepts numbered
+      `address_space(N)` (→ IR), **Zig validates per-target** (only `.generic`;
+      `.flash` etc. rejected), gcc ignores the numbered attr, Rust has none. ESP
+      regions (IRAM/DRAM/flash/RTC) are placed via linker **sections** —
+      `section`/`linksection`/`link_section` → `.iram1.text` — at parity in all four.
 - [x] **Rust ⇄ Zig frontend interop** (docs/17, `experiments/rust-zig/run.sh`):
       the two non-C LLVM frontends agree on **every scalar ABI incl. C-inexpressible
       `u128`/`f128`/`f16`** (Rust uses byval for the 2nd 16-byte arg, Zig direct —
