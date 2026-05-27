@@ -31,6 +31,12 @@ output.
       < clang 192 (C) / 204 (C++) < zig **443** for the 9-fn lib (the 647 figure
       counted zig's default `.eh_frame`; use `llvm-size -A`).
 
+- [x] **Rust ⇄ Zig frontend interop** (docs/17, `experiments/rust-zig/run.sh`):
+      the two non-C LLVM frontends agree on **every scalar ABI incl. C-inexpressible
+      `u128`/`f128`/`f16`** (Rust uses byval for the 2nd 16-byte arg, Zig direct —
+      backend reconciles; runtime-verified Rust→Zig u128 carry on qemu). The only
+      clash is **by-value struct arguments** (Zig's bug — pass by pointer). Object
+      FFI links; **cross-language LTO fails** (Rust 21.1.3 vs Zig 21.1.0 bitcode).
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
       autovectorization** in any of the four — vectorizable loops stay scalar and

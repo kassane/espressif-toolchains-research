@@ -1,0 +1,11 @@
+[package]
+name = "rzrt"
+version = "0.0.0"
+edition = "2021"
+[lib]
+name = "rzrt"
+path = "lib.rs"
+crate-type = ["staticlib"]
+[profile.release]
+panic = "abort"
+opt-level = 2
