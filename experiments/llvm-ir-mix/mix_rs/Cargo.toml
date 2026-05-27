@@ -1,0 +1,11 @@
+[package]
+name = "mix_rs"
+version = "0.0.0"
+edition = "2021"
+[lib]
+name = "mix_rs"
+path = "mix_rs.rs"
+crate-type = ["lib"]
+[profile.release]
+panic = "abort"
+opt-level = 2

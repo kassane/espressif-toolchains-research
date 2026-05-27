@@ -1,0 +1,31 @@
+# Toolchains & downloads (live outside the repo, but guard anyway)
+/toolchains/
+/dl/
+*.tar.xz
+*.tar.gz
+
+# Build artifacts
+/build/
+*.o
+*.obj
+*.a
+*.rlib
+*.elf
+*.bin
+*.map
+
+# Generated IR / asm captured into docs is committed explicitly; raw build dumps are not
+/build/**/*.ll
+/build/**/*.s
+
+# Rust
+target/
+Cargo.lock
+
+# Zig
+.zig-cache/
+zig-out/
+
+# Editor
+*.swp
+.DS_Store

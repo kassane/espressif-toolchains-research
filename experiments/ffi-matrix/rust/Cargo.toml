@@ -1,0 +1,20 @@
+[package]
+name = "ffi_rs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "ffi_rs"
+path = "lib_rs.rs"
+# staticlib -> a .a we can link into the C driver (host) or the Xtensa image.
+crate-type = ["staticlib"]
+
+# no_std + #[panic_handler] cannot use unwinding.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
