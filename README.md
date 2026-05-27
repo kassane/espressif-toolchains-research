@@ -12,11 +12,12 @@ The central question:
 
 Short answer, established empirically in this repo:
 
-> **Yes for scalars, floats, pointers, callbacks, word-aligned structs and struct
-> returns — all four toolchains agree bit-for-bit on the Xtensa windowed ABI.
-> The one real hole is *under-aligned* (e.g. byte-array / `align(1)`) by-value
-> struct *arguments*, where Zig's experimental Xtensa target diverges from
-> clang/rust/gcc — at any size, even 8 bytes.**
+> **Yes for scalars, floats, pointers, callbacks and struct returns — all four
+> toolchains agree on the ABI (verified in disassembly and live on qemu). The one
+> real hole is by-value struct *arguments* into Zig's experimental ESP targets,
+> which mis-handle them on *both* arches (different cases): Xtensa under-aligned
+> structs stack-spilled; RISC-V small `{i32,i32}` mis-lowered. Rust/clang/gcc are
+> correct on both.**
 
 See **[Research.md](Research.md)** for the full write-up and **[docs/](docs/)** for
 the detailed evidence.
@@ -72,11 +73,12 @@ CLAUDE.md          orientation for future automated sessions
   identical across clang, rust, zig and gcc.
 - **Identical LLVM `target datalayout`** across clang/rust/zig; same-version
   (21.1.3) bitcode is LTO-mergeable (clang↔rust), proving IR-level interop.
-- **One genuine incompatibility**: passing an **under-aligned (`align(1)`,
-  e.g. byte-array) struct by value as an argument**, where Zig stack-spills
-  instead of using the `[N x i32]`-in-registers convention of clang/rust/gcc.
-  Driven by **alignment, not size** (a `[8]u8` breaks; a 24-byte `{6 x u32}`
-  is fine), and **Xtensa-specific** (Zig matches on RISC-V esp32c3).
-- **Confirmed at runtime on `qemu-system-xtensa`**: the matrix runs on an
-  emulated core — scalars and align-4 structs pass for all four languages, while
-  the align-1 `blob_sum` gives `zig FAIL (got=242 want=300)`.
+- **Zig's experimental ESP targets mis-handle by-value struct *arguments* on both
+  arches** (Rust/clang/gcc are correct): on **Xtensa** under-aligned (`align(1)`)
+  structs are stack-spilled instead of `[N x i32]` registers (alignment, not
+  size); on **RISC-V** a small `{i32,i32}` is mis-lowered to `[2 x i64]`. The
+  RISC-V case reproduces on **upstream** Zig (`pip install ziglang`) too. Struct
+  *returns*, scalars, pointers and callbacks are fine everywhere.
+- **Confirmed at runtime on qemu** (both `qemu-system-xtensa` and
+  `qemu-system-riscv32`): Xtensa → `zig blob_sum FAIL (got=242)`; RISC-V →
+  `zig point_dot FAIL (got=-2130706553)`. Everything else passes for all four.

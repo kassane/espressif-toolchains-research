@@ -50,11 +50,22 @@ output.
       `windowed` feature) but is a **different, incompatible ABI** — must be
       project-wide, can't mix with windowed. `-mlongcalls` is gcc-only (clang
       ignores it) and FFI-neutral (call encoding, not ABI).
-- [x] **RISC-V** ESP32-C3 — full FFI matrix built & linked (`build-ffi.sh esp32c3`,
-      docs/09): clang/C++/Rust/Zig → one EM_RISCV ELF, 0 undefined. The align-1
-      `blob_sum` that breaks on Xtensa **matches** here (both pass the struct by
-      reference in `a0`), confirming the gap is Xtensa-only. TODO: a RISC-V
-      semihosting qemu run, and the **espidf** targets (`xtensa-*-espidf`).
+- [x] **RISC-V** ESP32-C3 — full FFI matrix built, linked **and run on
+      qemu-system-riscv32** (`build-ffi.sh esp32c3`, `run-qemu.sh riscv`, docs/09).
+      Overturned the "Xtensa-only" assumption: RISC-V has a **different** Zig
+      struct-arg bug — small `{i32,i32}` mis-lowered to `[2 x i64]` →
+      `zig point_dot FAIL (got=-2130706553)` at runtime (the large `[24]u8` is
+      fine, by reference). Rust/clang/gcc correct on both arches.
+- [x] **Zig⇔Rust parity** (docs/10): Rust's ESP C-ABI matches clang/gcc on both
+      arches; Zig's experimental targets have a by-value struct-arg gap on each.
+- [x] **Issue-tracker cross-checks** (docs/10): tested llvm-project #66 (narrow
+      stack args — fixed; all toolchains agree on 4-byte slots), esp-rs/rust
+      #278/#18, and closed miscompiles (#38/#41/#33 stay fixed on clang 21.1.3).
+- [x] **Upstream Zig comparison** (`pip install ziglang`, docs/10): upstream Zig
+      has no esp32/esp32c3 CPUs (bootstrap required); the RISC-V `[2 x i64]`
+      struct bug reproduces on upstream Zig → it's an upstream Zig frontend bug.
+- [ ] Remaining: **espidf** targets (`xtensa-*-espidf`); file the Zig struct-ABI
+      gaps upstream (ziglang/zig) with the `experiments/abi-structs` repro.
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
       once reduced to a minimal repro (start from `experiments/abi-structs`).
 - [ ] Get a version-matched LLVM-21 `llvm-link`/`opt` to demonstrate true

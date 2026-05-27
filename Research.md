@@ -154,17 +154,21 @@ bytes from the wrong place ⇒ silent corruption on hardware. (The host test pas
 only because x86_64 SysV memory-passes these structs where both agree.) Code-size
 symptom: Zig's 9-function lib is **647 B** vs clang **196 B** / gcc **174 B**.
 
-The gap is **Xtensa-specific**: the same `[8]u8` caller on RISC-V esp32c3 passes
-in `a0`/`a1` for *both* clang and Zig. Root cause: Zig's experimental Xtensa
-target does not yet implement the C-ABI aggregate coercion clang/rust do. Full
-teardown: [docs/05-struct-abi-deep-dive.md](docs/05-struct-abi-deep-dive.md).
+Root cause: Zig's experimental ESP targets don't implement the C-ABI aggregate
+coercion clang/rust do; they defer to LLVM's default lowering. This is **not
+Xtensa-only** — RISC-V (ESP32-C3) has a *different* Zig struct-arg bug: the small
+`{i32,i32}` `Point` is mis-lowered to `[2 x i64]` (wrong registers), even though
+the large `[24]u8` is fine there (by reference). The RISC-V case reproduces on
+*upstream* Zig too (`pip install ziglang`), so it is an upstream Zig frontend bug,
+not the espressif fork. Rust, clang and gcc are correct on both architectures.
+Full teardown: [docs/05](docs/05-struct-abi-deep-dive.md),
+[docs/09](docs/09-riscv.md), [docs/10](docs/10-zig-rust-parity.md).
 
-**Confirmed at runtime.** Running the matrix on `qemu-system-xtensa`
-(`experiments/qemu-run`, `scripts/run-qemu.sh`) reproduces the prediction live:
-scalars and the align-4 `Point` interoperate across all four languages, while the
-align-1 `Blob` passed by value yields `zig FAIL (got=242 want=300)` — Zig misreads
-the under-aligned struct on the emulated core, exactly as the disassembly says.
-See [docs/08-qemu-execution.md](docs/08-qemu-execution.md).
+**Confirmed at runtime.** The matrix runs on qemu (`scripts/run-qemu.sh`):
+on `qemu-system-xtensa` the align-1 `Blob` gives `zig FAIL (got=242 want=300)`;
+on `qemu-system-riscv32` the `Point` gives `zig FAIL (got=-2130706553 want=11)`
+while `Blob` passes. Both match the disassembly. See
+[docs/08](docs/08-qemu-execution.md).
 
 ## 6. Mixing LLVM IR across frontends — is it possible?
 
@@ -193,10 +197,11 @@ Yes, with a version caveat.
    Cross-language FFI on Xtensa is real and practical today.
 2. **Linkers are interchangeable.** lld and GNU ld each link both object
    families; GCC and LLVM objects coexist in one image.
-3. **The leak is narrow and identifiable.** *Under-aligned* (`align(1)`,
-   e.g. byte-array/packed) by-value struct *arguments* are mishandled by Zig's
-   experimental Xtensa target — at any size, and Xtensa-only. Word-aligned
-   structs (the common case) are fine; otherwise pass them **by pointer**.
+3. **The leak is in Zig's experimental ESP targets, on both arches.** By-value
+   struct *arguments* are mishandled — Xtensa: under-aligned (`align(1)`) structs
+   stack-spilled instead of `[6 x i32]` regs; RISC-V: small `{i32,i32}`
+   mis-lowered to `[2 x i64]` (the RISC-V case reproduces on upstream Zig too).
+   Rust/clang/gcc are correct on both. Confirmed live on qemu (xtensa + riscv).
 4. **IR is portable; tooling versions are the gotcha.** Identical datalayout
    makes IR mixing sound in principle; in practice keep the `llvm-link`/LTO tool
    at the *same* LLVM version as the bitcode producers.
@@ -204,9 +209,10 @@ Yes, with a version caveat.
 ## 8. Practical FFI guidance for ESP32 polyglot projects
 
 - Stick to the C ABI (`extern "C"` / `#[no_mangle]` / `export fn`) — done here.
-- Scalars, pointers, enums, callbacks, word-aligned structs: free to cross any boundary.
-- On boundaries that touch Zig, keep by-value structs **word-aligned**, or pass
-  **under-aligned/packed/byte-array structs by pointer** (returns are already safe).
+- Scalars, pointers, enums, callbacks, and struct *returns*: free to cross any boundary.
+- On any boundary that touches **Zig** (Xtensa or RISC-V), pass by-value structs
+  **by pointer** — Zig mishandles different by-value struct-arg cases on each arch.
+  Rust↔C/clang/gcc need no such caveat.
 - For cross-language LTO, build every participant with the *same* LLVM point
   release, or don't LTO across the mismatched one.
 - GCC interoperates fine at the object/link level; you don't have to go all-LLVM.

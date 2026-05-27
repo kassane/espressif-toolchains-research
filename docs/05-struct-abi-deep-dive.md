@@ -72,13 +72,18 @@ memory-passes these structs in a way both sides agree on.)
 convention (Zig just builds the value in its frame then copies it to the caller's
 buffer). Compatible — the divergence is specific to under-aligned *arguments*.
 
-## It is Xtensa-specific
+## Not Xtensa-only — RISC-V has a *different* Zig struct bug
 
-Re-running the `[8]u8` (align-1) caller for **RISC-V esp32c3** (same espressif
-LLVM, different target): both clang and Zig pass the struct in `a0`/`a1` —
-**no divergence**. Zig's RISC-V target is mature; its Xtensa target is
-experimental and does not yet implement the C-ABI aggregate coercion clang/rust
-do. The gap is in Zig's Xtensa ABI lowering, not in Zig FFI generally.
+This particular manifestation (under-aligned arg → stack) is Xtensa-specific: the
+same `[8]u8` caller on RISC-V esp32c3 passes by reference in `a0` for both clang
+and Zig. **But RISC-V is not bug-free for Zig** — there the *small* `{i32,i32}`
+`Point` is mis-lowered to `[2 x i64]` (wrong registers), which the Xtensa path
+handles correctly. So Zig's experimental ESP targets each have a by-value
+struct-argument gap, just in different cases; Rust/clang/gcc are correct on both.
+The RISC-V case even reproduces on upstream Zig. See
+[docs/09](09-riscv.md) and [docs/10](10-zig-rust-parity.md). The common root is
+that Zig defers aggregate ABI to LLVM's default instead of implementing the
+platform C ABI in the frontend (which clang and rust both do).
 
 ## Cost & mitigation
 

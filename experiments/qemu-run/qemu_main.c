@@ -39,7 +39,7 @@ static void check(const char* name, long got, long want) {
 }
 
 int xmain(void) {
-    puts_("\n== FFI runtime on qemu-system-xtensa (windowed ABI) ==\n");
+    puts_("\n== FFI runtime on emulated ESP core (qemu) ==\n");
 
     puts_("- scalar add_i32(3,4)==7 [expect all ok]:\n");
     check(" c  ", c_add_i32(3, 4), 7);

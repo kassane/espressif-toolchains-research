@@ -5,9 +5,9 @@ attempt to make it dynamic by running the code on the **Espressif qemu fork**.
 
 ## Toolchain
 
-- **espressif/qemu** `esp-develop-9.2.2-20260417`,
-  asset `qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz`
-  (download URL in the repo history; extracted to `$TC/qemu`).
+- **espressif/qemu** `esp-develop-9.2.2-20260417`, two softmmu tarballs:
+  `qemu-xtensa-softmmu-…` and `qemu-riscv32-softmmu-…` (x86_64-linux-gnu),
+  extracted to `$TC/qemu` (gives `qemu-system-xtensa` and `qemu-system-riscv32`).
 - The binary needs `libSDL2-2.0.so.0` and `libslirp.so.0` even headless:
   `apt-get install -y libsdl2-2.0-0 libslirp0`.
 - `qemu-system-xtensa` machines: `esp32`, `esp32s3` (Espressif), and generic
@@ -87,3 +87,11 @@ agree.
 (`-cpu esp32` itself can't be used on the `sim` machine: it resets to the esp32
 vector `0x50000000`, which `sim` doesn't map. A full `-machine esp32` + ROM +
 flash-image run is the way to exercise the exact esp32 core, left as follow-up.)
+
+## RISC-V too (`run-qemu.sh riscv`)
+
+`qemu-system-riscv32 -machine virt` runs the same matrix for ESP32-C3 — far
+simpler (no register windows, standard semihosting via the `ebreak` sequence,
+ELF at `0x80000000`). It surfaces a **different** Zig bug than Xtensa
+(`zig point_dot FAIL` on the small `{i32,i32}` struct, while `blob_sum` passes);
+see [docs/09](09-riscv.md).

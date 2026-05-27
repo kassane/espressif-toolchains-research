@@ -1,53 +1,59 @@
-# 09 — RISC-V control (ESP32-C3): the Zig gap is Xtensa-only
+# 09 — RISC-V (ESP32-C3): a *different* Zig struct-ABI gap
 
-The same `espressif/llvm-project` LLVM 21 also hosts **riscv32** — in fact
-`riscv32-esp-unknown-elf` is esp clang's *default* triple. The newer ESP32-C*
-chips are RISC-V (ESP32-C3 = `rv32imc`). Repeating the FFI matrix here isolates
-whether the struct-argument divergence (docs/05) is a Zig-FFI problem in general
-or specific to Zig's experimental **Xtensa** target.
+The same `espressif/llvm-project` LLVM 21 also hosts **riscv32** (it is esp clang's
+*default* triple). ESP32-C3 = `rv32imc`. Repeating the matrix here was meant to
+check whether the Zig struct-argument divergence (docs/05) is Xtensa-specific.
 
-## Build
+**It is not.** RISC-V has its *own*, different Zig struct-ABI bug — caught by the
+qemu runtime test (docs/08-style), which a static spot-check of only the large
+struct had missed. Rust, clang and gcc are correct on both architectures.
 
-`scripts/build-ffi.sh esp32c3` builds the same four-language matrix for ESP32-C3:
+## Build & link — fine
 
-- C / C++: `clang --target=riscv32-esp-elf -mcpu=esp32c3`
-- Rust: `cargo build -Z build-std=core --target riscv32imc-unknown-none-elf`
-- Zig: `zig build-obj -target riscv32-freestanding-none -mcpu=esp32c3`
-- link: `ld.lld` + the `rv32imc_ilp32` compiler-rt builtins
+`scripts/build-ffi.sh esp32c3` builds the four-language matrix for ESP32-C3
+(clang C/C++, `cargo … --target riscv32imc-unknown-none-elf`,
+`zig … -mcpu=esp32c3`), links one `EM_RISCV` ELF via `ld.lld` + rv32imc
+compiler-rt, **0 undefined symbols**. As on Xtensa, everything links.
 
-Result: one `EM_RISCV` ELF, **0 undefined symbols** — clang C + clang C++ + Rust
-+ Zig interoperate and link, exactly as on Xtensa.
+## Runtime (qemu-system-riscv32 `virt`)
 
-## The struct argument that breaks on Xtensa — matches on RISC-V
-
-`blob_sum(Blob)` with `Blob = [24]u8` (align 1). The RISC-V calling convention
-passes a struct larger than 2 words **by reference** (a pointer in `a0`), and
-**both clang and Zig do exactly that**:
+`scripts/run-qemu.sh riscv` runs the matrix on the espressif qemu RISC-V build:
 
 ```
-; clang c_blob_sum            ; zig zig_blob_sum
-mv   a1, a0   ; a0 = &Blob     mv   a1, a0   ; a0 = &Blob
-lbu  a3, 0(a1); sum in place   addi a0, sp, 0xc ; memcpy &Blob -> local
-add  a0, a0, a3                li   a2, 0x18    ;  (24 bytes), then sum
-...                            ...
+- scalar add_i32 : c ok, cpp ok, rs ok, zig ok
+- point_dot  (8B {i32,i32} by value) : c ok, rs ok, zig FAIL (got=-2130706553 want=11)
+- blob_sum   (24B [24]u8 by value)   : c ok, cpp ok, rs ok, zig ok (300)
 ```
 
-Both receive the struct as a **pointer in `a0`** — the RISC-V ABI. Zig makes a
-redundant local copy (less efficient), but the **ABI matches**: a clang↔zig call
-here is correct.
+The **opposite** of Xtensa: Zig **passes** the large `blob_sum` here but **fails
+`point_dot`**, the small two-`i32` struct.
 
-## Contrast
+## Why (the IR tells it)
 
-| target | large by-value struct arg | clang/rust | zig | FFI |
-|--------|---------------------------|-----------|-----|-----|
-| **Xtensa** esp32 | `[24]u8` (align 1) | `[6 x i32]` in `a2..a7` (registers) | stack-spill | **mismatch** |
-| **RISC-V** esp32c3 | `[24]u8` (align 1) | pointer in `a0` (by reference) | pointer in `a0` | **match** |
+| `point_dot(Point, Point)` arg | IR | machine |
+|-------------------------------|----|---------|
+| clang | `i32 ([2 x i32], [2 x i32])` | Point A in `a0,a1`; B in `a2,a3` |
+| rust  | `i32 ([2 x i32], [2 x i32])` | same as clang |
+| **zig** | `i32 ([2 x i64], [2 x i64])` | A in `a0,a1`; **B in `a4,a5`** |
 
-The RISC-V ABI's simple "large structs by reference" rule is implemented
-correctly by Zig; the Xtensa ABI's "flatten small-enough aggregates into
-registers" rule is not (yet). So the divergence is a gap in Zig's **Xtensa**
-target, not in Zig FFI generally — consistent with Zig's RISC-V support being
-mature and its Xtensa support experimental.
+Zig lowers the 8-byte `extern struct { x: i32, y: i32 }` to **`[2 x i64]`** (16
+bytes — each field widened) on RISC-V. So Zig reserves `a0..a3` for the first
+`Point` and reads the second from `a4,a5`, while clang's driver placed it in
+`a2,a3`. The bytes are read from the wrong registers → garbage. (Zig's
+`make_point` *return* `{i32,i32}` and the large-struct `blob_sum` *by-reference*
+`ptr` are both correct — it is specifically the small by-value struct *argument*.)
 
-(Only static link + disassembly here; a RISC-V semihosting qemu run — expected
-all-pass — is left as a follow-up, mirroring docs/08.)
+## The corrected cross-architecture picture
+
+| by-value struct argument | Xtensa esp32 | RISC-V esp32c3 |
+|--------------------------|--------------|----------------|
+| small `{i32,i32}` (8 B, align 4) | zig **ok** | zig **BROKEN** (`[2 x i64]`) |
+| `[24]u8` (24 B, align 1) | zig **BROKEN** (stack vs `[6 x i32]` regs) | zig **ok** (by-ref) |
+| clang / rust / gcc | correct | correct |
+
+So Zig's experimental ESP targets have **frontend C-ABI struct-lowering gaps on
+both architectures** — different cases each — while Rust matches clang/gcc on
+both. This is the concrete Zig⇔Rust ESP-maturity gap discussed in
+[10-zig-rust-parity.md](10-zig-rust-parity.md). The shared backend gives a shared
+ABI only where each frontend implements the platform C ABI correctly; Rust does,
+Zig (for these WIP targets) does not yet.
