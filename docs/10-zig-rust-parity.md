@@ -29,6 +29,28 @@ Practical parity guidance for Rust↔Zig (or C↔Zig) FFI on ESP: pass structs *
 pointer** across any Zig boundary; scalars/pointers/callbacks are always safe.
 Rust↔C/clang/gcc need no such caveat.
 
+### `-lc` is libc, not the C ABI
+
+A natural question: does linking libc (`-lc`) give Zig C-ABI compatibility the way
+Rust has it? **No.** `-lc` is a *linker* choice — it provides the C *library*
+(`printf`, `malloc`, `memcpy`, …). The C *calling convention* (how args/structs
+are passed) is a *codegen* decision fixed when the object is built
+(`export fn` / `callconv(.c)` / `extern struct`), and is independent of `-lc`.
+Verified: `zig_point_dot` is lowered to the buggy `[2 x i64]` **identically**
+with `-lc`, without it, and even on `riscv32-linux-musl` with a real libc. Rust,
+by contrast, gets the C ABI right from rustc's own per-target ABI tables — even in
+`#![no_std]` with no libc at all. So `-lc` buys you libc symbols, not Rust-grade
+ABI correctness; the fix for the struct gaps has to come from Zig's codegen.
+
+### Cross-language LTO works when one LLVM version is used (docs/04)
+
+C↔Zig cross-language LTO **does** work on RISC-V when the whole pipeline is one
+LLVM version: compile C with upstream `zig cc -flto` and Zig with `zig
+-femit-llvm-bc`, link with `zig cc -flto`. The Zig `zigsq` is inlined into the C
+caller and constant-folded (the linked `_start` just stores `385`). It fails only
+when mixing zig's LLVM 21.1.0 bitcode with the esp 21.1.3 LTO reader
+("Invalid record") — a version-skew constraint, not a language one.
+
 > These specific Zig cases do not appear in the issue trackers (below); they look
 > unreported. A minimal repro lives in `experiments/abi-structs` + the qemu
 > harness.

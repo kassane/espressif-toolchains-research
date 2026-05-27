@@ -68,11 +68,21 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
 
 - **clang ↔ rust** (both 21.1.3): **links (rc=0)** — a single image where C calls
   Rust, IR merged at link time. (`experiments/llvm-ir-mix/mix2.c` + `mix_rs`.)
-- **clang ↔ zig** (21.1.3 vs 21.1.0): **fails** —
-  `ld.lld: error: …/mix_zig.bc: Invalid record`. Zig's bitcode is a different
-  LLVM point release than the LTO reader.
+- **clang ↔ zig** (esp 21.1.3 LTO reader vs zig 21.1.0 bitcode): **fails** —
+  `ld.lld: error: …/mix_zig.bc: Invalid record`. Both the espressif-bootstrap and
+  *upstream* (`pip install ziglang`) Zig 0.16.0 ship LLVM 21.1.0, so neither mixes
+  with the esp 21.1.3 tools.
+- **C ↔ zig, all on upstream Zig 21.1.0** (riscv32, `build/lto-rv`): **works** —
+  compile C with `zig cc -flto` and Zig with `zig … -femit-llvm-bc`, then link
+  with `zig cc -flto` (one consistent LLVM). LTO not only merged the modules but
+  **inlined the Zig `zigsq` into the C `sum_sq`** and constant-folded the result:
+  the linked `_start` just stores `0x181` (= 385 = Σ1..10²) — zero residual calls.
+  Cross-language inlining across a C↔Zig boundary is the strongest proof of
+  IR-level mixing.
 
-> Takeaway: IR portability is real (shared datalayout + shared backend). The only
-> practical constraint on *merging* IR is keeping the `llvm-link`/LTO tool at the
-> exact LLVM version of the bitcode producers. Object-level FFI (docs 03/05) has
-> no such constraint and is the robust default.
+> Takeaway: IR portability is real (shared datalayout + shared backend), and
+> cross-language LTO genuinely merges + inlines across the language boundary. The
+> *only* practical constraint is keeping every bitcode producer **and** the
+> `llvm-link`/LTO linker at one LLVM point release — mix 21.1.0 (zig) with 21.1.3
+> (esp clang/rust) and it breaks. Object-level FFI (docs 03/05) has no such
+> constraint and is the robust default.
