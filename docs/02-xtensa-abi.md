@@ -37,6 +37,36 @@ aggregates); it diverges for **under-aligned** (`align(1)`) by-value struct
 *arguments* — driven by alignment, not size — see
 [05-struct-abi-deep-dive.md](05-struct-abi-deep-dive.md).
 
+## Windowed vs call0, and `-mlongcalls`
+
+The default everywhere (clang, rust, zig, gcc) is the **windowed** ABI above, and
+the whole ESP ecosystem uses it. The alternative **call0** ABI exists and is
+reachable:
+
+| ABI | prologue/epilogue | call | return addr | how to select |
+|-----|-------------------|------|-------------|---------------|
+| windowed (default) | `entry a1,N` / `retw.n` | `call8`/`callx8` (window rotates) | rotated `a0` | (default) |
+| call0 | none / `ret.n` | `call0`/`callx0` | `a0`, flat regs | gcc `-mabi=call0`; LLVM by disabling the `windowed` feature |
+
+```
+add(int,int):  windowed -> entry a1,32 ; ... ; retw.n
+               call0    -> ... ; ret.n          (no window, a0 = return address)
+```
+
+- **clang has no `-mabi=` flag** for xtensa, but call0 is reachable via the target
+  feature: `clang -mcpu=esp32 -Xclang -target-feature -Xclang -windowed`
+  produces `ret.n` / `callx0` (verified). Zig/rust can reach it the same way
+  (drop the `windowed` CPU feature).
+- **windowed and call0 are mutually incompatible ABIs.** A `callx8` caller rotates
+  the register window; a call0 callee expects the return address in `a0` and no
+  rotation. You must build an entire program (all languages, all libs) with **one**
+  ABI — mixing windowed and call0 objects breaks calls regardless of the shared
+  backend. Since esp clang/rust/zig and ESP-IDF all default to windowed, that is
+  the safe project-wide choice (and what this repo uses).
+- **`-mlongcalls`** is a GCC option (clang warns "argument unused"). It only
+  changes how *direct* calls to far symbols are encoded (`l32r`+`callx` instead of
+  a range-limited `call`); it does **not** change the ABI, so it is FFI-neutral.
+
 ## CPU feature parity across frontends
 
 The three LLVM frontends agree exactly on the per-core feature set. Verified with

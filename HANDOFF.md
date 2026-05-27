@@ -45,9 +45,11 @@ output.
 - [x] **Struct-ABI boundary sweep** — done (`experiments/abi-structs/sweep.sh`).
       Found the trigger is **alignment, not size**: align-1 structs mismatch at
       every size, align-4 match at every size.
-- [ ] **`-mlongcalls` / call0 ABI** variant: everything here is the default
-      windowed ABI. ESP-IDF builds with `-mlongcalls`; worth confirming FFI holds
-      with long calls and (if supported) the call0 ABI.
+- [x] **`-mlongcalls` / call0 ABI** variant (docs/02): default is windowed
+      everywhere. call0 is reachable (gcc `-mabi=call0`; LLVM by dropping the
+      `windowed` feature) but is a **different, incompatible ABI** — must be
+      project-wide, can't mix with windowed. `-mlongcalls` is gcc-only (clang
+      ignores it) and FFI-neutral (call encoding, not ABI).
 - [x] **RISC-V** ESP32-C3 — full FFI matrix built & linked (`build-ffi.sh esp32c3`,
       docs/09): clang/C++/Rust/Zig → one EM_RISCV ELF, 0 undefined. The align-1
       `blob_sum` that breaks on Xtensa **matches** here (both pass the struct by
