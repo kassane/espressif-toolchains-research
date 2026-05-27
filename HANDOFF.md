@@ -30,6 +30,15 @@ output.
 - [x] Binary/size/mangling comparison (doc 06): gcc 174 B < clang 196/212 B <<
       zig 647 B for the 9-fn lib.
 
+- [x] **Compiler-driver parity** (docs/15, `experiments/compiler-parity/run.sh`):
+      `zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler (espressif
+      clang/LLVM 21; near-identical Xtensa code, differ only in driver defaults —
+      zig emits `.eh_frame`/ubsan/libc++); `esp-gcc` has full ABI parity (windowed
+      C ABI; byte-identical Itanium C++ mangling `_ZN…` + vtables `_ZTV…`),
+      different regalloc, slightly smaller. Also corrected the size figures: zig's
+      real `.text` is **443 B** (the 647 B included default `.eh_frame`); fair code
+      sizes rust ~171 ≈ gcc 174 < clang 192 < zig 443 (docs/00, docs/06).
+
 ## Not done / next steps
 
 - [x] **Execute** the Xtensa images on qemu. The espressif qemu fork

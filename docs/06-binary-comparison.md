@@ -2,19 +2,22 @@
 
 ## Code size — same 9 functions, esp32, size-optimized
 
-`.text` bytes for the FFI library compiled by each toolchain (`llvm-size`,
-`-Os` / `-O ReleaseSmall`):
+**real `.text`** bytes (`llvm-size -A`, `-Os` / `-O ReleaseSmall`) — *not* the
+Berkeley `llvm-size` "text" column, which folds in zig's default `.eh_frame`:
 
 | toolchain | `.text` (bytes) | notes |
 |-----------|:--------------:|-------|
 | gcc 15.2 (C) | **174** | smallest; mature Xtensa codegen, uses zero-overhead `loop` |
-| clang 21 (C) | 196 | + a redundant `mov.n a7,a1` frame setup at `-Os` |
-| clang 21 (C++) | 212 | templates fully inlined; C-ABI exports only |
-| zig 0.16 (Zig) | **647** | ~3× — non-C-ABI large-struct marshalling (see doc 05) |
+| rust 1.95 | ~171 | matches gcc/clang closely (per-function sections) |
+| clang 21 (C) | 192 | (`+ mov.n a7,a1` frame setup at `-Os`; Berkeley "text" 196) |
+| clang 21 (C++) | 204 | templates fully inlined; C-ABI exports only |
+| zig 0.16 (Zig) | **443** | ~2.3× — non-C-ABI large-struct marshalling (doc 05) |
 
 The Zig outlier is entirely `blob_sum`/`make_blob`: the byte-by-byte stack
 shuffling for the large by-value struct. On scalar/callback/small-struct
-functions Zig matches the others closely.
+functions Zig matches the others closely. (The often-quoted "647 B" is the
+Berkeley `llvm-size` total, which adds ~200 B of `.eh_frame` unwind tables that
+zig's *driver* emits by default — see docs/15; the actual code is 443 B.)
 
 ## Endianness & machine
 

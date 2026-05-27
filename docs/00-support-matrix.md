@@ -57,7 +57,7 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 
 | | **Rust** | **Zig** | **esp-clang** | **GCC** |
 |---|---|---|---|---|
-| 9-fn lib `.text`, esp32 `-Os` | 179 B | **647 B** | 196 B | **174 B** |
+| 9-fn lib `.text`, esp32 `-Os` | 179 B | **443 B** (+200 B default `.eh_frame`) | 192 B | **174 B** |
 | symbol mangling (internal) | v0 `_R…` / legacy `_ZN…` | module-qualified + export alias | Itanium `_Z…` | Itanium `_Z…` |
 | FFI export | `#[no_mangle] extern "C"` | `export fn` | `extern "C"` | (C) |
 | call `@"mangled"` symbols | — | ✓ (docs/12) | — | — |
