@@ -87,9 +87,19 @@ output.
       minimally reproducible (serde/espidf-specific); #161 position & #177 C
       variadics both FIXED — verified at runtime on qemu (index 1 / sum 100,
       rust == C). 4/5 fixed; #277 needs the full serde+espidf+build-std=std repro.
-- [ ] Remaining: **espidf** targets (`xtensa-*-espidf`) — needed to reproduce
-      #277 (serde) and is the only untested frontend config; file the Zig
-      struct-ABI gaps upstream (ziglang/zig) with the `experiments/abi-structs`
+- [x] **All 12 OPEN esp-rs/rust issues triaged** (docs/14,
+      `experiments/esp-rs-issues/open-issues.sh`): #270 force-frame-pointers spill
+      **reproduces** (LLVM-xtensa regalloc); #278 narrow stack-arg store width
+      compared across frontends (rust/clang narrow, gcc/zig wide, offsets agree,
+      gcc-callee reads narrow); #277 espidf-only; #243 size_of SIGSEGV does NOT
+      reproduce on 1.95; #275/#253/#256/#258 are ESP-IDF-gated (out of scope);
+      #265/#267/#76/#89 are non-bugs (#89 "merge into rust-lang/rust?" confirms
+      the fork status). Also corrected all docs: esp-rs/rust is a fork, no
+      upstream Xtensa; espressif/llvm ≠ upstream LLVM (docs/00/01/07, Research §1).
+- [ ] Remaining: the **espidf** std target (`xtensa-*-espidf`) — needs the
+      esp-idf framework + ldproxy + `build-std=std`; required to reproduce
+      #277/#275/#253/#256/#258. The only untested frontend config. Also: file the
+      Zig struct-ABI gaps upstream (ziglang/zig) with the `experiments/abi-structs`
       repro.
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
       once reduced to a minimal repro (start from `experiments/abi-structs`).
