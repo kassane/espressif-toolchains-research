@@ -59,6 +59,22 @@ Rust↔Zig boundary — then everything (incl. u128/f128) interoperates.
   clang↔rust LTO works because both are 21.1.3.) To LTO across Rust↔Zig you'd need
   both on one LLVM point release.
 
+## 4. Atomics — native and compatible
+
+Shared atomic state across a Rust↔Zig boundary needs compatible atomic sequences.
+Both frontends emit **native `s32c1i`** (esp32's compare-and-swap) with `memw`
+fences — **no `__atomic`/`__sync` libcalls** in either:
+
+```
+rust rs_atomic_add: memw … wsr a11,scompare1 ; s32c1i a8,a2,0 ; beq (retry) … memw
+zig  zig_atomic_add: memw … wsr a11,scompare1 ; s32c1i a8,a2,0 ; beq (retry) … memw
+rs_atomic_cas == memw ; wsr scompare1 ; s32c1i ; memw   (same in both)
+```
+
+So a Rust `AtomicU32` and a Zig `@atomicRmw`/`@cmpxchg` on the same location
+interoperate. (esp-rs #258's atomics symptom was a higher-level async/runtime
+deadlock, not an atomic-lowering mismatch — the lowering itself is consistent.)
+
 ## Verdict
 
 Rust ⇄ Zig FFI on Xtensa is **as strong as Rust ⇄ C, and in one way stronger**:
