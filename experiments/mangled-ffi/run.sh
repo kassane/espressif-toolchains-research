@@ -34,3 +34,19 @@ printf 'extern fn @"%s"(x: i32) callconv(.c) i32;\nexport fn zig_calls_rust(x: i
 "$ZIG" build-obj -target "$HT" -O ReleaseSmall -femit-bin="$B/zig_calls_rust.o" "$B/zig_calls_rust.gen.zig"
 "$ZIG" cc -target "$HT" rmain.c "$B/zig_calls_rust.o" "$RO" -o "$B/rmtest"
 "$B/rmtest"
+
+echo "===== Reverse: Zig EXPORTS C++-mangled symbols that C++ links against ====="
+# @"..." works on `export fn` too: Zig defines _ZN4demo3addEii / _Z5scaleii, and
+# C++ (which only declares demo::add / scale) calls into the Zig implementations.
+"$ZIG" build-obj -target "$HT" -O ReleaseSmall -femit-bin="$B/zig_export.o" zig_export.zig
+"$ZIG" c++ -target "$HT" cpp_caller.cpp "$B/zig_export.o" -o "$B/etest" 2>/dev/null
+"$B/etest"
+
+echo "===== libc++ from Zig: extern \"c++\" names the dep, -lc++ links it ====="
+# `extern "c++"` requires the dependency to be confirmed with -lc++ on BOTH the
+# build-obj and the final link (Zig errors otherwise). @"_Znwm"/@"_ZdlPv" are
+# libc++'s operator new/delete. (Bare-metal ESP avoids libc++ entirely; this is
+# a host-context demonstration of the mechanism — docs/12.)
+"$ZIG" build-obj -target "$HT" -lc++ -O ReleaseSmall -femit-bin="$B/zig_libcxx.o" zig_libcxx.zig
+"$ZIG" cc -target "$HT" -lc++ lmain.c "$B/zig_libcxx.o" -o "$B/ltest"
+"$B/ltest"

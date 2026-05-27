@@ -65,3 +65,43 @@ C-ABI free functions). For **Rust**, the practical FFI path remains
 `#[no_mangle] extern "C"` (stable name, guaranteed global, C ABI) — exactly what
 the rest of this repo uses. Calling Rust by its mangled name works only under a
 narrow, build-fragile set of conditions.
+
+## `@"…"` also works on `export fn` (Zig *provides* a mangled symbol)
+
+The same syntax defines symbols, so Zig can **implement** a C++ (or Rust-mangled)
+function that other code links against — no `extern "C"` on either side:
+
+```zig
+export fn @"_ZN4demo3addEii"(a: i32, b: i32) callconv(.c) i32 { return a +% b; }
+export fn @"_Z5scaleii"(x: i32, k: i32) callconv(.c) i32 { return x *% k; }
+```
+```cpp
+namespace demo { int add(int, int); }   int scale(int, int);   // declarations only
+int main(){ return demo::add(3,4) + scale(3,4); }               // -> 19, computed in Zig
+```
+`run.sh` →  `c++ demo::add+scale [impl in Zig] = 19`. Zig masquerades as the C++
+functions — handy for implementing/overriding a C++ interface in Zig.
+
+## Calling a real library (libc++, or any named lib)
+
+To call into a *library* (not just an object you link yourself), tag the import
+with the library name:
+
+```zig
+extern "c++" fn @"_Znwm"(n: usize) callconv(.c) ?*anyopaque; // libc++ operator new
+extern "c++" fn @"_ZdlPv"(p: ?*anyopaque) callconv(.c) void; // libc++ operator delete
+```
+
+- `extern "c++"` **names** the libc++ dependency, but Zig still **requires** it to
+  be confirmed on the build command with **`-lc++`** (on *both* `build-obj` and
+  the final link) — otherwise: *"dependency on libc++ must be explicitly
+  specified"*. So you need **both** `extern "c++"` **and** `-lc++`.
+  `run.sh` →  `zig -> libc++ operator new/delete … = 42`.
+- The same applies to any library: `extern "<name>" fn @"…"` declares a
+  dependency on `lib<name>` (e.g. `extern "rust"` for a Rust `dylib`), satisfied
+  with `-l<name>` at link (arbitrary names are treated as **dynamic** libs and
+  also want `-fPIC`). `extern "c"` likewise needs `-lc`.
+
+> Bare-metal ESP note: the firmware C++ here is built `-nostdlib -fno-exceptions
+> -fno-rtti` and never touches libc++, so `-lc++` is neither needed nor wanted on
+> target. The libc++ demo above is host-context, to show the mechanism.
