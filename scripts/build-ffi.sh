@@ -61,9 +61,30 @@ build_xtensa() {
     for e in "$B"/*.elf; do printf "    %-16s %s undef\n" "$(basename "$e")" "$(llvm-nm "$e" 2>/dev/null | grep -c ' U ')"; done
 }
 
+# RISC-V control: the same espressif LLVM also hosts riscv32 (esp clang's default
+# triple). ESP32-C3 = rv32imc. Used to show the Zig struct-ABI gap is Xtensa-only.
+build_riscv() {
+    local B="build/riscv-esp32c3"; mkdir -p "$B"
+    local CT="--target=riscv32-esp-elf -mcpu=esp32c3"
+    local RT="$ESP_CLANG_DIR/../lib/clang-runtimes/riscv32-esp-unknown-elf/rv32imc-zicsr-zifencei_ilp32_no-rtti/lib/libclang_rt.builtins.a"
+    echo "== riscv esp32c3 (rv32imc) =="
+    "$CLANG"   $CT -ffreestanding -Os -I"$INC" -c "$SRC/driver.c"       -o "$B/driver.o"
+    "$CLANG"   $CT -ffreestanding -Os          -c "$SRC/entry_xtensa.c" -o "$B/entry.o"
+    "$CLANG"   $CT -ffreestanding -Os -I"$INC" -c "$SRC/c/lib_c.c"      -o "$B/lib_c.o"
+    "$CLANGXX" $CT -ffreestanding -fno-exceptions -fno-rtti -Os -I"$INC" -c "$SRC/cpp/lib_cpp.cpp" -o "$B/lib_cpp.o"
+    "$ZIG" build-obj -target riscv32-freestanding-none -mcpu=esp32c3 -O ReleaseSmall -femit-bin="$B/lib_zig.o" "$SRC/zig/lib_zig.zig"
+    ( cd "$SRC/rust" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target riscv32imc-unknown-none-elf >/dev/null 2>&1 )
+    cp "$SRC/rust/target/riscv32imc-unknown-none-elf/release/libffi_rs.a" "$B/"
+    ld.lld -e _start --section-start=.text=0x40380000 -o "$B/ffi_rv.elf" \
+        "$B/driver.o" "$B/entry.o" "$B/lib_c.o" "$B/lib_cpp.o" "$B/lib_zig.o" \
+        --start-group "$B/libffi_rs.a" "$RT" --end-group
+    echo "  linked ffi_rv.elf; undefined: $(llvm-nm "$B/ffi_rv.elf" 2>/dev/null | grep -c ' U ')"
+}
+
 case "${1:-all}" in
     host) build_host ;;
     esp32|esp32s2|esp32s3) build_xtensa "$1" ;;
-    all) build_host; for c in esp32 esp32s2 esp32s3; do build_xtensa "$c"; done ;;
-    *) echo "usage: $0 {host|esp32|esp32s2|esp32s3|all}"; exit 1 ;;
+    esp32c3|riscv) build_riscv ;;
+    all) build_host; for c in esp32 esp32s2 esp32s3; do build_xtensa "$c"; done; build_riscv ;;
+    *) echo "usage: $0 {host|esp32|esp32s2|esp32s3|esp32c3|all}"; exit 1 ;;
 esac

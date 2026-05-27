@@ -48,9 +48,11 @@ output.
 - [ ] **`-mlongcalls` / call0 ABI** variant: everything here is the default
       windowed ABI. ESP-IDF builds with `-mlongcalls`; worth confirming FFI holds
       with long calls and (if supported) the call0 ABI.
-- [~] **RISC-V** ESP32-C* cores — spot-checked esp32c3 (Zig matches clang for the
-      align-1 struct, so the bug is Xtensa-only). Still TODO: full FFI matrix on
-      riscv32, and the **espidf** targets (`xtensa-*-espidf`).
+- [x] **RISC-V** ESP32-C3 — full FFI matrix built & linked (`build-ffi.sh esp32c3`,
+      docs/09): clang/C++/Rust/Zig → one EM_RISCV ELF, 0 undefined. The align-1
+      `blob_sum` that breaks on Xtensa **matches** here (both pass the struct by
+      reference in `a0`), confirming the gap is Xtensa-only. TODO: a RISC-V
+      semihosting qemu run, and the **espidf** targets (`xtensa-*-espidf`).
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
       once reduced to a minimal repro (start from `experiments/abi-structs`).
 - [ ] Get a version-matched LLVM-21 `llvm-link`/`opt` to demonstrate true
