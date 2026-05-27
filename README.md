@@ -34,6 +34,10 @@ the detailed evidence.
 The first three share the espressif LLVM 21 Xtensa backend. GCC is the
 non-LLVM control: it should still agree on the *ABI* even though it shares no IR.
 
+**At-a-glance comparison:** [docs/00-support-matrix.md](docs/00-support-matrix.md)
+(Rust × Zig × esp-clang × GCC — versions, targeting, ABI/FFI correctness, sizes,
+LTO, mangling).
+
 ## Quick start
 
 ```bash
