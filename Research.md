@@ -25,7 +25,7 @@ language frontends** now ride an LLVM with that backend:
   and targets esp32 + esp32s3 + esp32c3 (no s2). Whole-program compiler,
   doesn't co-link with the rest; explored standalone in [docs/24](docs/24-tinygo.md).
 
-Every LLVM frontend require some fork of LLVM (four on the espressif fork,
+Every LLVM frontend requires some fork of LLVM (four on the espressif fork,
 TinyGo on its own bundled fork). Stock upstream LLVM's Xtensa is still
 experimental (esp32/esp8266 only). `esp-rs/rust` is a fork of rustc (stock has
 Tier-3 target *specs* only). Upstream Zig 0.16 has no esp32 CPU; 0.17.0 ships
@@ -51,7 +51,7 @@ model**. For `esp32`, `rustc --print cfg`, clang's `target-features` attribute,
 absent) but agrees on every codegen-relevant essential. (Full tables:
 [docs/02-xtensa-abi.md](docs/02-xtensa-abi.md), [docs/24](docs/24-tinygo.md) §b.)
 
-Every LLVM frontend emit the **byte-identical LLVM `target datalayout`**:
+Every LLVM frontend emits the **byte-identical LLVM `target datalayout`**:
 
 ```
 e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32

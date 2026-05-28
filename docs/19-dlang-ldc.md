@@ -107,8 +107,8 @@ linkable object — `scripts/build-ffi.sh:ldc_xtensa_obj()` is now a one-liner.
 ## 4. Scalars & linking — full parity
 
 For every scalar in the C contract (`i32`/`i64`/`f32`/`f64`/pointer/callback) D
-agrees at the machine level: host runs PASS and qemu scalars PASS for every FFI-matrix
-languages. `double` multiply is the soft-float `__muldf3` libcall on esp32 (HW
+agrees at the machine level: host runs PASS and qemu scalars PASS for every
+FFI-matrix language. `double` multiply is the soft-float `__muldf3` libcall on esp32 (HW
 float is single-precision only) — the same libcall clang/zig/rust emit, resolved
 from `libclang_rt.builtins.a`. The D object **links into the one Xtensa ELF with
 the other four** (clang/gcc/rust/zig) under `ld.lld`, GNU `ld`, and the mixed

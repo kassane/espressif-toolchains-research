@@ -40,7 +40,7 @@ RESULT: PASS (all 5 languages interop)
 
 Built with `zig cc`/`zig c++` (C/C++), esp `rustc` via cargo (Rust, host target),
 `zig build-obj` (Zig) and `ldc2 -betterC` (D), linked by `zig cc`. This is a
-genuine runtime proof that the C-ABI contract is consistent across every
+genuine runtime proof that the C-ABI contract is consistent across all
 implementations. (D's by-value struct *args* pass on the x86_64 host — SysV
 matches — but diverge on Xtensa/RISC-V; see [docs/19](19-dlang-ldc.md).)
 
