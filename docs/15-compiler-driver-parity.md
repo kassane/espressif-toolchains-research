@@ -58,8 +58,8 @@ For the related LLVM-driver peers in the 6-toolchain matrix not covered here:
 > This is also why the FFI-matrix size table is measured with `llvm-size -A`
 > (real `.text`), not the Berkeley `llvm-size` "text" column — the latter folds in
 > zig's default `.eh_frame` and overstated the zig-*language* lib as 647 B when
-> its actual code is **443 B** (still the largest, from the struct-marshalling of
-> docs/05 — but a fair comparison vs clang's 192 B, not an unwind-inflated 647).
+> its actual code is **715 B** today (still the largest, from the struct-marshalling
+> of docs/05 — but a fair comparison vs clang's 223 B, not an unwind-inflated 647).
 
 ## Verdict
 

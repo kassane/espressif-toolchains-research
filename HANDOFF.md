@@ -29,9 +29,10 @@ output.
       not Xtensa-only. (doc 05/09, `experiments/abi-structs/sweep.sh`).
 - [x] IR mixing: `llc` consumes all frontends; clang↔rust cross-language **LTO**
       links; clang↔zig LTO blocked by 21.1.0 vs 21.1.3 bitcode skew (doc 04).
-- [x] Binary/size/mangling comparison (doc 06): real `.text` rust ~171 ≈ gcc 174
-      < clang 192 (C) / 204 (C++) < zig **443** for the 9-fn lib (the 647 figure
-      counted zig's default `.eh_frame`; use `llvm-size -A`).
+- [x] Binary/size/mangling comparison (doc 06): real `.text` rust 179 ≈ gcc 201
+      < clang 223 (C) / 212 (C++) < D 533 < zig 715 for the 9-fn lib (numbers
+      shifted after the docs/23 LDC swap brought back clang-class compact
+      forms in the LDC arm; `llvm-size -A`, current as of doc 06).
 
 - [x] **Address spaces** (docs/18, `experiments/addrspace/run.sh`): the Xtensa
       backend is single-flat-address-space (datalayout `p:32:32` only), so
@@ -45,7 +46,8 @@ output.
       `u128`/`f128`/`f16`** (Rust uses byval for the 2nd 16-byte arg, Zig direct —
       backend reconciles; runtime-verified Rust→Zig u128 carry on qemu). The only
       clash is **by-value struct arguments** (Zig's bug — pass by pointer; an
-      *upstream* Zig gap per #5467, fork is Zig-patch-free). **Nullable pointers
+      *upstream* Zig gap per #5467 — **CLOSED 2026-05-06, landed in 0.17.0**;
+      0.16-bootstrap pin still reproduces). **Nullable pointers
       interop** (`Option<&T>`/`Option<NonNull>`/`Option<fn>` ↔ `?*T`/`?*fn` =
       single `ptr`, FFI-safe, runtime-verified). **Atomics** match (native
       `s32c1i`). Object FFI links; **cross-language LTO fails** (21.1.3 vs 21.1.0).
@@ -135,8 +137,24 @@ output.
       zig emits `.eh_frame`/ubsan/libc++); `esp-gcc` has full ABI parity (windowed
       C ABI; byte-identical Itanium C++ mangling `_ZN…` + vtables `_ZTV…`),
       different regalloc, slightly smaller. Also corrected the size figures: zig's
-      real `.text` is **443 B** (the 647 B included default `.eh_frame`); fair code
-      sizes rust ~171 ≈ gcc 174 < clang 192 < zig 443 (docs/00, docs/06).
+      real `.text` is **715 B** (the 647 B figure counted zig's default `.eh_frame`
+      and predated the post-swap reshuffle); current ordering rust 179 ≈ gcc 201
+      < clang 223 < D 533 < zig 715 (docs/00, docs/06).
+
+## Known outages
+
+- **LDC mirror outage (2026-05-28):** the `kassane/esp-idf-dlang` upstream
+  repo went 404 — the pinned `xtensa-toolchain` release at
+  `https://github.com/kassane/esp-idf-dlang/releases/download/xtensa-toolchain/ldc2-v1.42.0-espressif-linux-musl-static.tar.xz`
+  returns HTTP 404. `scripts/setup.sh` was updated to detect the failed fetch
+  and auto-promote `$LDC2_UPSTREAM` (the ldc-developers CI build on LLVM
+  22.1.2) to canonical so the build still completes — but that re-enables the
+  docs/23 workarounds (literal-pool re-assembly, `-mattr` fallback for s2/s3).
+  If you have the original 49 MB tarball (sha256
+  `0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211`), drop it
+  at `$DL/ldc-esp.tar.xz` to restore the canonical fork-LDC path. Until a new
+  upstream mirror is published, docs/23 reads as the architectural intent —
+  the auto-fallback in `env.sh` is the operational path.
 
 ## Not done / next steps
 

@@ -152,7 +152,7 @@ all.
 
 # To also run experiments/ldc-fork-comparison:
 LDC_UPSTREAM=1 ./scripts/setup.sh
-LDC22=1       ./scripts/setup.sh         # only if you want LLVM-22 binutils
+LLVM22=1      ./scripts/setup.sh         # only if you want LLVM-22 binutils
 
 source scripts/env.sh
 ./scripts/build-ffi.sh all                                                   # host PASS + xtensa-{esp32,s2,s3} + riscv-esp32c3, 0 undef everywhere

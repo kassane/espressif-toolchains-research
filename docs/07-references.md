@@ -64,10 +64,13 @@ work, not a dependency of the experiments.
 > LLVM's Xtensa (esp32/esp8266 only). The full esp32/s2/s3 set still requires the
 > espressif-bootstrap **fork** — mirroring the esp-rs/rust fork situation.
 
-- **ziglang/zig #5467 — Xtensa Support** —
-  <https://github.com/ziglang/zig/issues/5467> — Zig's Xtensa tracking issue.
-  Upstream Zig 0.16 has no esp32 codegen; 0.17.0-dev adds `esp32` (upstream LLVM),
-  but s2/s3 need the fork — so we use the espressif-bootstrap Zig.
+- **ziglang/zig #5467 — Xtensa Support — CLOSED 2026-05-06 (milestone 0.17.0)** —
+  <https://github.com/ziglang/zig/issues/5467> — Zig's umbrella Xtensa tracking
+  issue, **now closed** by alexrp; Xtensa support landed in 0.17.0. Companion:
+  **#23088 — Tier System: `xtensa(eb)-linux`** (CLOSED same day) for the Linux
+  tier classification. Our 0.16.0 bootstrap remains the right pin until 0.17.0
+  ships, but the "Zig has no upstream Xtensa" framing of this whole doc is now
+  historical.
 - **Zig on Codeberg** — <https://codeberg.org/ziglang/zig> — upstream Zig's home;
   the 0.17.0-dev commit adding the `esp32` CPU target lives here.
 - **kassane/zig-espressif-bootstrap (xtensa)** —

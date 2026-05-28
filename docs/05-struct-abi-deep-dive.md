@@ -86,13 +86,13 @@ that Zig defers aggregate ABI to LLVM's default instead of implementing the
 platform C ABI in the frontend (which clang and rust both do). This is an
 **upstream Zig** gap, not the espressif fork: `kassane/zig-espressif-bootstrap`
 patches only LLVM/LLD/Clang (no Zig `src/` changes), and Xtensa is still being
-finalized upstream under `ziglang/zig` #5467 (milestone 0.17.0). See
+finalized upstream under `ziglang/zig` #5467 (**CLOSED 2026-05-06**, milestone 0.17.0). See
 [docs/17](17-rust-zig-interop.md).
 
 ## Cost & mitigation
 
-- Code-size symptom on esp32: Zig's 9-function lib is **443 B** of `.text` vs
-  clang **192 B** / gcc **174 B** (real `.text`, `llvm-size -A`; the often-quoted
+- Code-size symptom on esp32: Zig's 9-function lib is **715 B** of `.text` vs
+  clang **223 B** / gcc **201 B** (real `.text`, `llvm-size -A`; the often-quoted
   647 B counted zig's default `.eh_frame` — docs/15) — the bloat is the
   byte-by-byte stack marshalling above.
 - **Mitigations** (any one): keep cross-language structs **word-aligned** (the

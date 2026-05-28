@@ -1,6 +1,6 @@
 # 02 — Xtensa ABI & CPU features
 
-## Windowed call ABI (what all four toolchains use by default)
+## Windowed call ABI (what all six toolchains use by default)
 
 ESP32-class Xtensa cores have the **register-windowed** ABI enabled (`+windowed`
 feature). Every non-leaf function we compiled — across clang, rust, zig and gcc —
@@ -39,7 +39,7 @@ aggregates); it diverges for **under-aligned** (`align(1)`) by-value struct
 
 ## Windowed vs call0, and `-mlongcalls`
 
-The default everywhere (clang, rust, zig, gcc) is the **windowed** ABI above, and
+The default everywhere (clang, rust, zig, gcc, LDC, TinyGo) is the **windowed** ABI above, and
 the whole ESP ecosystem uses it. The alternative **call0** ABI exists and is
 reachable:
 

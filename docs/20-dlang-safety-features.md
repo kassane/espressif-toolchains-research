@@ -22,7 +22,7 @@ LDC 1.42 (`ldc/attributes.di`, `ldc/llvmasm.di`, `ldc/intrinsics.di`):
 | **inline LLVM IR** | `pragma(LDC_inline_ir)` → `__ir!(code,R,P...)` / `__irEx` | embed raw LLVM IR as a function body |
 | LLVM intrinsics | `pragma(LDC_intrinsic,"llvm.…")` (`ldc.intrinsics`) | bind any LLVM intrinsic directly |
 | atomics/fences | `LDC_atomic_load/store/rmw/cmp_xchg`, `LDC_fence` | low-level atomic ops |
-| sanitizers | `--fsanitize=address\|thread\|memory\|leak\|fuzzer` | (host; `undefined` rejected on this LLVM-22 build) |
+| sanitizers | `--fsanitize=address\|thread\|memory\|leak\|fuzzer` | (host; `undefined` rejected on the LLVM-22 upstream build per docs/23 — re-verify on the canonical 21.1.3 fork) |
 | cross-compile | `-mtriple=` / `-mcpu=` / `-mattr=` | the mechanism used for Xtensa throughout this repo |
 
 **Xtensa-verified** (esp32, `safety.sh` §e): `@fastmath` → `fmul fast double` in

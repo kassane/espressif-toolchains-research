@@ -4,58 +4,65 @@ A study of how far the *shared LLVM Xtensa backend* takes us toward a *shared
 ABI* between Zig, Rust, D and C/C++ on ESP32-class chips — and where it breaks.
 
 All numbers, disassembly and IR in this document were produced on an x86_64
-Linux host from the five toolchains pinned in [docs/01-toolchains.md](docs/01-toolchains.md).
+Linux host from the six toolchains pinned in [docs/01-toolchains.md](docs/01-toolchains.md).
 Everything here is reproducible with `scripts/build-ffi.sh` + `scripts/analyze.sh`.
 
 ---
 
 ## 1. Hypothesis
 
-`espressif/llvm-project` carries the work-in-progress Xtensa target. Four
-language frontends consume an LLVM with that backend:
+`espressif/llvm-project` carries the production Xtensa target. **Five
+language frontends** now ride an LLVM with that backend:
 
 - **clang** — espressif's LLVM directly (`clang` 21.1.3).
 - **rustc** — esp-rs ships a rustc built against the same LLVM (1.95-nightly, *LLVM 21.1.3*).
 - **zig** — kassane's `zig-espressif-bootstrap` builds Zig against the same LLVM (0.16.0, *clang/LLVM 21.1.0*).
-- **D / LDC** — `ldc-developers/ldc` CI build on **upstream LLVM 22.1.2**, whose
-  Xtensa target is experimental (`-betterC` for bare-metal). The only one *not*
-  on an espressif fork. Deep dive: [docs/19](docs/19-dlang-ldc.md).
+- **D / LDC** — `kassane/esp-idf-dlang` ships LDC 1.42-git built against the
+  same espressif LLVM 21.1.3 (`-betterC` for bare-metal). Joined the fork in
+  docs/23, dropping five workarounds. The upstream-LLVM-22 LDC stays as
+  `$LDC2_UPSTREAM` for the side-by-side. Deep dive: [docs/19](docs/19-dlang-ldc.md).
+- **TinyGo** — v0.41.1 bundles its own LLVM 20.1.1 fork (`tinygo-org/llvm-project`)
+  and targets esp32 + esp32s3 + esp32c3 (no s2). Whole-program compiler,
+  doesn't co-link with the rest; explored standalone in [docs/24](docs/24-tinygo.md).
 
-The first three are **Espressif forks**, not stock toolchains: `espressif/llvm-project`
-≠ upstream LLVM (upstream's Xtensa backend is still experimental), `esp-rs/rust`
-is a fork of rustc (stock `rustc` has only Tier-3 target *specs*, no working
-Xtensa codegen), and upstream Zig 0.16 has no esp32 CPU (0.17.0-dev adds `esp32`
-only — not s2/s3; the fork has all three). "Shared backend" throughout this
-report means *the espressif LLVM fork* (D rides upstream LLVM 22 directly).
+All five LLVM frontends require some fork of LLVM (four on the espressif fork,
+TinyGo on its own bundled fork). Stock upstream LLVM's Xtensa is still
+experimental (esp32/esp8266 only). `esp-rs/rust` is a fork of rustc (stock has
+Tier-3 target *specs* only). Upstream Zig 0.16 has no esp32 CPU; 0.17.0 ships
+it (Zig #5467 *closed* May 2026, milestone 0.17.0). "Shared backend" throughout
+this report means *the espressif LLVM fork* (TinyGo's matching-datalayout
+LLVM-20 fork joins the IR-comparison axis but not the linking axis).
 
-A fifth toolchain, **GCC 15.2** from `espressif/crosstool-NG`, shares *no* code
+A sixth toolchain, **GCC 15.2** from `espressif/crosstool-NG`, shares *no* code
 with LLVM and acts as an independent control for ABI questions.
 
-If "shared backend ⇒ shared ABI" held strictly, the five should interoperate
+If "shared backend ⇒ shared ABI" held strictly, the six should interoperate
 perfectly. The interesting part is exactly where that implication leaks.
 
 ## 2. The backend really is shared
 
-The three LLVM frontends expose the **identical Xtensa CPU feature model**. For
-`esp32`, `rustc --print cfg`, clang's `target-features` attribute and
-`zig build-obj --show-builtin` all enumerate the same 30 features
-(`+fp,+windowed,+mac16,+loop,+s32c1i,+density,…`). For `esp32s2` all three drop
-`fp`/`loop`/`mac16`/`s32c1i` and add `esp32s2ops`; for `esp32s3` all three add
-`esp32s3ops`. (Full tables: [docs/02-xtensa-abi.md](docs/02-xtensa-abi.md).)
+The four espressif-LLVM frontends expose the **identical Xtensa CPU feature
+model**. For `esp32`, `rustc --print cfg`, clang's `target-features` attribute,
+`zig build-obj --show-builtin` and LDC's `-mattr` all enumerate the same set
+(`+fp,+windowed,+mac16,+loop,+s32c1i,+density,…`). For `esp32s2` all drop
+`fp`/`loop`/`mac16`/`s32c1i` and add `esp32s2ops`; for `esp32s3` all add
+`esp32s3ops`. TinyGo's bundled LLVM 20 diverges slightly
+(`+atomctl/+memctl/+timerint` extra; `+dcache/+expstate/+highpriinterrupts-level7/+mul16/+timers3`
+absent) but agrees on every codegen-relevant essential. (Full tables:
+[docs/02-xtensa-abi.md](docs/02-xtensa-abi.md), [docs/24](docs/24-tinygo.md) §b.)
 
-The three espressif-LLVM-21 frontends also emit the **identical LLVM
-`target datalayout`**:
+All five LLVM frontends emit the **byte-identical LLVM `target datalayout`**:
 
 ```
 e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32
 ```
 
 Only the target *triple* differs cosmetically (`xtensa-esp-unknown-elf` vs
-`xtensa-unknown-none-elf` vs `xtensa-unknown-unknown-unknown`). (D/LDC, on
-upstream LLVM 22, emits a slightly different datalayout —
-`…i8:8:32-i16:16:32…`, no `v1:8:8`/`i128:128` — which `llvm-link` warns on but
-still merges; C-ABI struct layout is unaffected, docs/04.) A compatible
-datalayout is the precondition for IR-level mixing (§6).
+`xtensa-unknown-none-elf` vs `xtensa-unknown-unknown-unknown` vs bare `xtensa`).
+The upstream-LLVM-22 LDC used to differ (`…i8:8:32-i16:16:32…`, no
+`v1:8:8`/`i128:128`) — that one historical mismatch is preserved in
+[docs/23](docs/23-ldc-espressif-fork.md) §e for the comparison toolchain.
+A compatible datalayout is the precondition for IR-level mixing (§6).
 
 ## 3. Method
 
@@ -172,8 +179,8 @@ site, clang stages the words in `a10..a15`; Zig does `movsp` to grow the stack a
 spills the under-aligned struct to memory → a clang/rust/gcc ↔ zig call reads the
 bytes from the wrong place ⇒ silent corruption on hardware. (The host test passes
 only because x86_64 SysV memory-passes these structs where both agree.) Code-size
-symptom: Zig's 9-function lib is **443 B** of `.text` vs clang **192 B** / gcc
-**174 B** (real `.text` via `llvm-size -A`; docs/06/15).
+symptom: Zig's 9-function lib is **715 B** of `.text` vs clang **223 B** / gcc
+**201 B** (real `.text` via `llvm-size -A`; docs/06/15).
 
 Root cause: Zig's experimental ESP targets don't implement the C-ABI aggregate
 coercion clang/rust do; they defer to LLVM's default lowering. This is **not
