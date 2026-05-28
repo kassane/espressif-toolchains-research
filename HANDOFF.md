@@ -219,6 +219,24 @@ output.
       the merged 22-IR still needs the espressif backend (upstream LLVM-22 has no
       `esp32` CPU). Surfaced that **D's datalayout differs** (upstream-22:
       `i8:8:32/i16:16:32`, no `v1:8:8`/`i128:128`) — llvm-link warns, still merges.
+- [x] **Full parity audit + DWARF/codegen reverse-engineering** (docs/22,
+      `experiments/dwarf-parity/run.sh`). Re-ran every canonical claim:
+      `build-ffi.sh all` (host PASS, 9 Xtensa ELFs + riscv all 0 undef),
+      `run-qemu.sh xtensa` (3 fails: d point_dot, zig+d blob_sum — docs/08/19),
+      `run-qemu.sh riscv` (1 fail: zig point_dot — docs/09). New: same trivial
+      `int add_i32(int,int)` compiled by all 5 toolchains with -g for esp32 ->
+      **DWARF section size + version comparison** (clang/gcc=DWARFv5, rust/zig/
+      LDC=DWARFv4; Zig's `.debug_str`=12 KB for one function), **subprogram DIE**
+      inspection (gcc resolves names pre-link; LLVM frontends need link-time
+      `.debug_str_offsets` relocations; v4 pre-link strings show producer string
+      instead of `add_i32` -- a tooling subtlety to know when RE'ing `.o`
+      archives), **frame info** (clang/gcc/rust use `.debug_frame`; **zig/LDC
+      emit `.eh_frame`** even on baremetal — wasted bytes without an unwinder),
+      and **disassembled add_i32** across all 5 (rust release: 6 B; clang/gcc:
+      14 B; zig: 12 B; **LDC: 19 B because it doesn't reach for `.n` compact
+      forms** at -Os baseline). Plus consolidated capability / known-vulns
+      table per toolchain (§7) and the espressif baremetal advantages roll-up
+      (§8). docs/00-22 final.
 
 ## How to resume
 

@@ -67,7 +67,8 @@ experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct AB
 experiments/llvm-ir-mix/  mix*.c + mix_rs + run.sh — LTO probes & LLVM-22 llvm-link module-merge
 experiments/dlang/        cppiface.d + run.sh + safety.sh + tmpffi.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO; @safe/@mustuse/@live/preview/edition vs Rust × C++26; embedded TMP-FFI matrix on Xtensa)
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
-docs/00..20               support-matrix / toolchains / abi / … / addrspace / dlang-ldc / dlang-safety
+docs/00..22               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity
+experiments/dwarf-parity/ run.sh — DWARF & disassembly audit across all 5 toolchains on Xtensa (docs/22)
 Research.md HANDOFF.md     headline write-up / status
 ```
 
