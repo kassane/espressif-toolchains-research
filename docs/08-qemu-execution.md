@@ -42,34 +42,44 @@ reset, so messages lead with a `\n`.)
 
 ## The full FFI matrix run — and the ABI bug, live
 
-`qemu_main.c` calls the `c_/cpp_/rs_/zig_` functions and reports per language.
+`qemu_main.c` calls the `c_/cpp_/rs_/zig_/d_` functions and reports per language.
 `scripts/run-qemu.sh` runs it on `-machine sim -cpu dc233c`:
 
 ```
-== FFI runtime on qemu-system-xtensa (windowed ABI) ==
+== FFI runtime on emulated ESP core (qemu) ==
 - scalar add_i32(3,4)==7 [expect all ok]:
  c    ok (7)
  cpp  ok (7)
  rs   ok (7)
  zig  ok (7)
-- point_dot: 8B align-4 struct by value ==11 [expect all ok]:
+ d    ok (7)
+- point_dot: 8B struct by value ==11 [xtensa: d FAIL; riscv: zig FAIL]:
  c    ok (11)
  rs   ok (11)
  zig  ok (11)
-- blob_sum: 24B align-1 struct by value ==300 [zig expected to FAIL]:
+ d    FAIL (got=4548 want=11)
+- blob_sum: 24B struct by value ==300 [xtensa: zig+d FAIL; riscv: ok]:
  c    ok (300)
  cpp  ok (300)
  rs   ok (300)
- zig  FAIL (got=242 want=300)
-total failures: 1
+ zig  FAIL (got=409 want=300)
+ d    FAIL (got=695 want=300)
+- blob_sum BY POINTER ==300 [expect all ok incl. d]:
+ c    ok (300)
+ zig  ok (300)
+ d    ok (300)
+total failures: 3
 ```
 
-This is the docs/05 prediction confirmed **at runtime on an emulated Xtensa
-core**: scalars and the align-4 `Point` interoperate across all four languages;
-the align-1 `Blob` passed by value to `zig_blob_sum` is **misread by Zig**
-(`242 ≠ 300`) because Zig stack-spills the under-aligned struct while the clang
-driver passed it in registers. Static disassembly (docs/05) and live execution
-agree.
+This is the docs/05 + docs/19 predictions confirmed **at runtime on an emulated
+Xtensa core**: scalars interoperate across all five languages; the align-1 `Blob`
+by value is **misread by Zig** (`409 ≠ 300` — stack-spilled under-aligned struct
+while the clang driver passed it in registers). **D** fails *both* the align-4
+`Point` (`point_dot`) and `blob_sum` — it marks every aggregate `byval`/`sret`, so
+it diverges more broadly than Zig (docs/19). Passing the same struct **by
+pointer** works for all. (The `got=` values on the FAIL rows are whatever stale
+data sat in the stack slots, so they vary run-to-run; the *mismatch* is the
+point.) Static disassembly (docs/05, docs/19) and live execution agree.
 
 ### Two bring-up issues solved to get here
 

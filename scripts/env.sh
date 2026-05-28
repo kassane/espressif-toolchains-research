@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# env.sh - point the experiments at the four downloaded toolchains.
+# env.sh - point the experiments at the five downloaded toolchains.
 # Source this: `source scripts/env.sh`
 #
 # Toolchains live OUTSIDE the repo (under /home/user/toolchains) and are never
@@ -46,6 +46,15 @@ export LDC2="$LDC_DIR/bin/ldc2"
 # would shadow esp-clang's 21.1.3 llvm-objdump/nm/size and ld.lld. Reference the
 # tools explicitly via $LDC_LLVM_DIR/bin/<tool>. Optional (setup.sh LLVM22=1).
 export LDC_LLVM_DIR="$TC/llvm-22.1.2-linux-x86_64"
+
+# LDC Xtensa codegen flags for a core. LDC's upstream LLVM-22 only knows the
+# `esp32` CPU; esp32s2/s3 are "not a recognized processor", so spell out the
+# features by hand (ldc #4919). Single source of truth — used by build-ffi.sh
+# and analyze.sh so their D objects/IR can't drift apart.
+ldc_xtensa_flags() { case "$1" in
+    esp32) echo "-mcpu=esp32" ;;
+    *)     echo "-mattr=+windowed,+density,+mul32,+mul16,+div32" ;;
+esac; }
 
 # Keep cargo's caches local and offline-friendly.
 export CARGO_HOME="${CARGO_HOME:-$TC/.cargo-home}"

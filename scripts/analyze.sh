@@ -24,9 +24,9 @@ IR=build/ir-$CPU; mkdir -p "$IR"
 ( cd "$SRC/rust" && RUSTC="$RUSTC" "$CARGO" rustc --release -Z build-std=core \
     --target "xtensa-$CPU-none-elf" -- --emit=llvm-ir >/dev/null 2>&1 )
 cp "$(find "$SRC/rust/target/xtensa-$CPU-none-elf/release" -name 'ffi_rs*.ll' | head -1)" "$IR/lib_rs.ll"
-# D (LDC): esp32s2/s3 aren't recognized CPUs, so use -mattr there (see build-ffi.sh).
-case "$CPU" in esp32) DF="-mcpu=esp32";; *) DF="-mattr=+windowed,+density,+mul32,+mul16,+div32";; esac
-"$LDC2" -mtriple=xtensa-esp-elf $DF -betterC -Os -output-ll -of="$IR/lib_d.ll" "$SRC/d/lib_d.d"
+# D (LDC): ldc_xtensa_flags (env.sh) handles the esp32s2/s3 -mattr fallback,
+# shared with build-ffi.sh so the dumped IR matches the linked object.
+"$LDC2" -mtriple=xtensa-esp-elf "$(ldc_xtensa_flags "$CPU")" -betterC -Os -output-ll -of="$IR/lib_d.ll" "$SRC/d/lib_d.d"
 for fn in add_i32 mul_f64 make_point point_dot make_blob blob_sum apply; do
   echo "== $fn =="; for l in c rs zig d; do printf "  %-4s " "$l"; grep -E "define.*$fn" "$IR/lib_$l.ll" | head -1; done
 done | tee -a "$OUT/ir-signatures-$CPU.txt"

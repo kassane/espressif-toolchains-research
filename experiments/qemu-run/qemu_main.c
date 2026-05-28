@@ -3,10 +3,11 @@
  * (qemu-system-xtensa `sim` machine) and report via semihosting.
  *
  * This turns the static ABI analysis into a runtime result. Expectation:
- *   - scalar + align-4 struct calls pass for ALL languages;
- *   - the align-1 (byte-array) `blob_sum` by-value call FAILS for Zig only,
- *     because Zig's experimental Xtensa target diverges from the C ABI for
- *     under-aligned by-value struct arguments (see docs/05).
+ *   - scalars + struct returns pass for ALL five languages (c/cpp/rs/zig/d);
+ *   - by-value struct ARGS diverge on the two experimental frontends: Zig spills
+ *     the align-1 `blob_sum` (docs/05), and D marks every aggregate byval/sret so
+ *     it also misses the align-4 `point_dot` AND `blob_sum` on Xtensa (docs/19);
+ *   - passing the same struct BY POINTER works for all (the documented fix).
  */
 #include "ffi_abi.h"
 #include "semihost.h"

@@ -28,8 +28,8 @@ echo "== (b) emit IR for all five frontends (esp32), then llvm-link =="
 cp "$(find "$M/rust/target/xtensa-esp32-none-elf/release" -name 'ffi_rs*.ll'|head -1)" "$B/lib_rs.ll"
 "$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -O1 -output-ll -of="$B/lib_d.ll" "$M/d/lib_d.d" 2>/dev/null
 printf "  host LLVM-18 llvm-link driver.ll: %s\n" "$(llvm-link "$B/driver.ll" -S -o /dev/null 2>&1 | grep -oiE 'expected type|error' | head -1) (post-18 'nuw' GEP)"
-"$L/llvm-link" "$B"/driver.ll "$B"/lib_c.ll "$B"/lib_rs.ll "$B"/lib_zig.ll "$B"/lib_d.ll -S -o "$B/merged.ll" 2>/dev/null
-printf "  LLVM-22 llvm-link 5 frontends -> 1 module: %s defines (exit %s)\n" "$(grep -c '^define' "$B/merged.ll")" "$?"
+rc=0; "$L/llvm-link" "$B"/driver.ll "$B"/lib_c.ll "$B"/lib_rs.ll "$B"/lib_zig.ll "$B"/lib_d.ll -S -o "$B/merged.ll" 2>/dev/null || rc=$?
+printf "  LLVM-22 llvm-link 5 frontends -> 1 module: %s defines (llvm-link rc=%s)\n" "$(grep -c '^define' "$B/merged.ll")" "$rc"
 
 echo "== (c) opt -O2 over the merge -> cross-module inline (D->D) =="
 printf 'extern(C) int d_inc(int x){return x+1;}\n' > "$B/callee.d"

@@ -1,34 +1,37 @@
 # Cross-language FFI on Xtensa via the shared espressif/llvm-project backend
 
-A study of how far the *shared LLVM 21 Xtensa backend* takes us toward a *shared
-ABI* between Zig, Rust and C/C++ on ESP32-class chips — and where it breaks.
+A study of how far the *shared LLVM Xtensa backend* takes us toward a *shared
+ABI* between Zig, Rust, D and C/C++ on ESP32-class chips — and where it breaks.
 
 All numbers, disassembly and IR in this document were produced on an x86_64
-Linux host from the four toolchains pinned in [docs/01-toolchains.md](docs/01-toolchains.md).
+Linux host from the five toolchains pinned in [docs/01-toolchains.md](docs/01-toolchains.md).
 Everything here is reproducible with `scripts/build-ffi.sh` + `scripts/analyze.sh`.
 
 ---
 
 ## 1. Hypothesis
 
-`espressif/llvm-project` carries the work-in-progress Xtensa target. Three
-language frontends consume (a fork of) it:
+`espressif/llvm-project` carries the work-in-progress Xtensa target. Four
+language frontends consume an LLVM with that backend:
 
 - **clang** — espressif's LLVM directly (`clang` 21.1.3).
 - **rustc** — esp-rs ships a rustc built against the same LLVM (1.95-nightly, *LLVM 21.1.3*).
 - **zig** — kassane's `zig-espressif-bootstrap` builds Zig against the same LLVM (0.16.0, *clang/LLVM 21.1.0*).
+- **D / LDC** — `ldc-developers/ldc` CI build on **upstream LLVM 22.1.2**, whose
+  Xtensa target is experimental (`-betterC` for bare-metal). The only one *not*
+  on an espressif fork. Deep dive: [docs/19](docs/19-dlang-ldc.md).
 
-All three are **Espressif forks**, not stock toolchains: `espressif/llvm-project`
+The first three are **Espressif forks**, not stock toolchains: `espressif/llvm-project`
 ≠ upstream LLVM (upstream's Xtensa backend is still experimental), `esp-rs/rust`
 is a fork of rustc (stock `rustc` has only Tier-3 target *specs*, no working
 Xtensa codegen), and upstream Zig 0.16 has no esp32 CPU (0.17.0-dev adds `esp32`
 only — not s2/s3; the fork has all three). "Shared backend" throughout this
-report means *the espressif LLVM fork*.
+report means *the espressif LLVM fork* (D rides upstream LLVM 22 directly).
 
-A fourth toolchain, **GCC 15.2** from `espressif/crosstool-NG`, shares *no* code
+A fifth toolchain, **GCC 15.2** from `espressif/crosstool-NG`, shares *no* code
 with LLVM and acts as an independent control for ABI questions.
 
-If "shared backend ⇒ shared ABI" held strictly, the four should interoperate
+If "shared backend ⇒ shared ABI" held strictly, the five should interoperate
 perfectly. The interesting part is exactly where that implication leaks.
 
 ## 2. The backend really is shared
@@ -40,14 +43,18 @@ The three LLVM frontends expose the **identical Xtensa CPU feature model**. For
 `fp`/`loop`/`mac16`/`s32c1i` and add `esp32s2ops`; for `esp32s3` all three add
 `esp32s3ops`. (Full tables: [docs/02-xtensa-abi.md](docs/02-xtensa-abi.md).)
 
-They also emit the **identical LLVM `target datalayout`**:
+The three espressif-LLVM-21 frontends also emit the **identical LLVM
+`target datalayout`**:
 
 ```
 e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32
 ```
 
 Only the target *triple* differs cosmetically (`xtensa-esp-unknown-elf` vs
-`xtensa-unknown-none-elf` vs `xtensa-unknown-unknown-unknown`). Identical
+`xtensa-unknown-none-elf` vs `xtensa-unknown-unknown-unknown`). (D/LDC, on
+upstream LLVM 22, emits a slightly different datalayout —
+`…i8:8:32-i16:16:32…`, no `v1:8:8`/`i128:128` — which `llvm-link` warns on but
+still merges; C-ABI struct layout is unaffected, docs/04.) A compatible
 datalayout is the precondition for IR-level mixing (§6).
 
 ## 3. Method
@@ -56,8 +63,8 @@ datalayout is the precondition for IR-level mixing (§6).
 functions chosen to hit every ABI corner: `i32`/`i64` add, `f32`/`f64` mul, small
 struct (`Point`, 8 B) return + by-value, large struct (`Blob`, 24 B) return +
 by-value, and an indirect callback (`apply`). Each language implements the whole
-set under its own prefix (`c_`, `cpp_`, `rs_`, `zig_`). A single C `driver.c`
-calls **all** of them, so every build links objects from four compilers.
+set under its own prefix (`c_`, `cpp_`, `rs_`, `zig_`, `d_`). A single C `driver.c`
+calls **all** of them, so every build links objects from five compilers.
 
 Two tiers of evidence:
 
@@ -68,36 +75,40 @@ Two tiers of evidence:
 
 ## 4. What works (the large majority)
 
-### 4.1 Host run: all four languages interoperate
+### 4.1 Host run: all five languages interoperate
 
 ```
-== c ==  ok ×9     == cpp == ok ×9     == rs == ok ×9     == zig == ok ×9
+== c == ok ×9   == cpp == ok ×9   == rs == ok ×9   == zig == ok ×9   == d == ok ×9
 total failures: 0
-RESULT: PASS (all 4 languages interop)
+RESULT: PASS (all 5 languages interop)
 ```
 
-36/36 cross-language calls succeed at runtime, including struct-by-value, sret
-returns, `f32`/`f64`, `i64` and C callbacks invoked from each language.
+45/45 cross-language calls succeed at runtime, including struct-by-value, sret
+returns, `f32`/`f64`, `i64` and C callbacks invoked from each language. (On the
+x86_64 host D follows the SysV ABI and passes everything, incl. by-value structs;
+its Xtensa/RISC-V struct-arg divergence is a backend-lowering issue — §5.)
 
 ### 4.2 Xtensa: everything links, under both linkers, even mixing GCC + LLVM
 
 For each of esp32/s2/s3 we link three ELFs and check for unresolved symbols:
 
-| image | C from | C++/Rust/Zig from | linker | undefined |
-|-------|--------|-------------------|--------|-----------|
+| image | C from | C++/Rust/Zig/D from | linker | undefined |
+|-------|--------|---------------------|--------|-----------|
 | `ffi_llvm.elf`  | clang | LLVM | `ld.lld` | **0** |
 | `ffi_mixed.elf` | **gcc** | LLVM | `ld.lld` | **0** |
 | `ffi_gnuld.elf` | clang | LLVM | **GNU `ld`** | **0** |
 
 So `ld.lld` links GCC-produced Xtensa objects, GNU `ld` links LLVM-produced
-objects, and a single image can contain GCC C + clang C++ + Rust + Zig.
+objects, and a single image can contain GCC C + clang C++ + Rust + Zig + D.
+(D's object needs a literal-pool re-assembly with esp clang — a real LDC-Xtensa
+bug, docs/19 — but then links cleanly with the rest.)
 
 ### 4.3 The ABI is identical in the disassembly
 
-`add_i32` on esp32, all four toolchains use the **windowed ABI** — `entry a1,32`,
+`add_i32` on esp32, all five toolchains use the **windowed ABI** — `entry a1,32`,
 args in `a2`/`a3`, result in `a2`, `retw.n`. clang-C and clang-C++ are
-byte-identical; rust and zig identical to each other; gcc differs only in
-commutative operand order:
+byte-identical; rust and zig identical to each other; D matches the same windowed
+convention (docs/19); gcc differs only in commutative operand order:
 
 ```
 clang/c++:  entry a1,32 ; mov.n a7,a1 ; add.n a2,a3,a2 ; retw.n
@@ -126,11 +137,13 @@ in `a2`; Zig returns the aggregate by value in IR, but the LLVM backend lowers
 that to the *same* sret-pointer-in-`a2` convention. Zig just builds the result in
 its own frame and memcpys it to the caller's buffer (less efficient, same ABI).
 
-## 5. The one real incompatibility: under-aligned by-value struct *arguments*
+## 5. Where it leaks: by-value struct *arguments* on the defer-to-backend frontends
 
-This is the single place the "shared backend ⇒ shared ABI" implication leaks. The
-trigger is **struct alignment, not size**, and it affects only by-value struct
-*arguments* (returns are fine).
+This is where the "shared backend ⇒ shared ABI" implication leaks — on the two
+frontends (**Zig** and **D/LDC**) that hand aggregates to the LLVM backend
+instead of coercing them to the Xtensa C ABI in the frontend like clang/rust do.
+For Zig the trigger is **struct alignment, not size**, and it affects only
+by-value struct *arguments* (returns are fine); D is broader (§5.1).
 
 clang and rust **lower aggregates to the Xtensa C ABI in the frontend** — any
 ≤ 6-word struct is flattened to `[N x i32]` and passed in `a2..a7`, *regardless of
@@ -172,11 +185,29 @@ not the espressif fork. Rust, clang and gcc are correct on both architectures.
 Full teardown: [docs/05](docs/05-struct-abi-deep-dive.md),
 [docs/09](docs/09-riscv.md), [docs/10](docs/10-zig-rust-parity.md).
 
+### 5.1 D/LDC: the same root cause, broader
+
+D goes further than Zig: LDC marks **every** by-value aggregate `byval(ptr)` and
+**every** struct return `sret` — *explicitly indirect* in the IR — then defers to
+the backend, whose Xtensa lowering passes them in **memory**, not the C ABI's
+registers. So D diverges for *every* register-passed struct, not just
+under-aligned ones: on Xtensa both the align-4 `Point` (`point_dot`) **and** the
+align-1 `Blob` (`blob_sum`) fail, plus the 8-byte struct *return* (`make_point`,
+which clang returns in `a2:a3` but D returns via a hidden pointer). The only
+struct case D gets right is the >16-byte `sret` return — where the C ABI is
+*also* indirect. On RISC-V the asymmetry confirms the cause: D's small struct is
+passed as a real pointer and **faults**, while the large `Blob` *passes* (the
+RISC-V C ABI itself passes >16 B by reference, so D's `byval` matches). Host
+(x86_64 SysV) interop is perfect, so this is a backend-lowering issue, not a
+D-language one. Full teardown: [docs/19](docs/19-dlang-ldc.md).
+
 **Confirmed at runtime.** The matrix runs on qemu (`scripts/run-qemu.sh`):
-on `qemu-system-xtensa` the align-1 `Blob` gives `zig FAIL (got=242 want=300)`;
-on `qemu-system-riscv32` the `Point` gives `zig FAIL (got=-2130706553 want=11)`
-while `Blob` passes. Both match the disassembly. See
-[docs/08](docs/08-qemu-execution.md).
+on `qemu-system-xtensa` the align-1 `Blob` gives `zig FAIL (got≈242 want=300)` and
+D fails both `point_dot` and `blob_sum`; on `qemu-system-riscv32` the `Point`
+gives `zig FAIL (got=-2130706553 want=11)` (D's `point_dot` faults there, so it's
+gated) while `Blob` passes for both. Passing the same struct **by pointer** works
+for all five. All match the disassembly. See
+[docs/08](docs/08-qemu-execution.md), [docs/19](docs/19-dlang-ldc.md).
 
 ## 6. Mixing LLVM IR across frontends — is it possible?
 
@@ -184,42 +215,51 @@ Yes, with a version caveat.
 
 - **Textual IR / datalayout**: identical (§2), so the IRs are mutually
   well-formed for the same target.
-- **`llvm-link`**: would merge the modules, but needs a *version-matched* tool.
-  espressif's clang ships only `llc` and `ld.lld` (no `llvm-link`/`opt`); the
-  host's `llvm-link` is LLVM 18 and rejects LLVM-21 IR (`getelementptr … nuw`,
-  `captures(none)`, `initializes(…)`).
+- **`llvm-link`**: merges the modules into one — *now demonstrated*. espressif's
+  clang ships only `llc`/`ld.lld` (no `llvm-link`/`opt`/`llvm-dis`), and the host's
+  are LLVM 18 and reject LLVM-21 IR (`getelementptr … nuw`, `captures(none)`,
+  `initializes(…)`). Adding the matching **LLVM 22.1.2 binutils** (the LLVM LDC is
+  built on; `setup.sh LLVM22=1`) reads all of it and **merges all five frontends'
+  IR into one 42-function module**; `opt -O2` then inlines across the merge.
 - **`llc`**: espressif's `llc -mcpu=esp32` consumes IR emitted by clang, rust
-  **and** zig — they all feed the one backend.
+  **and** zig — they all feed the one backend. (Upstream LLVM-22's `llc` lacks the
+  `esp32` CPU, so esp32 *codegen* of merged/22 IR still needs the espressif backend.)
 - **Cross-language LTO** (the practical IR-merge path): compile to LLVM bitcode
-  and let `ld.lld` merge it. **clang↔rust LTO succeeds** (both are exactly
-  21.1.3) and produces a single image where C calls Rust. **clang↔zig LTO fails**
-  — `ld.lld: error: … Invalid record` — because Zig's bitcode is LLVM **21.1.0**
-  and the espressif LTO reader is 21.1.3. A minor-version bitcode skew, not a
-  fundamental barrier. Details: [docs/04-llvm-ir-and-mixing.md](docs/04-llvm-ir-and-mixing.md).
+  and let `ld.lld` merge it. **clang↔rust LTO succeeds** (both 21.1.3) and — more
+  surprisingly — **clang↔D succeeds** too (the esp 21.1.3 LTO reader accepts LDC's
+  LLVM **22.1.2** bitcode and inlines across the boundary). **clang↔zig LTO fails**
+  — `ld.lld: error: … Invalid record` — because Zig's bitcode is LLVM **21.1.0**.
+  So bitcode skew is not a simple "must match" rule. Details:
+  [docs/04-llvm-ir-and-mixing.md](docs/04-llvm-ir-and-mixing.md).
 
 ## 7. Conclusions
 
 1. **The shared backend buys a shared ABI for the 95% case.** Integers, floats,
    doubles, pointers, function-pointer callbacks, small structs and struct
-   returns are bit-identical across clang, rust, zig and (independently) gcc.
+   returns interoperate across clang, rust, zig, D and (independently) gcc — host
+   runtime PASS for all five, identical windowed convention in the disassembly.
    Cross-language FFI on Xtensa is real and practical today.
 2. **Linkers are interchangeable.** lld and GNU ld each link both object
-   families; GCC and LLVM objects coexist in one image.
-3. **The leak is in Zig's experimental ESP targets, on both arches.** By-value
-   struct *arguments* are mishandled — Xtensa: under-aligned (`align(1)`) structs
-   stack-spilled instead of `[6 x i32]` regs; RISC-V: small `{i32,i32}`
-   mis-lowered to `[2 x i64]` (the RISC-V case reproduces on upstream Zig too).
-   Rust/clang/gcc are correct on both. Confirmed live on qemu (xtensa + riscv).
-4. **IR is portable; tooling versions are the gotcha.** Identical datalayout
-   makes IR mixing sound in principle; in practice keep the `llvm-link`/LTO tool
-   at the *same* LLVM version as the bitcode producers.
+   families; GCC and LLVM (clang/rust/zig/D) objects coexist in one image.
+3. **The leaks are by-value struct *arguments* on the two defer-to-backend
+   frontends.** **Zig** — Xtensa under-aligned (`align(1)`) structs stack-spilled,
+   RISC-V small `{i32,i32}` mis-lowered to `[2 x i64]` (reproduces on upstream
+   Zig). **D/LDC** — marks every aggregate `byval`/`sret`, so it diverges for
+   *all* register-passed structs + small-struct returns (broader than Zig).
+   Rust/clang/gcc are correct everywhere. Confirmed live on qemu (xtensa + riscv).
+4. **IR is portable; tooling versions are the gotcha.** A compatible datalayout
+   makes IR mixing sound; with the matching LLVM-22 binutils `llvm-link` merges
+   all five frontends, while the *LTO* reader is pickier (accepts clang/rust 21.1.3
+   and D 22.1.2, rejects zig 21.1.0) — "same LLVM version" is a rule of thumb, not
+   absolute.
 
 ## 8. Practical FFI guidance for ESP32 polyglot projects
 
 - Stick to the C ABI (`extern "C"` / `#[no_mangle]` / `export fn`) — done here.
 - Scalars, pointers, enums, callbacks, and struct *returns*: free to cross any boundary.
-- On any boundary that touches **Zig** (Xtensa or RISC-V), pass by-value structs
-  **by pointer** — Zig mishandles different by-value struct-arg cases on each arch.
+- On any boundary that touches **Zig or D** (Xtensa or RISC-V), pass by-value
+  structs **by pointer** — Zig mishandles different by-value struct-arg cases on
+  each arch, and D mishandles every register-passed struct + small-struct return.
   Rust↔C/clang/gcc need no such caveat.
 - For cross-language LTO, build every participant with the *same* LLVM point
   release, or don't LTO across the mismatched one.

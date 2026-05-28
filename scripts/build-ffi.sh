@@ -5,7 +5,7 @@
 #   ./build-ffi.sh all            -> host + all three Xtensa cores
 #
 # Each backend language implements the same C-ABI contract; this script links
-# objects from four compilers (and two linkers) to prove interop.
+# objects from five compilers (clang, gcc, rustc, zig, LDC) and two linkers.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/env.sh
@@ -23,17 +23,12 @@ INC="$PWD/$SRC/include"
 # assembler rejects CFI directives ("CFI is not supported for this target"),
 # which LDC emits anyway. See docs/19.
 ldc_xtensa_obj() { # mcpu out src
-    local cpu=$1 out=$2 src=$3 s="${2%.o}.s" feat
-    # LDC's upstream LLVM-22 only knows the `esp32` Xtensa CPU; esp32s2/s3 are
-    # "not a recognized processor" and fall back to generic (no mul32 -> an
-    # __mulsi3 libcall that the RT lib lacks). So specify features by hand for
-    # those (ldc #4919). Float stays soft, which is interop-safe: f32/f64 cross
-    # the C ABI in a-registers regardless of whether the body uses the FPU.
-    case "$cpu" in
-        esp32) feat="-mcpu=esp32" ;;
-        *)     feat="-mattr=+windowed,+density,+mul32,+mul16,+div32" ;;
-    esac
-    "$LDC2" -mtriple=xtensa-esp-elf $feat -betterC -Os -output-s -of="$s" "$src"
+    local cpu=$1 out=$2 src=$3 s="${2%.o}.s"
+    # ldc_xtensa_flags (env.sh) picks -mcpu=esp32 or, for the s2/s3 cores LDC's
+    # LLVM-22 doesn't recognize, an explicit -mattr (ldc #4919; else `a*b`
+    # becomes an __mulsi3 libcall the RT lib lacks). Float stays soft, which is
+    # interop-safe: f32/f64 cross the C ABI in a-registers regardless.
+    "$LDC2" -mtriple=xtensa-esp-elf "$(ldc_xtensa_flags "$cpu")" -betterC -Os -output-s -of="$s" "$src"
     sed -E -i '/^[[:space:]]*\.cfi_/d' "$s"
     "$CLANG" --target=xtensa-esp-elf -mcpu="$cpu" -c "$s" -o "$out"
 }

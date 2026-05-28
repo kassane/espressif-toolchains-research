@@ -11,8 +11,8 @@ output.
       zig 0.16.0/LLVM 21.1.0, gcc 15.2.0, **LDC 1.42-git/LLVM 22.1.2** (D).
 - [x] Confirmed the shared backend: identical CPU feature sets and identical
       `target datalayout` across clang/rust/zig (docs 02, 04).
-- [x] FFI matrix (`experiments/ffi-matrix`): one C-ABI contract, 4 implementations,
-      1 driver.
+- [x] FFI matrix (`experiments/ffi-matrix`): one C-ABI contract, 5 implementations
+      (c/cpp/rust/zig/d), 1 driver.
   - [x] **Host build runs & PASSes** — 36/36 cross-language calls (doc 03).
   - [x] **esp32 / esp32s2 / esp32s3 all link** as one ELF; 3 linker/compiler
         combos each (lld pure-LLVM, lld GCC-mixed, GNU ld); **0 undefined** (doc 03).
@@ -87,8 +87,9 @@ output.
       (`esp-develop-9.2.2-20260417`) is downloaded; the bare-metal harness
       (`experiments/qemu-run`, `scripts/run-qemu.sh`) **runs the full FFI matrix
       on `-machine sim -cpu dc233c`** and reproduces the docs/05 prediction at
-      runtime: scalars + align-4 `Point` pass for all 4 languages; the align-1
-      `blob_sum` by value gives `zig FAIL (got=242 want=300)` — the ABI bug, live.
+      runtime: scalars pass for all 5 languages; the align-1 `blob_sum` by value
+      gives `zig FAIL` (and `d FAIL` — D also misses the align-4 `point_dot`,
+      docs/19) — the ABI bugs, live; by-pointer passes for all.
       (Bring-up: XEA2 window handlers + VECBASE, `PS.INTLEVEL=15`, and a
       div-free `putdec` to dodge dc233c's missing `mul32high`.) docs/08.
       Remaining nicety: a full `-machine esp32` + ROM + flash-image run to use the

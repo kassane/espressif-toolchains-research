@@ -3,8 +3,10 @@
 # the espressif qemu fork, reporting per-language results over semihosting.
 #   xtensa (default): -machine sim -cpu dc233c   (needs build-ffi.sh esp32)
 #   riscv:            -machine virt               (needs build-ffi.sh esp32c3)
-# Expected: scalars + struct returns pass for all 4 languages; Zig fails a
-# by-value struct ARG differently per arch (xtensa blob_sum, riscv point_dot).
+# Expected: scalars + struct returns pass for all 5 languages. By-value struct
+# ARGS diverge on the two experimental frontends: Zig per-arch (xtensa blob_sum,
+# riscv point_dot) and D (xtensa point_dot+blob_sum; riscv small struct gated,
+# docs/19). The by-pointer variant passes for all.
 # See docs/08 (xtensa), docs/09 (riscv). qemu fork lives at $TC/qemu (xtensa &
 # riscv softmmu tarballs from espressif/qemu esp-develop-9.2.2-20260417).
 set -euo pipefail

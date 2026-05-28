@@ -1,11 +1,11 @@
 # 03 — The FFI matrix
 
-`experiments/ffi-matrix` is the core experiment: one C-ABI contract, four
+`experiments/ffi-matrix` is the core experiment: one C-ABI contract, five
 implementations, one driver that calls all of them.
 
 ## The contract (`include/ffi_abi.h`)
 
-Nine functions per language, each prefixed `c_`/`cpp_`/`rs_`/`zig_`:
+Nine functions per language, each prefixed `c_`/`cpp_`/`rs_`/`zig_`/`d_`:
 
 | function | signature | ABI corner exercised |
 |----------|-----------|----------------------|
@@ -30,13 +30,16 @@ $ ./scripts/build-ffi.sh host
 == cpp  ==  ok ×9
 == rs   ==  ok ×9
 == zig  ==  ok ×9
+== d    ==  ok ×9
 total failures: 0
-RESULT: PASS (all 4 languages interop)
+RESULT: PASS (all 5 languages interop)
 ```
 
-Built with `zig cc`/`zig c++` (C/C++), esp `rustc` via cargo (Rust, host target)
-and `zig build-obj` (Zig), linked by `zig cc`. This is a genuine runtime proof
-that the C-ABI contract is consistent across all four implementations.
+Built with `zig cc`/`zig c++` (C/C++), esp `rustc` via cargo (Rust, host target),
+`zig build-obj` (Zig) and `ldc2 -betterC` (D), linked by `zig cc`. This is a
+genuine runtime proof that the C-ABI contract is consistent across all five
+implementations. (D's by-value struct *args* pass on the x86_64 host — SysV
+matches — but diverge on Xtensa/RISC-V; see [docs/19](19-dlang-ldc.md).)
 
 > Caveat: the host SysV ABI masks the Xtensa large-struct bug (§05) because a
 > 24-byte struct is memory-passed on x86_64 where clang and zig happen to agree.
