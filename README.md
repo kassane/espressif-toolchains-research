@@ -69,10 +69,12 @@ experiments/
   llvm-ir-mix/     cross-language LTO / IR-merge probes (+ LLVM-22 llvm-link merge)
   dlang/           D/LDC deep-dive: ABI, extern(C++), -HC headers, LTO (docs/19)
   ldc-fork-comparison/ espressif-21 vs upstream-22 LDC side-by-side (docs/23)
+  atomics-orders/  atomic memory-order parity battery (docs/17 extended)
+  tinygo/          TinyGo v0.41.1 / LLVM 20.1.1 probe; whole-program (docs/24)
   baremetal-mixin/ runnable use-case: Rust app + Zig kernel in one no_std ELF
   qemu-run/        bare-metal semihosting harnesses (xtensa + riscv) for qemu
 scripts/           setup / env / build / analyze
-docs/              detailed findings (00–23: toolchains, ABI, IR, FFI matrix, D safety/features, TMP-FFI, DWARF/codegen audit, LDC espressif-fork)
+docs/              detailed findings (00–24: toolchains, ABI, IR, FFI matrix, D safety/features, TMP-FFI, DWARF/codegen audit, LDC espressif-fork, TinyGo)
 Research.md        headline write-up
 HANDOFF.md         current state + next steps
 CLAUDE.md          orientation for future automated sessions

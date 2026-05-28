@@ -15,6 +15,11 @@ CLANG_URL="https://github.com/espressif/llvm-project/releases/download/esp-21.1.
 RUST_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz"
 RUST_SRC_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-src-1.95.0.0.tar.xz"
 GCC_URL="https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20251204/xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz"
+# TinyGo: Go-to-LLVM compiler (its own LLVM 20.1.1 bundle). Targets esp32 +
+# esp32s3 + esp32c3 (no esp32s2). It's a whole-program compiler — emits a
+# firmware .bin, not relocatable .o files — so it sits outside the FFI matrix
+# and lives in experiments/tinygo/. See docs/24.
+TINYGO_URL="https://github.com/tinygo-org/tinygo/releases/download/v0.41.1/tinygo0.41.1.linux-amd64.tar.gz"
 # LDC: kassane/esp-idf-dlang esp-fork build (LDC 1.42 / espressif LLVM 21.1.3).
 # Static-musl, ships ldc2.conf with first-class esp32/esp32s2/esp32s3 -mcpu values
 # (no -mattr fallback) AND a Xtensa MC that lays literal pools correctly (no
@@ -40,7 +45,10 @@ fetch() { # url outfile
     [ -f "$2" ] && { echo "have $(basename "$2")"; return; }
     echo "downloading $(basename "$2")"
     curl -fsSL --retry 4 --retry-delay 2 -o "$2" "$1"
-    xz -t "$2"
+    case "$2" in
+        *.tar.xz) xz -t "$2" ;;
+        *.tar.gz) gunzip -t "$2" ;;
+    esac
 }
 
 fetch "$ZIG_URL"      "$DL/zig-xtensa.tar.xz"
@@ -49,6 +57,7 @@ fetch "$RUST_URL"     "$DL/rust-xtensa.tar.xz"
 fetch "$RUST_SRC_URL" "$DL/rust-src.tar.xz"
 fetch "$GCC_URL"      "$DL/gcc-xtensa.tar.xz"
 fetch "$LDC_URL"      "$DL/ldc-esp.tar.xz"
+fetch "$TINYGO_URL"   "$DL/tinygo.tar.gz"
 # integrity check on the esp-LDC asset — it's the only one we hand-pin a sha256
 # for (the others are large multi-file archives where the URL+tag is the pin).
 echo "$LDC_SHA256  $DL/ldc-esp.tar.xz" | sha256sum -c - >/dev/null
@@ -62,6 +71,7 @@ extract "$DL/zig-xtensa.tar.xz"   "zig-relsafe-x86_64-linux-musl-baseline"
 extract "$DL/clang-xtensa.tar.xz" "esp-clang"
 extract "$DL/gcc-xtensa.tar.xz"   "xtensa-esp-elf"
 extract "$DL/ldc-esp.tar.xz"      "ldc-xtensa"
+extract "$DL/tinygo.tar.gz"       "tinygo"
 
 # Rust ships split components; merge rustc + host std + cargo into one prefix.
 if [ ! -x "$TC/rust-esp/bin/rustc" ]; then
