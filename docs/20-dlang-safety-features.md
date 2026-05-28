@@ -198,7 +198,7 @@ adopted into C++26 (whitepaper track instead), and the alternative borrow-checke
 proposal (P3390 "Safe C++") was rejected. Runtime detection via `-fsanitize=address`
 remains the C++ tool.
 
-## 9. C++26 third leg via `zig c++` (clang 21 reality)
+## 9. C++26 third leg via `zig c++` (clang 21 / clang 22 reality)
 
 C++26 was feature-frozen at **Sofia, June 2025** with Contracts (P2900),
 Reflection (P2996), and the static-reflection family adopted; pattern matching
@@ -214,8 +214,24 @@ track. **Implementations lag.** What the `zig c++` (Zig 0.16's bundled
 | Reflection (`^^`/`std::meta::…`, P2996) | ✗ (Bloomberg `clang-p2996` fork only) |
 | Pattern matching (`match`, P2688R5) | ✗ (also deferred to C++29) |
 | Safety profiles (P3081) | ✗ (whitepaper track, no compiler flag) |
-| `<expected>` / `<print>` / `<flat_map>` / `<execution>` | ✓ (available without `-fexperimental-library`) |
-| `<simd>` (P1928) / `<linalg>` (P1673) / `<hive>` (P0447) / `<contracts>` | ✗ MISSING (libc++ 21 hasn't implemented them) |
+| **P2686R5** constexpr decomposition declarations | ✗ on clang 21 (`"cannot be declared 'constexpr'"`); **✓ on clang 22** (see re-probe below) |
+| `<expected>` / `<print>` / `<flat_map>` / `<execution>` / `<ranges>` / `<format>` | ✓ (available without `-fexperimental-library`) |
+| `<simd>` (P1928) / `<linalg>` (P1673) / `<hive>` (P0447) / `<contracts>` / `<generator>` | ✗ MISSING (libc++ 21 hasn't implemented them) |
+
+**Re-probed against `kassane/zig-mos-bootstrap` v0.17.0-dev** (`zig version`
+reports `0.17.0-mos-dev`; bundled `clang version 22.0.0git`,
+LLVM 22 mainline). Only one delta moves: **P2686R5 (constexpr
+decomposition declarations) now compiles cleanly** on clang 22 — the
+`constexpr auto [a,b] = P{1,2};` and `pre/post`/`[[pre:]]` contracts repros
+from `safety.sh` §h flip from `"cannot be declared 'constexpr'"` to rc=0.
+The libc++ 22 ships `<ranges>`/`<format>` cleanly but `<simd>`/`<linalg>`/
+`<contracts>`/`<hive>`/`<generator>` are still MISSING; Contracts P2900
+syntax still errors (`error: Unknown Clang option: '-fcontracts'`);
+Reflection P2996 (`^^S`/`std::meta::…`) still rejected
+(`error: Unknown Clang option: '-freflection'`). So the C++26 frontier
+(Contracts/Reflection/Pattern Matching/Profiles) **is still not in clang
+22 mainline** — only Bloomberg's `clang-p2996` fork carries P2996. The
+v0.17.0-dev bump is a single-feature step (P2686), not a frontier shift.
 
 **What `-fexperimental-library` actually gates** (per the
 [libc++ user docs](https://libcxx.llvm.org/UserDocumentation.html)): `<execution>`

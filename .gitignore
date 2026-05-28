@@ -29,3 +29,4 @@ zig-out/
 # Editor
 *.swp
 .DS_Store
+a.out
