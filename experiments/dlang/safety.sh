@@ -11,6 +11,10 @@ cd "$(dirname "$0")/../.."
 source scripts/env.sh
 B=build/dsafe; mkdir -p "$B"
 LT="-mtriple=xtensa-esp-elf -mcpu=esp32"
+# zig c++ caches successful compiles and does NOT replay diagnostics on cache
+# hit, so the C++ warning probes (§h) would silently disappear on re-runs.
+# Use a per-run fresh cache dir.
+export ZIG_GLOBAL_CACHE_DIR="$PWD/$B/zcache"; rm -rf "$ZIG_GLOBAL_CACHE_DIR"
 
 echo "== (a) -preview= upcoming language changes (safety-relevant ones marked *) =="
 "$LDC2" -preview=h 2>&1 | grep -E '=(all|dip1000|dip1008|safer|systemVariables|in|bitfields)' \
@@ -98,3 +102,72 @@ printf "  inline LLVM IR add_ir -> %s (real Xtensa insn from embedded IR)\n" \
   "$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=add_ir "$B/ldcx.o" 2>/dev/null | grep -oE '\badd\b|add\.n' | head -1)"
 echo "  (@fastmath/@section/@weak via ldc.attributes; __ir embeds LLVM IR — all"
 echo "   LDC-only, no DMD/GDC equivalent. Cross-compile is -mtriple/-mcpu/-mattr.)"
+
+echo "== (f) must-use parity: D @mustuse / Rust #[must_use] / C++ [[nodiscard]] =="
+printf 'import core.attribute:mustuse;@mustuse int f(){return 42;}\n' > "$B/muf.d"
+o=$("$LDC2" -betterC -c "$B/muf.d" -of="$B/x.o" 2>&1 || true)
+printf "  D @mustuse on FUNCTION : %s\n" "$(printf '%s' "$o" | grep -oiE 'reserved for future use.*' | head -1)"
+printf 'import core.attribute:mustuse;@mustuse struct R{int v;}R make(){return R(42);}extern(C) void use(){make();}\n' > "$B/mut.d"
+o=$("$LDC2" -betterC -c "$B/mut.d" -of="$B/x.o" 2>&1 || true)
+printf "  D @mustuse on TYPE     : %s\n" "$(printf '%s' "$o" | grep -oiE 'ignored value of `@mustuse` type.*' | head -1)"
+cat > "$B/mu.rs" <<'EOF'
+#[must_use] fn f() -> i32 { 42 }
+#[must_use] struct R { v: i32 }
+pub fn caller() { f(); R{v:42}; }
+EOF
+o=$("$RUSTC" --edition 2021 --crate-type lib "$B/mu.rs" -o /dev/null 2>&1 || true)
+printf "  Rust #[must_use] fn+type: %s 'must be used' warnings (warn-by-default)\n" "$(printf '%s' "$o" | grep -cE 'must be used' || true)"
+cat > "$B/nd.cpp" <<'EOF'
+[[nodiscard]] int f(){return 42;}
+struct [[nodiscard("check it")]] R { int v; };
+int main(){ f(); R{42}; return 0; }
+EOF
+o=$("$ZIG" c++ -std=c++26 -fexperimental-library "$B/nd.cpp" -o /dev/null 2>&1 || true)
+printf "  C++26 [[nodiscard]]    : %s warnings (incl. C++20 'reason')\n" "$(printf '%s' "$o" | grep -cE 'nodiscard|unused-result' || true)"
+echo "  => D @mustuse is TYPE-only (fn 'reserved for future use'); Rust + C++ allow both."
+
+echo "== (g) @live (DIP1021 ownership) ⇄ Rust borrow checker — memory-safety parity =="
+cat > "$B/live.d" <<'EOF'
+import core.stdc.stdlib:malloc,free;
+@live @trusted void uaf()   { int* p=cast(int*)malloc(4); free(p); *p=1; }
+@live @trusted void dbl()   { int* p=cast(int*)malloc(4); free(p); free(p); }
+@live @trusted void leak()  { int* p=cast(int*)malloc(4); }
+@live @trusted int* dangle(){ int x; return &x; }
+EOF
+o=$("$LDC2" -preview=dip1021 -betterC -c "$B/live.d" -of="$B/x.o" 2>&1 || true)
+echo "  D @live -preview=dip1021 rejects:"
+printf '%s' "$o" | grep -oE 'has undefined state|is not Owner, cannot consume|is not disposed of before return|escapes a reference' | sort -u | sed 's/^/    /'
+cat > "$B/rb.rs" <<'EOF'
+#![allow(unused)]
+fn uaf(){ let b=Box::new(0); let r=&*b; drop(b); let _=*r; }
+fn dbl(){ let b=Box::new(0); drop(b); drop(b); }
+fn dangle<'a>()->&'a i32{ let x=3; &x }
+fn leak(){ let b=Box::new(0); std::mem::forget(b); }
+EOF
+o=$("$RUSTC" --edition 2021 --crate-type lib "$B/rb.rs" -o /dev/null 2>&1 || true)
+printf "  Rust borrow checker rejects: %s\n" "$(printf '%s' "$o" | grep -oE 'E0[0-9]+' | sort -u | tr '\n' ' ')"
+printf "  Rust LEAK errors: %s   (mem::forget is SAFE — Rust allows leaks by design)\n" "$(printf '%s' "$o" | grep -c 'leak' || true)"
+echo "  C++ static: NONE (no borrow analog; runtime via -fsanitize=address)."
+echo "  => D @live catches UAF + double-free + dangling + LEAK; Rust catches first 3"
+echo "     but allows leaks (mem::forget safe); C++ has no static borrow equivalent."
+
+echo "== (h) C++26 via zig c++ (clang 21.1.0 + libc++; -fexperimental-library) =="
+"$ZIG" c++ --version 2>/dev/null | head -1 | sed 's/^/  /'
+hprobe(){ printf '#include %s\nint main(){return 0;}\n' "$2" > "$B/p.cpp"; \
+  o=$("$ZIG" c++ -std=c++26 -fexperimental-library -c "$B/p.cpp" -o /dev/null 2>&1 || true); \
+  if printf '%s' "$o" | grep -qE 'fatal|no such|undeclared'; then s="MISSING"; else s="OK"; fi; \
+  printf "    %-22s %s\n" "$1" "$s"; }
+echo "  libc++ feature headers:"
+hprobe "<expected>"  "<expected>"
+hprobe "<print>"     "<print>"
+hprobe "<flat_map>"  "<flat_map>"
+hprobe "<execution>" "<execution>"
+hprobe "<simd> (C++26)"     "<simd>"
+hprobe "<linalg> (C++26)"   "<linalg>"
+hprobe "<contracts> (P2900)" "<contracts>"
+hprobe "<hive> (C++26)"     "<hive>"
+printf 'int f(int b) pre(b!=0) { return b; }\n' > "$B/ctr.cpp"
+o=$("$ZIG" c++ -std=c++26 -fexperimental-library -c "$B/ctr.cpp" -o /dev/null 2>&1 || true)
+printf "  contracts syntax (P2900): %s\n" "$(printf '%s' "$o" | grep -oE 'expected function body.*' | head -1 || echo IMPLEMENTED)"
+echo "  => -fexperimental-library is a no-op on this libc++ 21 (C++26 <simd>/<linalg>/"
+echo "     <contracts>/<hive> all unimplemented); only [[nodiscard]] (must-use) carries."

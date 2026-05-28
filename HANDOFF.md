@@ -79,6 +79,23 @@ output.
       default" was *rejected* because `extern(C)`/`extern(C++)` prototypes can't be
       verified `@safe` (safety isn't mangled) — so D's FFI boundary must be hand
       `@trusted`. D `@system`-by-default vs Rust safe-by-default.
+- [x] **Extended: `@mustuse`, `@live`, and C++26 third leg** (docs/20 §7–§9;
+      `safety.sh` §f-§h). Three-way **must-use parity**: D `@mustuse` (DIP1038)
+      is a *compile-error* but TYPE-only; Rust `#[must_use]` and C++17
+      `[[nodiscard]]` are warnings on both fns and types. **`@live` ownership
+      checker** (no standalone DIP; DIP1021 is the formal piece) catches UAF,
+      double-free, dangling AND **leak** — the last is what Rust's borrow checker
+      famously *doesn't* catch (`std::mem::forget` is safe). Empirical caveat:
+      spec says `@live` activates with the attribute alone, but on LDC 1.42 the
+      checker is silent without `-preview=dip1021` (or `=all`). **C++26 reality
+      on zig c++ / clang 21**: of the safety paper trail (Contracts P2900,
+      Reflection P2996, Pattern Matching P2688, Profiles P3081 — all C++26-frozen
+      at Sofia 2025 except Profiles/PM), **none are in clang 21**; only
+      `[[nodiscard]]` carries through. `-fexperimental-library` gates `<execution>`
+      / tzdb / `<syncstream>` / libc++ hardening, NOT `<expected>`/`<print>`/
+      `<flat_map>` (those ship unconditionally). Reviewed DIPs 1000–1052 (DIP1050
+      is skipped); the 5 Accepted-and-relevant ones plus the rejected DIP1028 are
+      summarized in docs/20 §6.
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
       autovectorization** in any of the four — vectorizable loops stay scalar and

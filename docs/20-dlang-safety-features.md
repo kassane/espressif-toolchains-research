@@ -116,34 +116,137 @@ verified — docs/03/19) and keep the D internals `@safe`. Movement toward
 safe-by-default continues via `-preview=safer` and editions (DIP1052 cites it as
 a goal), but the FFI-mangling problem is why it can't just be flipped.
 
-## 6. Relevant DIPs
+## 6. Relevant DIPs (DIP1000–DIP1052)
+
+The [canonical DIP index](https://github.com/dlang/DIPs/blob/master/DIPs/README.md)
+covers DIP1000 through DIP1052 (DIP1050 is skipped). The ones with direct
+bearing on safety, FFI and editions in this doc:
 
 | DIP | title | status | note |
 |---|---|---|---|
-| [1000](https://github.com/dlang/DIPs/blob/master/DIPs/other/DIP1000.md) | Scoped Pointers | Superseded¹ | escape analysis; `-preview=dip1000`, slated to become default |
+| [1000](https://github.com/dlang/DIPs/blob/master/DIPs/other/DIP1000.md) | Scoped Pointers | Superseded¹ | escape analysis; `-preview=dip1000` (§4) |
 | [1008](https://github.com/dlang/DIPs/blob/master/DIPs/other/DIP1008.md) | Exceptions and `@nogc` | Postponed | `-preview=dip1008` |
-| [1021](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1021.md) | Argument Ownership | Accepted (2.092) | `-preview=dip1021` |
+| [1021](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1021.md) | Argument Ownership | Accepted (2.092) | the *only* formal piece of `@live`; `-preview=dip1021` gates the checker (§8) |
 | [1028](https://github.com/dlang/DIPs/blob/master/DIPs/rejected/DIP1028.md) | **Make `@safe` the Default** | **Rejected** | the `extern(C)`-can't-be-`@safe` FFI soundness problem (§5) |
 | [1035](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1035.md) | `@system` Variables | Accepted (2.102) | `-preview=systemVariables` |
+| [1038](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1038.md) | **`@mustuse`** | **Accepted** | type-only (no fns); compile-error (§7) |
+| [1051](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1051.md) | Bitfields | Accepted | `-preview=bitfields` |
 | [1052](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1052.md) | **Editions** | **Accepted** | the `--edition=` mechanism (§2) |
+
+Other notable outcomes in the range: DIP1003 (remove `body` keyword), 1009
+(expression-contract syntax), 1010 (`static foreach`), 1014 (struct move),
+1018 (copy ctor), 1024 (shared atomics), 1029 (`throw` as fn attr), 1030 (named
+args), 1034 (bottom type reboot), 1043 (shortened method syntax), 1046 (`ref` var
+decls) all **Accepted**; 1027/1036 (string interpolation) **Rejected/Withdrawn**
+(the implemented design came later through a separate proposal).
 
 ¹ "Superseded" is index bookkeeping — the spec text moved into the language spec;
 the feature ships behind `-preview=dip1000`.
 
-## Verdict — Rust vs D memory safety
+## 7. Must-use parity: `@mustuse` (DIP1038) / `#[must_use]` / `[[nodiscard]]`
 
-| | **Rust** | **D / LDC** |
-|---|---|---|
-| default | **safe** | `@system` (unchecked) |
-| opt-out / bridge | `unsafe` block (scoped) | `@trusted` (whole-function) |
-| escape/lifetimes | full borrow checker (aliasing ⊕ mutability + lifetimes) | DIP1000 escape only — no aliasing/data-race model |
-| toward stricter default | already there | `-preview=safer`, editions (DIP1052) |
-| unsafe-op battery (§3) | rejects 8/8 | rejects 7/8 (reinterpret gap) |
+Three-way comparison of "don't silently discard a return value" (`safety.sh` §f):
 
-Rust is **stronger** (safe-by-default, block-scoped `unsafe`, a real borrow
-checker that keeps running around `unsafe`); D is **more gradual / lower-friction**
-(opt-in, incremental, `-preview=safer` to tighten the default) but its lifetime
-model is escape-only and `@trusted` is coarser. On the concrete operation battery
-they are at near-parity. For this repo's cross-language FFI: D `@safe` cannot
-cover the FFI boundary by design (DIP1028/§5) — wrap each foreign call in
-`@trusted` over an ABI you've verified, and keep the rest `@safe`.
+| | **D `@mustuse`** | **Rust `#[must_use]`** | **C++ `[[nodiscard]]`** |
+|---|---|---|---|
+| applies to **function** | ✗ `Error: @mustuse on functions is reserved for future use` | ✓ warns | ✓ warns (C++17) |
+| applies to **type** | ✓ `Error: ignored value of @mustuse type` | ✓ warns | ✓ warns |
+| `"reason"` text | — | (impl-defined) | ✓ `[[nodiscard("…")]]` (C++20) |
+| severity | **compile-error** | warning (warn-by-default) | warning |
+| suppress | `cast(void) expr;` | `let _ = …;` | `(void)expr;` |
+
+D's `@mustuse` (DIP1038, Accepted; `import core.attribute : mustuse;`) is the
+**strictest** — it's an error, not a warning — but the **narrowest** (type-only,
+no functions). Wrap a must-use return in a `@mustuse struct Result { … }`. Rust
+and C++26 are functionally equivalent to each other.
+
+## 8. `@live`: ownership/borrow checker — what Rust's misses
+
+`@live` (per [`spec/ob.html`](https://dlang.org/spec/ob.html) "Live Functions",
+Walter Bright 2019) is D's experimental Owner/Borrowed/Readonly pointer model — a
+borrow-checker-ish data-flow analysis per `@live` function. **No standalone DIP**
+introduced it; [DIP1021](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1021.md)
+"Argument Ownership and Function Calls" is the only formally accepted piece.
+
+> **Empirical caveat on LDC 1.42.** The spec says the `@live` attribute alone
+> enables the checker. On the LDC 1.42 / DMD 2.112 frontend bundled here, the
+> checker is **silent without a preview flag** and only activates under
+> `-preview=dip1021` (or `-preview=all`). Use that to see the diagnostics
+> (`safety.sh` §g).
+
+Memory-bug coverage (`safety.sh` §g — real diagnostics from each compiler):
+
+| memory bug | **D `@live` -preview=dip1021** | **Rust safe (borrow checker)** | **C++26 static** |
+|---|---|---|---|
+| use-after-free | ✓ *"has undefined state and cannot be read"* | ✓ `E0505 cannot borrow … because previously dropped` | ✗ (runtime: `-fsanitize=address`) |
+| double-free / double-move | ✓ *"is not Owner, cannot consume its value"* | ✓ `E0382 use of moved value` | ✗ |
+| dangling ref / return-&local | ✓ *"escapes a reference to local"* | ✓ `E0515 cannot return reference to local` | ✗ |
+| **leak** (forget to free) | ✓ *"is not disposed of before return"* | **✗ ALLOWED** (`std::mem::forget` is `safe` — "leaking memory is memory-safe") | ✗ |
+
+So **D `@live` catches LEAKS that Rust's borrow checker deliberately doesn't.**
+That's a genuine D-stronger-than-Rust point on the specific axis. But `@live`'s
+*scope* is much narrower than Rust's: per-function, opt-in, with documented holes
+(no aliasing calculus, no Rust-style generic lifetimes; exceptions defeat the
+analysis — a throw between `malloc` and `free` is a leak it won't see; lambdas
+escape checking; const-scope pointers aren't Owners; callers don't enforce
+DIP1021 rules across the call). Walter himself calls it "minimum viable." Rust's
+borrow checker runs **on all safe code**, has a full lifetime calculus + NLL,
+and keeps running around `unsafe` blocks.
+
+C++26 has **no upstream static analog** — P3081 "Core safety profiles" was *not*
+adopted into C++26 (whitepaper track instead), and the alternative borrow-checker
+proposal (P3390 "Safe C++") was rejected. Runtime detection via `-fsanitize=address`
+remains the C++ tool.
+
+## 9. C++26 third leg via `zig c++` (clang 21 reality)
+
+C++26 was feature-frozen at **Sofia, June 2025** with Contracts (P2900),
+Reflection (P2996), and the static-reflection family adopted; pattern matching
+(P2688R5) was deferred to C++29; safety Profiles (P3081) went to a whitepaper
+track. **Implementations lag.** What the `zig c++` (Zig 0.16's bundled
+**Clang 21.1.0** + **libc++ 21**) actually delivers on `-std=c++26
+-fexperimental-library` (`safety.sh` §h):
+
+| feature | status on clang 21 / libc++ 21 |
+|---|---|
+| `[[nodiscard("reason")]]` | ✓ (unchanged from C++17/20) — the only safety carry-through |
+| Contracts (`pre`/`post`/`contract_assert`, P2900) | ✗ *"expected function body after function declarator"* — not in clang 21 (or 22) |
+| Reflection (`^^`/`std::meta::…`, P2996) | ✗ (Bloomberg `clang-p2996` fork only) |
+| Pattern matching (`match`, P2688R5) | ✗ (also deferred to C++29) |
+| Safety profiles (P3081) | ✗ (whitepaper track, no compiler flag) |
+| `<expected>` / `<print>` / `<flat_map>` / `<execution>` | ✓ (available without `-fexperimental-library`) |
+| `<simd>` (P1928) / `<linalg>` (P1673) / `<hive>` (P0447) / `<contracts>` | ✗ MISSING (libc++ 21 hasn't implemented them) |
+
+**What `-fexperimental-library` actually gates** (per the
+[libc++ user docs](https://libcxx.llvm.org/UserDocumentation.html)): `<execution>`
+(PSTL), `std::chrono::tzdb`/time zones, `<syncstream>`, and libc++'s **hardening
+assertion semantics** (`ignore`/`observe`/`quick-enforce`/`enforce` —
+contracts-shaped, but *not* P2900). It does **not** gate `<expected>`/`<print>`/
+`<flat_map>`/`<hive>`/`<simd>`; those are individual `Cxx2cPapers.csv` line items
+shipped (or not) on their own. On this LDC-adjacent clang 21 build, the flag is
+effectively a no-op for everything we tried — but it is the correct flag for any
+of the four it does gate, and is forward-compatible.
+
+So the third leg gives us only `[[nodiscard]]` for the parity battery; the
+borrow-checker / static-safety story remains D `@live` vs Rust.
+
+## Verdict — Rust × D × C++26 memory safety
+
+| | **Rust** | **D / LDC** | **C++26 (clang 21 reality)** |
+|---|---|---|---|
+| default | **safe** | `@system` (unchecked) | unchecked (Profiles not in C++26) |
+| opt-out / bridge | `unsafe` block (scoped) | `@trusted` (whole-function) | — (no annotation; `-fsanitize=` runtime) |
+| escape/lifetimes | full borrow checker (aliasing ⊕ mutability + NLL) | DIP1000 escape only; `@live` adds per-fn Owner/Borrowed | none upstream |
+| **leak** detection | ✗ (`mem::forget` is safe) | ✓ (`@live` requires disposal) | ✗ |
+| unsafe-op battery (§3) | rejects 8/8 | rejects 7/8 (reinterpret gap) | none rejected statically |
+| must-use (§7) | warn (fn+type) | error (type-only) | warn (fn+type) |
+
+Rust is **broadest** (safe-by-default, full borrow checker on all safe code,
+block-scoped `unsafe`); D is **narrower but strictest where it bites** (compile-
+error `@mustuse`, leak-catching `@live`) — but opt-in, whole-function `@trusted`,
+and a documented-incomplete OB checker. C++26 in clang 21 is the **weakest** in
+practice: the safety paper trail (Contracts, Reflection, Profiles) hasn't landed,
+so it's still effectively C++17/20 — `[[nodiscard]]` and runtime sanitizers. For
+this repo's cross-language FFI the conclusion stands: D `@safe` can't cover the
+FFI boundary (DIP1028 / §5), so `@trusted` the foreign calls and `@safe` the rest.
+
