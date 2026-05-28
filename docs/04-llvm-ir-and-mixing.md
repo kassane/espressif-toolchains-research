@@ -122,5 +122,5 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
 > clang/rust/**D** (all 21.1.3) — no skew. Zig (21.1.0) and TinyGo (20.1.1) are
 > the version-skew outliers; "same LLVM point release" remains the LTO rule of
 > thumb. Object-level FFI (docs 03/05) has no such constraint and is the robust
-> default for the toolchains that produce relocatable `.o` cleanly; TinyGo
-> doesn't (docs/24) so it stays standalone.
+> default for any toolchain that produces a relocatable `.o`; TinyGo (docs/24)
+> stays standalone because its `.o` carries the Go runtime.
