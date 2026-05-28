@@ -96,6 +96,22 @@ output.
       `<flat_map>` (those ship unconditionally). Reviewed DIPs 1000–1052 (DIP1050
       is skipped); the 5 Accepted-and-relevant ones plus the rejected DIP1028 are
       summarized in docs/20 §6.
+- [x] **Embedded TMP-FFI matrix on Xtensa across ALL 5 toolchains** (docs/21,
+      `experiments/dlang/tmpffi.sh`). Sample: `shims::Gpio<int Pin>` — the embedded
+      "shim" template (each pin instantiation is its own symbol with its own static
+      state, no vtable / no runtime branch). C++ provider (esp-clang OR gcc, *both*
+      emit byte-identical Itanium symbols); D consumer via
+      `extern(C++,"shims") extern(C++,class) struct Gpio(int Pin)` with the
+      `pragma(mangle, "_ZN…")` escape hatch for the SFINAE/partial-spec/defaults D's
+      TMP can't express; Rust consumer via `#[link_name="_ZN…"]`; Zig consumer via
+      `extern fn @"_ZN…"`. ld.lld + the xtensa.ld script links all five into one
+      esp32 ELF, **0 undefined**. LLVM-22 binutils (`ldc-developers/llvm` ≠
+      `ldc-developers/ldc` tarball) `llvm-link`s clang+D+Rust IRs into a single
+      11-define module. Empirical C++26 status on esp-clang 21.1.3: even P2686R5
+      constexpr structured bindings (the *only* clang-22 mainline C++26 addition)
+      is rejected — the Sofia-2025 frontier (Contracts/Reflection/PM/Profiles) is
+      not in any clang we have. Baremetal-D's `@safe`+`@live` already covers the
+      static-safety story (docs/20 §8).
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
       autovectorization** in any of the four — vectorizable loops stay scalar and

@@ -67,7 +67,7 @@ experiments/
   baremetal-mixin/ runnable use-case: Rust app + Zig kernel in one no_std ELF
   qemu-run/        bare-metal semihosting harnesses (xtensa + riscv) for qemu
 scripts/           setup / env / build / analyze
-docs/              detailed findings (00–20: toolchains, ABI, IR, FFI matrix, D safety/features, …)
+docs/              detailed findings (00–21: toolchains, ABI, IR, FFI matrix, D safety/features, TMP-FFI, …)
 Research.md        headline write-up
 HANDOFF.md         current state + next steps
 CLAUDE.md          orientation for future automated sessions
