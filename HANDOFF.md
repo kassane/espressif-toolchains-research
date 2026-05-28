@@ -64,6 +64,21 @@ output.
       accepts LDC's 22.1.2 bc + inlines) — unlike clang↔zig. Two real issues: a
       **LDC-Xtensa literal-pool link bug** (re-assemble `-output-s` with esp clang;
       ldc #5091 ICE EH+opt, #4919 cpu-feature defaults).
+- [x] **D/LDC exclusive features + `@safe` parity with Rust** (docs/20,
+      `experiments/dlang/safety.sh`). LDC-only, Xtensa-verified: `@fastmath`
+      (`fmul fast`), `@section`→`.iram1.text`, `@weak`, inline LLVM IR `__ir!`→real
+      `add`; plus `ldc.attributes`/`pragma(LDC_*)`/`--fsanitize`. Two evolution
+      axes: `-preview=<name>` (à la carte; `=all`; safety ones dip1000/safer/
+      systemVariables/nosharedaccess) and **`--edition=` (DIP1052, valid 2023–2025,
+      per-module) — exactly Rust's edition model**; editions don't flip default
+      `@safe` here, `-preview=safer` does. **`@safe` ⇄ Rust battery** (real errors
+      both sides): D `@safe` rejects 7/8 unsafe ops; the one gap is same-size
+      pointer reinterpret (Rust needs `unsafe`). DIP1000 escape ≈ but ⊂ Rust's
+      borrow checker (escape only, no aliasing; `@trusted` is whole-function;
+      `scope` unchecked inside `@trusted`). **Key FFI tie-in:** DIP1028 "make @safe
+      default" was *rejected* because `extern(C)`/`extern(C++)` prototypes can't be
+      verified `@safe` (safety isn't mangled) — so D's FFI boundary must be hand
+      `@trusted`. D `@system`-by-default vs Rust safe-by-default.
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
       autovectorization** in any of the four — vectorizable loops stay scalar and

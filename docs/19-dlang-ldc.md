@@ -187,3 +187,9 @@ the small struct even faults). Pass structs **by pointer**. And (2) a real
 **LDC-Xtensa literal-pool link bug** — re-assemble LDC's `-output-s` with esp
 clang. Both are LLVM-backend / LDC-codegen issues on an experimental target, not
 D-language limitations (host D interops fully).
+
+**See also [docs/20](20-dlang-safety-features.md)** for LDC's exclusive features
+(`@fastmath`/`@section`/`@weak`/inline LLVM IR), the `-preview=`/`--edition=`
+evolution axes (the latter mirrors Rust editions), and a head-to-head `@safe` ⇄
+Rust memory-safety comparison (incl. why DIP1028 keeps `@safe` off-by-default at
+the FFI boundary).

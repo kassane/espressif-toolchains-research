@@ -65,9 +65,9 @@ windowed `entry` instruction decodes as garbage.
 experiments/ffi-matrix/   the contract (include/ffi_abi.h) + 5 impls (c/cpp/rust/zig/d) + driver + xtensa.ld
 experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct ABI bug
 experiments/llvm-ir-mix/  mix*.c + mix_rs + run.sh — LTO probes & LLVM-22 llvm-link module-merge
-experiments/dlang/        cppiface.d + run.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO)
+experiments/dlang/        cppiface.d + run.sh + safety.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO; @safe/preview/edition vs Rust)
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
-docs/00..19               support-matrix / toolchains / abi / … / rust-zig / addrspace / dlang-ldc
+docs/00..20               support-matrix / toolchains / abi / … / addrspace / dlang-ldc / dlang-safety
 Research.md HANDOFF.md     headline write-up / status
 ```
 
