@@ -106,7 +106,17 @@ output.
       at Sofia 2025 except Profiles/PM), **none are in clang 21**; only
       `[[nodiscard]]` carries through. `-fexperimental-library` gates `<execution>`
       / tzdb / `<syncstream>` / libc++ hardening, NOT `<expected>`/`<print>`/
-      `<flat_map>` (those ship unconditionally). Reviewed DIPs 1000–1052 (DIP1050
+      `<flat_map>` (those ship unconditionally). **GCC arm probed too**
+      (`safety.sh` §i; esp-g++ 15.2.0 / libstdc++ 15, `-ffreestanding`
+      xtensa-esp-elf): same verdict — P2686R5 / Contracts P2900 / Reflection
+      P2996 / PM P2688 all rejected. libstdc++ 15 ships `<expected>` /
+      `<ranges>` / `<stdfloat>` in the freestanding subset; the C++23 hosted
+      headers (`<print>` / `<format>` / `<flat_map>` / `<execution>` /
+      `<generator>` / `<stacktrace>`) are gated by `bits/requires_hosted.h`;
+      and the C++26 frontier (`<simd>` / `<linalg>` / `<contracts>` / `<hive>`
+      / `<mdspan>`) is not in libstdc++ 15 at all — same gap libc++ 22 has.
+      The two C++ producers in the matrix (esp-clang 21.1.3 + esp-g++ 15.2.0)
+      agree on every C++26-frontier feature. Reviewed DIPs 1000–1052 (DIP1050
       is skipped); the 5 Accepted-and-relevant ones plus the rejected DIP1028 are
       summarized in docs/20 §6.
 - [x] **Embedded TMP-FFI matrix on Xtensa across ALL 5 toolchains** (docs/21,
@@ -123,8 +133,10 @@ output.
       11-define module. Empirical C++26 status on esp-clang 21.1.3: even P2686R5
       constexpr structured bindings (the *only* clang-22 mainline C++26 addition)
       is rejected — the Sofia-2025 frontier (Contracts/Reflection/PM/Profiles) is
-      not in any clang we have. Baremetal-D's `@safe`+`@live` already covers the
-      static-safety story (docs/20 §8).
+      not in any clang we have, and re-probing the GCC arm (**esp-g++ 15.2.0 /
+      libstdc++ 15**) confirms identical-shaped rejections (docs/21 §5).
+      Baremetal-D's `@safe`+`@live` already covers the static-safety story
+      (docs/20 §8).
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
       autovectorization** in any of the four — vectorizable loops stay scalar and

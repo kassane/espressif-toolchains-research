@@ -101,3 +101,30 @@ else
     echo "  (skip v0.17.0-dev rows — \$ZIG_MOS not set;"
     echo "   see https://github.com/kassane/zig-mos-bootstrap/releases/tag/0.17.0-dev)"
 fi
+# esp-g++ 15.2.0 / libstdc++ 15 — the GCC arm of the matrix. Probe both
+# -ffreestanding (the canonical embedded compile mode for xtensa-esp-elf) and
+# hosted, since libstdc++ 15 ships <experimental/simd> but bits/requires_hosted.h
+# blocks it under -ffreestanding.
+probe_libstdcxx_simd() {  # hdr extra_flag
+    local hdr="$1" xtra="$2"
+    XTENSA_GNU_CONFIG=$(xtensa_cfg esp32) "$GXX" -std=c++26 $xtra -x c++ -c - -o /dev/null >/dev/null 2>&1 <<EOF
+#include <$hdr>
+int main(){return 0;}
+EOF
+}
+for hdr in simd experimental/simd; do
+    if probe_libstdcxx_simd "$hdr" "-ffreestanding"; then
+        printf "  %-30s <%s>  parses (-ffreestanding)\n" "esp-g++ 15 / libstdc++ 15" "$hdr"
+    else
+        if probe_libstdcxx_simd "$hdr" ""; then
+            printf "  %-30s <%s>  freestanding-blocked, parses hosted\n" "esp-g++ 15 / libstdc++ 15" "$hdr"
+        else
+            printf "  %-30s <%s>  MISSING\n" "esp-g++ 15 / libstdc++ 15" "$hdr"
+        fi
+    fi
+done
+echo "  libstdc++ 15 does NOT ship C++26 <simd> (P1928) — same gap as libc++ 21/22."
+echo "  It DOES ship <experimental/simd> (TS) on disk, but bits/requires_hosted.h"
+echo "  rejects it under -ffreestanding ('This header is not available in"
+echo "  freestanding mode.'), so the canonical embedded compile can't include it."
+echo "  Both C++ producers in the matrix agree: no <simd> path on bare-metal Xtensa."
