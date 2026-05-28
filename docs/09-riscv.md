@@ -65,7 +65,7 @@ bytes — each field widened) on RISC-V. So Zig reserves `a0..a3` for the first
 
 So Zig's experimental ESP targets have **frontend C-ABI struct-lowering gaps on
 both architectures** — different cases each — while Rust matches clang/gcc on
-both. This is the concrete Zig⇔Rust ESP-maturity gap discussed in
+both. This is the concrete frontend-C-ABI-completeness gap discussed in
 [10-cabi-completeness.md](10-cabi-completeness.md). The shared backend gives a shared
 ABI only where each frontend implements the platform C ABI correctly; Rust does,
 Zig (for these WIP targets) does not yet.
