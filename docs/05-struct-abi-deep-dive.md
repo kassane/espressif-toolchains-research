@@ -153,7 +153,7 @@ and Zig. **But RISC-V is not bug-free for Zig** — there the *small* `{i32,i32}
 handles correctly. So Zig's experimental ESP targets each have a by-value
 struct-argument gap, just in different cases; Rust/clang/gcc are correct on both.
 The RISC-V case even reproduces on upstream Zig. See
-[docs/09](09-riscv.md) and [docs/10](10-zig-rust-parity.md). The common root is
+[docs/09](09-riscv.md) and [docs/10](10-cabi-completeness.md). The common root is
 that Zig defers aggregate ABI to LLVM's default instead of implementing the
 platform C ABI in the frontend (which clang and rust both do). This is an
 **upstream Zig** gap, not the espressif fork: `kassane/zig-espressif-bootstrap`

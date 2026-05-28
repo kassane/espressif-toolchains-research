@@ -1,4 +1,12 @@
-# 10 — Zig ⇔ Rust parity on ESP, and issue-tracker cross-checks
+# 10 — C-ABI completeness per frontend on Espressif targets
+
+The core thesis: a shared LLVM backend is *necessary but not sufficient* for
+cross-language FFI — each frontend has to implement the platform C ABI
+itself. Anchored on a Rust ↔ Zig comparison (both reach Espressif through
+the *same* espressif LLVM 21 backend) and broadened with cross-references
+to clang / gcc / D/LDC / TinyGo where the same finding applies. Also pins
+the relevant `esp-rs/rust` and `espressif/llvm-project` issue-tracker
+status as of writing.
 
 Both Rust and Zig reach the ESP architectures through the *same* espressif LLVM 21
 backend, both expose the C ABI (`#[no_mangle] extern "C"` / `export fn`), and both
@@ -13,17 +21,19 @@ Rust implements the per-target C ABI in the compiler (`rustc_target`'s
 aggregates to LLVM's default lowering instead, which is not the platform C ABI.
 Result, verified by disassembly **and** qemu runtime (docs 05/08/09):
 
-| by-value struct argument | Rust | clang | gcc | **Zig** |
-|--------------------------|:----:|:-----:|:---:|:-------:|
-| Xtensa: `{i32,i32}` 8 B | ok | ok | ok | ok |
-| Xtensa: `[24]u8` 24 B (align 1) | ok | ok | ok | **wrong** (stack, not `[6 x i32]` regs) |
-| RISC-V: `{i32,i32}` 8 B | ok | ok | n/a | **wrong** (`[2 x i64]`, wrong regs) |
-| RISC-V: `[24]u8` 24 B | ok | ok | n/a | ok (by-ref) |
+| by-value struct argument | Rust | clang | gcc | **Zig** | D/LDC | TinyGo |
+|--------------------------|:----:|:-----:|:---:|:-------:|:-----:|:------:|
+| Xtensa: `{i32,i32}` 8 B | ok | ok | ok | ok | **wrong** (byval, docs/19) | ok (flattens) |
+| Xtensa: `[24]u8` 24 B (align 1) | ok | ok | ok | **wrong** (stack, not `[6 x i32]` regs) | **wrong** (byval; runtime FAIL) | **wrong** (`[24 x i8]` byte-per-register, docs/24 §e) |
+| RISC-V: `{i32,i32}` 8 B | ok | ok | n/a | **wrong** (`[2 x i64]`, wrong regs) | gated (byval→ptr deref faults, docs/19) | n/a (TinyGo esp32c3 target, not in matrix) |
+| RISC-V: `[24]u8` 24 B | ok | ok | n/a | ok (by-ref) | ok (C ABI is by-ref there too) | n/a |
 
 So **Rust is at parity with clang/gcc on the C ABI for both ESP architectures;
-Zig is not** — it has a different struct-argument bug on each. Everything else
-tested (scalars, `i64`, `f32`/`f64`, pointers, callbacks, small/large struct
-*returns*) is at parity across all four toolchains.
+Zig is not** — it has a different struct-argument bug on each. **D/LDC fails
+broader** (every by-value aggregate, docs/19) and **TinyGo joins on byte-array
+fields** (docs/24 §e). Everything else tested (scalars, `i64`, `f32`/`f64`,
+pointers, callbacks, small/large struct *returns*) is at parity across every
+FFI-matrix toolchain.
 
 Practical parity guidance for Rust↔Zig (or C↔Zig) FFI on ESP: pass structs **by
 pointer** across any Zig boundary; scalars/pointers/callbacks are always safe.
@@ -91,11 +101,15 @@ Comparing stock upstream **Zig 0.16.0** (built against upstream LLVM) with
 
 - **Upstream Zig 0.16.0 cannot target ESP.** `zig targets` lists only `generic`
   for the `xtensa` arch (`error: unknown CPU: 'esp32'`), and has no `esp32c3`
-  riscv CPU. **But this is version-dependent:** Zig **0.17.0-dev** (the repo now
-  lives at `codeberg.org/ziglang/zig`) adds an **`esp32`** CPU model based on
-  *upstream* LLVM's Xtensa support. Since upstream LLVM only carries esp32/esp8266
-  (esp32-s2/s3 are fork-side, docs/07), upstream Zig gets `esp32` but **not the
-  full esp32/s2/s3 set** — **only the espressif bootstrap fork has all Xtensa
+  riscv CPU. **But this is version-dependent:** ziglang/zig **#5467 "Xtensa
+  Support" CLOSED 2026-05-06**, milestone **0.17.0** (companion #23088 for
+  `xtensa(eb)-linux` tier landed the same day). The Zig repo now lives at
+  `codeberg.org/ziglang/zig`; the github.com mirror's latest tag is 0.15.2 at
+  time of writing, with 0.17.0 not yet shipped — so the upstream `esp32` CPU
+  model is on the 0.17.0-dev branch but not in any tagged release. Even when
+  0.17.0 ships, **upstream LLVM only carries esp32/esp8266** (esp32-s2/s3 are
+  fork-side, docs/07), so upstream Zig will get `esp32` but **not the full
+  esp32/s2/s3 set** — **only the espressif bootstrap fork has all Xtensa
   targets**, exactly mirroring Rust (stock rustc has Tier-3 specs / partial
   upstream; the esp-rs *fork* has the complete, working set). So the espressif
   bootstrap remains **required** for s2/s3 (and for the production backend).
@@ -105,8 +119,10 @@ Comparing stock upstream **Zig 0.16.0** (built against upstream LLVM) with
   RISC-V C-ABI mis-lowering is an upstream **Zig frontend** bug, reproducible with
   stock `pip install ziglang` on any RISC-V target — independent of the espressif
   LLVM fork. (The Xtensa `[24]u8` bug is exercised via the bootstrap here, since
-  upstream Zig 0.16.0 has no esp32 target; Zig 0.17.0-dev adds `esp32` but still
-  not s2/s3.)
+  upstream Zig 0.16.0 has no esp32 target; 0.17.0 adds `esp32` per #5467 but still
+  not s2/s3 — fork-only.) **Open question for 0.17.0 ship**: did #5467's landing
+  rewrite the C-ABI lowering for Xtensa, or only enable codegen? Re-run
+  `experiments/abi-structs/sweep.sh` against 0.17.0 when it ships to find out.
 
 Net parity: Rust's ESP story (esp-rs/rust) is a complete C-ABI implementation;
 Zig's is experimental, with a frontend struct-ABI gap that is in part *upstream*
