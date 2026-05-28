@@ -72,6 +72,50 @@ memory-passes these structs in a way both sides agree on.)
 convention (Zig just builds the value in its frame then copies it to the caller's
 buffer). Compatible — the divergence is specific to under-aligned *arguments*.
 
+## D/LDC and TinyGo: two more "defer to backend" stories
+
+Zig isn't the only frontend that hands aggregates raw to the LLVM Xtensa
+backend. Two more bend the matrix in different ways.
+
+**D/LDC marks every aggregate `byval`/`sret`.** Whether the input is
+`Point{int x, int y}`, `Blob{ubyte[24] data}`, or anything else, LDC's IR
+puts the parameter behind a pointer with `byval`. Backend lowers that as
+"copy to caller's frame, read via SP". So D fails *every* by-value struct
+case the C ABI puts in registers: `point_dot` (align-4) **and** `blob_sum`
+(align-1) **and** the 8-byte struct return. The lone case D gets right is
+the >16-byte `sret` return, where the C ABI is *also* indirect.
+[experiments/ldc-fork-comparison](../experiments/ldc-fork-comparison/run.sh)
+proves the bug is frontend-side: the espressif-fork LDC (LLVM 21.1.3) and
+the upstream-22 LDC produce byte-identical broken IR. Same family as
+[kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
+on MOS 6502 (wontfix). Full account in [docs/19](19-dlang-ldc.md) +
+[docs/23](23-ldc-espressif-fork.md) §(h).
+
+**TinyGo splits the difference by field type.** A struct of scalars gets
+flattened to its fields:
+
+```
+define i32 @go_point_dot(i32 %a.X, i32 %a.Y, i32 %b.X, i32 %b.Y)
+```
+
+— that lands in `a2..a5` and matches clang's C ABI. **But** a struct with a
+byte-array field is left as `[N x i8]`:
+
+```
+define i32 @go_blob_sum([24 x i8] %b)
+```
+
+and the backend lowers it byte-per-register — caller emits 24 `s8i` stores,
+callee reads them back as `l8ui`. A C caller written against clang's
+`[6 x i32]` flattening would mismatch on the first word: clang puts byte 0
+in `a2` bits 0-7, TinyGo reads all of `a2` as one byte. So TinyGo joins the
+struct-arg list **for byte-array aggregates only**. Full detail in
+[docs/24](24-tinygo.md) §(e).
+
+The cumulative score at align-1 on Xtensa: **Zig**, **D/LDC**, and **TinyGo
+(byte-array case)** all diverge from clang/rust/gcc. The mitigation is the
+same for all three: pass aggregates by pointer.
+
 ## Not Xtensa-only — RISC-V has a *different* Zig struct bug
 
 This particular manifestation (under-aligned arg → stack) is Xtensa-specific: the

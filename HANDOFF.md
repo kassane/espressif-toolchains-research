@@ -40,7 +40,9 @@ output.
       `address_space(N)` (→ IR), **Zig validates per-target** (only `.generic`;
       `.flash` etc. rejected), gcc ignores the numbered attr, Rust has none. ESP
       regions (IRAM/DRAM/flash/RTC) are placed via linker **sections** —
-      `section`/`linksection`/`link_section` → `.iram1.text` — at parity in all four.
+      `section`/`linksection`/`link_section`/`@section` → `.iram1.text` — at
+      parity for five of six toolchains; TinyGo's `//go:section` is silently
+      ignored in v0.41.1 (docs/18).
 - [x] **Rust ⇄ Zig frontend interop** (docs/17, `experiments/rust-zig/run.sh`):
       the two non-C LLVM frontends agree on **every scalar ABI incl. C-inexpressible
       `u128`/`f128`/`f16`** (Rust uses byval for the 2nd 16-byte arg, Zig direct —
@@ -63,7 +65,7 @@ output.
       IR** as the upstream-22 LDC (docs/23 §(h)), so the bug is **frontend-side**
       — same family as kassane/dlang-mos-hello-world#1 (wontfix). Fix: **pass
       structs by pointer** (runtime-verified). Scalars at parity; links into the
-      one ELF with all four others (0 undef). Rich C/C++ FFI: byte-identical
+      one ELF with the four FFI-matrix peers (0 undef). Rich C/C++ FFI: byte-identical
       Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref), `-HC` C++-header
       gen with a verified C++→D round-trip. Cross-language LTO with clang
       succeeds (both on 21.1.3, no skew). Known issues: ldc #5091 (ICE EH+opt);

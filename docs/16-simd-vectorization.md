@@ -17,20 +17,23 @@ Reproduce with `experiments/simd/run.sh`.
 - **Inline assembly is the only way** to use S3 SIMD — and all three toolchains
   (clang, gcc, zig) assemble `EE.*` fine.
 
-## Autovectorization (esp32s3, `-O3`) — all five scalarize
+## Autovectorization (esp32s3, `-O3` / `-opt=2`) — all six scalarize
 
 ```
-vadd loop (i8/i16/i32/f32)       →  clang 0 · gcc 0 · zig 0 · rust 0 · D 0  EE.*  (scalar)
+vadd loop (i8/i16/i32/f32)       →  clang 0 · gcc 0 · zig 0 · rust 0 · D 0 · TinyGo 0  EE.*  (scalar)
 vector_size(16) int8 add (clang) →  0 EE.*, 16 scalar add.n
 @Vector(16,i8) add (zig)         →  0 EE.*, 17 scalar adds
 core::simd i8x16 add (rust)      →  0 EE.*, 18 scalar adds
 __vector(byte[16]) add (D/LDC)   →  0 EE.*, 16 scalar (matches clang vector_size pattern)
+TinyGo: loop scalarized at -opt=0 (`l8ui`/`add.n`/`s8i`); DCE'd at -opt=2.
+        No `core/simd` analog in Go; no Xtensa inline-asm directive in TinyGo.
 ```
 
-(TinyGo has no Xtensa SIMD intrinsics and no inline-asm path for `EE.*` —
-it'd be a sixth "scalarized" row but `experiments/simd` doesn't currently
-build a TinyGo arm. Adding one would just confirm the universal-scalarization
-finding without new information.)
+The TinyGo row was verified at the shell: `tinygo build -opt=0 -target=esp32s3-generic`
+on a `func go_vadd_i8(dst, a, b *[16]int8)` produces a 132-byte function
+with `add.n` + `l8ui` + `s8i` and zero `EE.*`. At `-opt=2` LTO proves the
+writes are dead and collapses the function to `entry a1,32; retw.n` —
+which is its own kind of "no SIMD here" confirmation.
 
 A `vadd_i8` body is a plain byte loop — `l8ui` / `add.n` / `s8i` / `addi.n` /
 `bnez` — not a single `ee.*`. So for compute-heavy ESP32-S3 code you do **not**
@@ -111,12 +114,17 @@ In practice you get S3 SIMD through:
   *allocate* q registers instead of hardcoding `q0`/`q1` — i.e. better inline-asm
   ergonomics, still not autovectorization.
 
-So on the SIMD axis all five LLVM toolchains are at **parity**: none
-autovectorize for Xtensa (Rust `core::simd`, Zig `@Vector`, clang `vector_size`
-and **D `__vector(byte[16])`** all scalarize), and each reaches the S3 unit
-only through hand-written `EE.*` — C/C++ with a `"memory"` clobber, **Zig**
-with the modern struct clobbers (`.{ .memory = true, .q0 = true, … }`),
-**Rust** with `core::arch::asm!` under `#![feature(asm_experimental_arch)]`
-(no `qreg` class yet — esp-rs #265), and **D** with `ldc.llvmasm.__asm` using
-LLVM constraint strings (`"r,r,r,~{memory}"`; `experiments/simd/ee.d` emits
-the same 4 `EE.*`). TinyGo doesn't reach the S3 unit at all on this version.
+So on the SIMD axis the **six toolchains** are at parity in the negative
+direction: none autovectorize for Xtensa (Rust `core::simd`, Zig `@Vector`,
+clang `vector_size`, **D `__vector(byte[16])`**, and TinyGo's plain loops
+all scalarize), and only five reach the S3 unit through hand-written `EE.*`
+— C/C++ with a `"memory"` clobber, **Zig** with the modern struct clobbers
+(`.{ .memory = true, .q0 = true, … }`), **Rust** with `core::arch::asm!`
+under `#![feature(asm_experimental_arch)]` (no `qreg` class yet — esp-rs
+#265), and **D** with `ldc.llvmasm.__asm` using LLVM constraint strings
+(`"r,r,r,~{memory}"`; `experiments/simd/ee.d` emits the same 4 `EE.*`).
+**TinyGo has no Xtensa inline-asm directive and no SIMD intrinsic library**
+on v0.41.1 — neither autovectorized nor reachable, the strictest "no S3 SIMD"
+of any toolchain here. The 324 `ee.*` instructions that show up in a
+`tinygo build -opt=0` linked ELF are from the TinyGo runtime's picolibc /
+startup code, not from user Go.

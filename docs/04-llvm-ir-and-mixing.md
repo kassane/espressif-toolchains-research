@@ -32,14 +32,21 @@ recognized Xtensa target at the LLVM level.)
 `scripts/analyze.sh esp32` dumps `build/analysis/ir-signatures-esp32.txt`. The
 revealing rows:
 
-| function | clang IR | rust IR | zig IR |
-|----------|----------|---------|--------|
-| `add_i32` | `i32 (i32,i32)` | `i32 (i32,i32)` | `i32 (i32,i32)` |
-| `mul_f64` | `i64 (i64,i64)` | `double (double,double)` | `double (double,double)` |
-| `make_point` (8B) | `[2 x i32] (i32,i32)` | `[2 x i32] (i32,i32)` | `%Point (i32,i32)` |
-| `point_dot` (8B) | `i32 ([2xi32],[2xi32])` | `i32 ([2xi32],[2xi32])` | `i32 (%Point,%Point)` |
-| `blob_sum` (24B) | `i32 ([6 x i32])` | `i32 ([6 x i32])` | `i32 (%Blob)` |
-| `make_blob` (24B) | `void (sret ptr, i8)` | `void (sret ptr, i8)` | `%Blob (i8)` |
+| function | clang IR | rust IR | zig IR | D/LDC IR | TinyGo IR |
+|----------|----------|---------|--------|----------|-----------|
+| `add_i32` | `i32 (i32,i32)` | `i32 (i32,i32)` | `i32 (i32,i32)` | `i32 (i32,i32)` | `i32 (i32,i32)` |
+| `mul_f64` | `i64 (i64,i64)` | `double (double,double)` | `double (double,double)` | `double (double,double)` | `double (double,double)` |
+| `make_point` (8B) | `[2 x i32] (i32,i32)` | `[2 x i32] (i32,i32)` | `%Point (i32,i32)` | `sret ptr (Point), i32, i32` | `[2 x i32] (i32,i32)` (or flattened: `(i32,i32)→{i32,i32}`) |
+| `point_dot` (8B) | `i32 ([2xi32],[2xi32])` | `i32 ([2xi32],[2xi32])` | `i32 (%Point,%Point)` | `i32 (byval ptr, byval ptr)` | `i32 (i32 %a.X, i32 %a.Y, i32 %b.X, i32 %b.Y)` |
+| `blob_sum` (24B) | `i32 ([6 x i32])` | `i32 ([6 x i32])` | `i32 (%Blob)` | `i32 (byval ptr)` | `i32 ([24 x i8])` |
+| `make_blob` (24B) | `void (sret ptr, i8)` | `void (sret ptr, i8)` | `%Blob (i8)` | `void (sret ptr, i8)` | `void (sret ptr, i8)` |
+
+Three strategies, five frontends: **clang and rust** coerce in-frontend to
+`[N x i32]` (C-ABI match); **Zig** hands raw aggregate types to the backend;
+**D/LDC** always pointer-indirects (`byval`/`sret`); **TinyGo** flattens
+struct-of-scalars to the scalar fields (`a.X`, `a.Y`, …) but leaves byte-array
+aggregates as `[N x i8]`. The first wins; the next three each fail somewhere
+on Xtensa (docs/05/19/24).
 
 Two lessons:
 
