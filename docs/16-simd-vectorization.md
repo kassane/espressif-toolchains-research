@@ -108,12 +108,13 @@ of `std::experimental::simd` (TS). It's the C++-language analog of Rust's
 fixed-width vector type with abi tags (`std::simd_abi::native_abi<T>`).
 Status as of writing, probed at the shell against both clang versions
 in this matrix (`zig c++` 21.1.0 / libc++ 21; `kassane/zig-mos-bootstrap`
-v0.17.0-dev = clang 22.0.0git / libc++ 22):
+v0.17.0-dev = clang 22.0.0git / libc++ 22) **and against the matrix's GCC
+producer** (esp-g++ 15.2.0 / libstdc++ 15, `-ffreestanding` xtensa-esp-elf):
 
-| header | libc++ 21 (Zig 0.16 bundle) | libc++ 22 (v0.17.0-dev bundle) |
-|---|---|---|
-| `<simd>` (P1928) | ✗ MISSING | ✗ MISSING — frontier item, not landed in libc++ 22 either |
-| `<experimental/simd>` (TS) | ✓ parses | ✓ parses, **but** operator+/-/*/etc. binary forms are stubs: |
+| header | libc++ 21 (Zig 0.16 bundle) | libc++ 22 (v0.17.0-dev bundle) | libstdc++ 15 (esp-g++) |
+|---|---|---|---|
+| `<simd>` (P1928) | ✗ MISSING | ✗ MISSING — frontier item, not landed in libc++ 22 either | ✗ MISSING — not in libstdc++ 15 either (same upstream gap) |
+| `<experimental/simd>` (TS) | ✓ parses | ✓ parses, **but** operator+/-/*/etc. binary forms are stubs: | ✓ parses **hosted** — but `bits/requires_hosted.h` blocks `-ffreestanding` (the canonical embedded compile mode), so unreachable on bare-metal xtensa-esp-elf |
 
 ```
 error: invalid operands to binary expression
@@ -124,13 +125,17 @@ note: candidate function not viable: requires 0 arguments, but 2 were provided
 
 So you can declare a `native_simd<int>` and read elements, but you can't
 add two vectors together — the libc++ TS implementation is incomplete in
-both 21 and 22. Even if libc++ ships P1928 tomorrow, the codegen story is
-unchanged on Xtensa: the LLVM Xtensa backend has no vector register class
-or cost model (§"Why it's this way"), so `std::simd<int, 4> a, b; a + b;`
-would scalarize to 4× `add.n` just like clang's `vector_size(16)`,
-zig's `@Vector(16,i8)`, rust's `core::simd::i8x16`, and D's
-`__vector(byte[16])` do today. **C++26 `<simd>` is the missing portable
-SIMD API in this matrix, but landing it wouldn't help ESP32-S3 reach
+both 21 and 22. libstdc++ 15 ships `<experimental/simd>` on disk but
+`bits/requires_hosted.h` errors `"This header is not available in
+freestanding mode."` under `-ffreestanding`, so the embedded build can't
+include it. Even if libc++/libstdc++ shipped P1928 tomorrow, the codegen
+story is unchanged on Xtensa: the LLVM Xtensa backend has no vector
+register class or cost model (§"Why it's this way"), so
+`std::simd<int, 4> a, b; a + b;` would scalarize to 4× `add.n` just like
+clang's `vector_size(16)`, zig's `@Vector(16,i8)`, rust's
+`core::simd::i8x16`, and D's `__vector(byte[16])` do today. **C++26
+`<simd>` is the missing portable SIMD API across every C++ standard
+library in this matrix, but landing it wouldn't help ESP32-S3 reach
 `EE.*` without an upstream cost-model patch.**
 
 ## Why it's this way & how to actually SIMD on S3

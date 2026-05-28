@@ -143,6 +143,26 @@ option"*). Bloomberg's `clang-p2996` fork has reflection only. The
 C++26 features on the Xtensa C++ producer — that requires the official
 `LLVM-22.1.2-Linux-X64.tar.xz` (1.94 GB), out of scope here.
 
+**The other C++ producer agrees.** The matrix has *two* C++ frontends —
+esp-clang 21.1.3 and **esp-g++ 15.2.0** (§2 row 2). Re-probed at the shell
+with `XTENSA_GNU_CONFIG=$(xtensa_cfg esp32) $GXX -std=c++26 -ffreestanding`:
+P2686R5 fails the same way (`structured binding declaration cannot be
+'constexpr'`); Contracts P2900 `pre/post` syntax errors at parse
+(`expected initializer before 'pre'`) and `-fcontracts` itself is an
+*"unrecognized command-line option"*; Reflection `-freflection` likewise
+unrecognized; Pattern matching `match` fails at parse. On the library
+side, libstdc++ 15 ships `<expected>`/`<ranges>`/`<stdfloat>` in the
+freestanding subset (parses under `-ffreestanding`), but the C++23 hosted
+headers (`<print>`/`<format>`/`<flat_map>`/`<execution>`/`<generator>`/
+`<stacktrace>`/`<spanstream>`/`<syncstream>`) are blocked by
+`bits/requires_hosted.h` under `-ffreestanding`, and the C++26 frontier
+headers (`<simd>` / `<linalg>` / `<hive>` / `<contracts>` / `<mdspan>`)
+are not implemented in libstdc++ 15 yet at all — same gap libc++ 22 has.
+So whichever C++ producer this matrix picks (clang 21 / clang 22 /
+esp-g++ 15.2.0), the Xtensa C++ side stays at C++23 in practice, with
+P2686R5 the only frontier feature movable by toolchain swap (and only
+on the clang 22 arm). Documented as a parallel row in `docs/20` §9.
+
 The pragmatic baremetal-D conclusion: don't wait for C++26 contracts/reflection
 to land in clang to write safer embedded code — D ships the same capabilities
 **today**:

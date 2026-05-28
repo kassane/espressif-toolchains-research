@@ -233,6 +233,39 @@ Reflection P2996 (`^^S`/`std::meta::…`) still rejected
 22 mainline** — only Bloomberg's `clang-p2996` fork carries P2996. The
 v0.17.0-dev bump is a single-feature step (P2686), not a frontier shift.
 
+### esp-g++ 15.2.0 (libstdc++ 15) — the GCC side of the matrix
+
+The Xtensa C++ producer in this repo's FFI matrix isn't only clang; **esp-g++
+15.2.0** (`xtensa-esp-elf-g++` from `espressif/crosstool-NG esp-15.2.0_20251204`)
+is the other one (`docs/21` §2 row 2). Probed directly at the shell with
+`XTENSA_GNU_CONFIG=$(xtensa_cfg esp32) $GXX -std=c++26 -ffreestanding -c …`
+(safety.sh §i records the same numbers):
+
+| feature | esp-g++ 15.2.0 / libstdc++ 15 (freestanding, xtensa-esp-elf) |
+|---|---|
+| `<expected>` / `<ranges>` / `<stdfloat>` | ✓ parses (in the freestanding subset) |
+| `<print>` / `<format>` / `<flat_map>` / `<flat_set>` / `<execution>` / `<generator>` / `<stacktrace>` / `<spanstream>` / `<syncstream>` / `<experimental/simd>` | ✗ *under `-ffreestanding`* — `bits/requires_hosted.h` errors `"This header is not available in freestanding mode."`; the headers DO ship on disk and parse fine without `-ffreestanding`, but `xtensa-esp-elf` is the bare-metal cross, so hosted-libstdc++ I/O won't link to newlib anyway |
+| `<simd>` (P1928) / `<linalg>` (P1673) / `<hive>` (P0447) / `<contracts>` / `<mdspan>` | ✗ MISSING in libstdc++ 15 at all (not implemented upstream — same gap as libc++ 22) |
+| **P2686R5** constexpr decomposition declarations | ✗ `"structured binding declaration cannot be 'constexpr'"` — same regression as clang 21 |
+| Contracts P2900 (`pre`/`post`) | ✗ `"expected initializer before 'pre'"` (no `-fcontracts` flag — `unrecognized command-line option`) |
+| Reflection P2996 (`^^S`) | ✗ `"unrecognized command-line option '-freflection'"` |
+| Pattern matching P2688R5 (`match`) | ✗ `"expected ';' before 'match'"` |
+
+Two findings worth pinning. **First**, both C++ producers in the matrix
+(esp-clang 21.1.3 and esp-g++ 15.2.0) **agree** on every C++26-frontier
+feature: P2686R5, Contracts, Reflection, Pattern Matching are all
+rejected by both. The single-feature delta v0.17.0-dev (P2686 on clang 22)
+doesn't apply on the GCC side — esp-g++ stays on the regression. **Second**,
+the C++23 hosted-library headers (`<print>`/`<format>`/`<flat_map>`/`<execution>`/
+`<generator>`/`<stacktrace>`/`<spanstream>`/`<syncstream>`) **parse** under
+hosted mode but are blocked under `-ffreestanding` by libstdc++'s
+`bits/requires_hosted.h` — and `-ffreestanding` is the canonical embedded
+compile mode. The "header is there but you can't include it" failure mode
+is purely the libstdc++ freestanding subset, not GCC 15. The C++26 outright
+gaps (`<simd>`/`<linalg>`/`<hive>`/`<contracts>`/`<mdspan>`) are libstdc++
+15 features that haven't been implemented yet upstream — same gap libc++ 22
+has on the clang side.
+
 **What `-fexperimental-library` actually gates** (per the
 [libc++ user docs](https://libcxx.llvm.org/UserDocumentation.html)): `<execution>`
 (PSTL), `std::chrono::tzdb`/time zones, `<syncstream>`, and libc++'s **hardening

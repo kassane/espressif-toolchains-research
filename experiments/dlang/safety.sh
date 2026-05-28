@@ -171,3 +171,60 @@ o=$("$ZIG" c++ -std=c++26 -fexperimental-library -c "$B/ctr.cpp" -o /dev/null 2>
 printf "  contracts syntax (P2900): %s\n" "$(printf '%s' "$o" | grep -oE 'expected function body.*' | head -1 || echo IMPLEMENTED)"
 echo "  => -fexperimental-library is a no-op on this libc++ 21 (C++26 <simd>/<linalg>/"
 echo "     <contracts>/<hive> all unimplemented); only [[nodiscard]] (must-use) carries."
+
+echo "== (i) C++26 via esp-g++ 15.2.0 / libstdc++ 15 (xtensa-esp-elf, -ffreestanding) =="
+# The matrix has TWO C++ producers: esp-clang 21.1.3 (probed in §h via zig c++)
+# and esp-g++ 15.2.0. Probe the GCC arm with the canonical embedded compile
+# mode (-ffreestanding + XTENSA_GNU_CONFIG) to record the libstdc++ 15 status
+# alongside the libc++ 21 row. Three buckets: (1) freestanding-subset headers
+# (parse under -ffreestanding), (2) hosted-only C++23 headers (gated by
+# bits/requires_hosted.h), (3) frontier C++26 headers libstdc++ 15 hasn't
+# implemented at all. Then the four frontier *features* (P2686/P2900/P2996/P2688).
+"$GXX" --version 2>/dev/null | head -1 | sed 's/^/  /'
+export XTENSA_GNU_CONFIG=$(xtensa_cfg esp32)
+# Two-mode probe: under -ffreestanding (canonical embedded), and hosted (no
+# -ffreestanding). Three buckets we want to distinguish in the output:
+#   OK                                — parses freestanding (in the subset)
+#   freestanding-blocked, parses hosted — shipped, but bits/requires_hosted.h
+#                                         rejects it under -ffreestanding
+#   MISSING                           — header not in libstdc++ 15 at all
+gprobe(){ printf '#include %s\nint main(){return 0;}\n' "$2" > "$B/gp.cpp"; \
+  if "$GXX" -std=c++26 -ffreestanding -c "$B/gp.cpp" -o /dev/null 2>/dev/null; then s="OK"; \
+  elif "$GXX" -std=c++26 -c "$B/gp.cpp" -o /dev/null 2>/dev/null; then s="freestanding-blocked, parses hosted"; \
+  else s="MISSING"; fi; \
+  printf "    %-22s %s\n" "$1" "$s"; }
+echo "  libstdc++ feature headers (probed both -ffreestanding and hosted):"
+gprobe "<expected>"          "<expected>"
+gprobe "<ranges>"            "<ranges>"
+gprobe "<stdfloat>"          "<stdfloat>"
+gprobe "<print>"             "<print>"
+gprobe "<format>"            "<format>"
+gprobe "<flat_map>"          "<flat_map>"
+gprobe "<execution>"         "<execution>"
+gprobe "<generator>"         "<generator>"
+gprobe "<simd> (C++26)"      "<simd>"
+gprobe "<linalg> (C++26)"    "<linalg>"
+gprobe "<contracts> (P2900)" "<contracts>"
+gprobe "<hive> (C++26)"      "<hive>"
+gprobe "<mdspan>"            "<mdspan>"
+gprobe "<experimental/simd>" "<experimental/simd>"
+echo "  frontier core-language features:"
+printf 'struct P{int a,b;};constexpr int f(){constexpr auto[a,b]=P{1,2};return a+b;}int main(){return f()-3;}\n' > "$B/g2686.cpp"
+o=$("$GXX" -std=c++26 -ffreestanding -c "$B/g2686.cpp" -o /dev/null 2>&1 || true)
+printf "    P2686R5 constexpr [a,b]: %s\n" "$(printf '%s' "$o" | grep -oE "structured binding declaration cannot be 'constexpr'" | head -1 || echo IMPLEMENTED)"
+printf 'int f(int n)pre(n>0)post(r:r>0){return n;}int main(){return f(1)-1;}\n' > "$B/g2900.cpp"
+o=$("$GXX" -std=c++26 -ffreestanding -c "$B/g2900.cpp" -o /dev/null 2>&1 || true)
+printf "    P2900 pre/post syntax  : %s\n" "$(printf '%s' "$o" | grep -oE "expected initializer before 'pre'" | head -1 || echo IMPLEMENTED)"
+printf 'struct S{int x;};int main(){constexpr auto r=^^S;(void)r;return 0;}\n' > "$B/g2996.cpp"
+o=$("$GXX" -std=c++26 -ffreestanding -freflection -c "$B/g2996.cpp" -o /dev/null 2>&1 || true)
+printf "    P2996 -freflection flag: %s\n" "$(printf '%s' "$o" | grep -oE "unrecognized command-line option '-freflection'" | head -1 || echo IMPLEMENTED)"
+printf 'int f(int x){return x match{0=>0;_=>1;};}int main(){return f(0);}\n' > "$B/g2688.cpp"
+o=$("$GXX" -std=c++26 -ffreestanding -c "$B/g2688.cpp" -o /dev/null 2>&1 || true)
+printf "    P2688R5 match syntax   : %s\n" "$(printf '%s' "$o" | grep -oE "expected ';' before 'match'" | head -1 || echo IMPLEMENTED)"
+echo "  => libstdc++ 15 ships <expected>/<ranges>/<stdfloat> freestanding (header-only"
+echo "     constexpr). C++23 hosted headers (<print>/<format>/<flat_map>/<execution>/"
+echo "     <generator>/<experimental/simd>) ship on disk but bits/requires_hosted.h"
+echo "     rejects them under -ffreestanding ('not available in freestanding mode')."
+echo "     C++26 frontier (<simd>/<linalg>/<contracts>/<hive>/<mdspan>) not implemented"
+echo "     in libstdc++ 15 at all — same gap libc++ 22 has. P2686/Contracts/Reflection"
+echo "     all rejected: esp-g++ 15.2.0 = esp-clang 21.1.3 on the C++26 frontier."
