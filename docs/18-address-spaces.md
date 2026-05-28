@@ -43,7 +43,7 @@ section:
 | Zig | `linksection(".iram1.text")` | `.iram1.text` |
 | Rust | `#[link_section = ".iram1.text"]` | `.iram1.text` |
 | D / LDC | `import ldc.attributes; @section(".iram1.text")` | `.iram1.text` (verified in `experiments/addrspace`) |
-| TinyGo | `//go:section ".iram1.text"` (compiler directive) | `.iram1.text` (used internally by TinyGo's own runtime for vector table / IRAM bring-up) |
+| TinyGo | `//go:section ".iram1.text"` (compiler directive) | **silently ignored** in v0.41.1: emitted IR has no `section` attribute, linked ELF has only `.text` (no `.iram1.text`). No working source-level way to place a Go symbol in a named section; place via a linker-script `KEEP(*(main.iram_handler))` instead. |
 
 (ESP-IDF's macros — `IRAM_ATTR`, `DRAM_ATTR`, `RTC_*_ATTR` — are exactly
 `section(...)` wrappers; the linker script maps those sections to the physical
@@ -57,5 +57,7 @@ syntax surface*: clang accepts numbered spaces (annotation), **Zig validates and
 rejects non-Xtensa ones** (the most rigorous), gcc ignores the numbered form,
 and Rust/D/TinyGo have no addrspace syntax at all. The real, fully-portable
 mechanism for ESP memory regions is **linker sections**
-(`section`/`linksection`/`link_section`/`@section`/`//go:section`) + the linker
-script — and there all six toolchains are at parity.
+(`section`/`linksection`/`link_section`/`@section`) + the linker script — and
+five of six toolchains are at parity. TinyGo is the outlier: its `//go:section`
+directive parses but is silently dropped in v0.41.1, so IRAM placement from
+Go has to go through the linker script alone (anchor a known TinyGo symbol).
