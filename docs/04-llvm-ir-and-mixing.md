@@ -1,26 +1,31 @@
 # 04 — LLVM IR comparison & mixing
 
-## Same target, same datalayout (all four frontends, since docs/23)
+## Same target, same datalayout (all five LLVM frontends, since docs/23/24)
 
-All four LLVM frontends now emit the identical datalayout for the Xtensa esp32
+All five LLVM frontends now emit the identical datalayout for the Xtensa esp32
 target; only the triple differs:
 
 ```
-clang : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
-        target triple      = "xtensa-esp-unknown-elf"
-rust  : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
-        target triple      = "xtensa-unknown-none-elf"
-zig   : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
-        target triple      = "xtensa-unknown-unknown-unknown"
-D/LDC : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
-        target triple      = "xtensa-esp-unknown-elf"
+clang  : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
+         target triple      = "xtensa-esp-unknown-elf"
+rust   : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
+         target triple      = "xtensa-unknown-none-elf"
+zig    : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
+         target triple      = "xtensa-unknown-unknown-unknown"
+D/LDC  : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
+         target triple      = "xtensa-esp-unknown-elf"
+TinyGo : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
+         target triple      = "xtensa"               [docs/24 §c]
 ```
 
-Byte-identical across all four → same memory model, mutually linkable. The
-old upstream-LLVM-22 LDC used to differ (`i8:8:32-i16:16:32` instead of
-`v1:8:8-i128:128`); `llvm-link` warned but merged. The espressif-fork LDC
-(LLVM 21.1.3) drops the warning — same memory model going in, same coming out.
-See [docs/23](23-ldc-espressif-fork.md) §(e) for the side-by-side.
+Byte-identical across all five → same memory model, mutually linkable in
+theory. The old upstream-LLVM-22 LDC used to differ (`i8:8:32-i16:16:32` instead
+of `v1:8:8-i128:128`); `llvm-link` warned but merged. The espressif-fork LDC
+(LLVM 21.1.3) drops the warning; TinyGo (LLVM 20.1.1, its own bundled fork)
+agrees on every byte even though its LLVM is two minor versions behind. See
+[docs/23](23-ldc-espressif-fork.md) §(e) and [docs/24](24-tinygo.md) §c for the
+side-by-side. (TinyGo *triple* drops the `-esp-elf` suffix; it's still a
+recognized Xtensa target at the LLVM level.)
 
 ## Where the frontends lower the ABI differs (but the backend often reconciles)
 
@@ -103,10 +108,12 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
   IR-level mixing.
 
 > Takeaway: IR portability is real (shared backend; identical datalayout across
-> all four LLVM frontends since docs/23), and both merge paths work —
+> all five LLVM frontends since docs/23/24), and both merge paths work —
 > `llvm-link` (LLVM-22 binutils for the upstream-LDC comparison; esp-clang's
 > own 21.1.3 binutils for the canonical fork-LDC) merges across frontends, and
 > `ld.lld` LTO merges + inlines. The LTO reader (esp 21.1.3 `ld.lld`) accepts
-> clang/rust/**D** (all 21.1.3) — no skew. Zig (21.1.0) is the lone outlier;
-> "same LLVM point release" remains the LTO rule of thumb. Object-level FFI
-> (docs 03/05) has no such constraint and is the robust default.
+> clang/rust/**D** (all 21.1.3) — no skew. Zig (21.1.0) and TinyGo (20.1.1) are
+> the version-skew outliers; "same LLVM point release" remains the LTO rule of
+> thumb. Object-level FFI (docs 03/05) has no such constraint and is the robust
+> default for the five toolchains that produce relocatable `.o`; TinyGo
+> doesn't (docs/24) so it stays standalone.

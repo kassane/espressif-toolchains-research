@@ -1,7 +1,9 @@
 # 15 — Compiler-driver parity: `zig cc`/`esp-clang`/`esp-gcc` (and the `++`s)
 
 How interchangeable are the three C / C++ drivers for Xtensa esp32?
-Reproduce with `experiments/compiler-parity/run.sh`.
+Reproduce with `experiments/compiler-parity/run.sh`. (For the LDC and TinyGo
+*driver* peers — same backend family, different invocation surface — see
+docs/19/23 and docs/24 §b; this doc keeps its narrow C/C++ scope.)
 
 | | `zig cc` / `zig c++` | `esp-clang` / `esp-clang++` | `esp-gcc` / `esp-g++` |
 |---|---|---|---|
@@ -9,6 +11,15 @@ Reproduce with `experiments/compiler-parity/run.sh`.
 | C target flag | `-target xtensa-freestanding-none -mcpu=esp32` | `--target=xtensa-esp-elf -mcpu=esp32` | `XTENSA_GNU_CONFIG=…esp32.so` |
 | C ABI (windowed) | ✓ | ✓ | ✓ |
 | C++ ABI (Itanium) | ✓ | ✓ | ✓ |
+
+For the related LLVM-driver peers in the 6-toolchain matrix not covered here:
+
+| | LDC (espressif-fork) | TinyGo |
+|---|---|---|
+| engine | LDC 1.42-git / LLVM **21.1.3** (espressif fork; docs/23) | tinygo 0.41.1 / LLVM **20.1.1** (tinygo-org fork; docs/24) |
+| C-ABI bridge | `extern(C)` / `extern(C++)` | `//export` (cgo on host; firmware-only on Xtensa) |
+| `-mattr` for `-mcpu=esp32` | mirrors esp-clang's set (via env.sh `ldc_xtensa_flags`) | `+atomctl,+memctl,+timerint` instead of esp-clang's `+dcache,+expstate,+highpriinterrupts-level7,+mul16,+timers3` — C-ABI essentials (+windowed,+density,+mul32,+s32c1i) in both |
+| relocatable `.o` for the cross-toolchain link? | ✓ direct `-c` since docs/23 | ✗ flash-image only; docs/24 |
 
 ## C parity (`zig cc` × `esp-clang` × `esp-gcc`)
 

@@ -1,10 +1,12 @@
 # 01 — Toolchains
 
-Five toolchains, pinned. All are x86_64-linux hosted cross-compilers (except the
-host-capable parts of Zig/Rust used for the runnable host test). All four LLVM
+Six toolchains, pinned. All are x86_64-linux hosted cross-compilers (except the
+host-capable parts of Zig/Rust used for the runnable host test). Four LLVM
 frontends — clang/rust/zig **and now D/LDC** (since docs/23) — ride the same
-espressif/llvm-project Xtensa fork (LLVM 21.x). GCC is the non-LLVM control.
-The upstream-LLVM-22 LDC remains as `$LDC2_UPSTREAM` for the comparison.
+espressif/llvm-project Xtensa fork (LLVM 21.x); **TinyGo** (since docs/24) is a
+fifth LLVM frontend on its own bundled LLVM 20.1.1 fork (tinygo-org). GCC is
+the non-LLVM control. The upstream-LLVM-22 LDC remains as `$LDC2_UPSTREAM` for
+the comparison.
 
 ## Pins & download URLs
 
@@ -17,6 +19,7 @@ The upstream-LLVM-22 LDC remains as `$LDC2_UPSTREAM` for the comparison.
 | 5 | D / LDC (canonical) | `kassane/esp-idf-dlang` @ `xtensa-toolchain` | `ldc2-v1.42.0-espressif-linux-musl-static.tar.xz` | 48 MB |
 | 5b | D / LDC (upstream, *opt*) | `ldc-developers/ldc` @ `CI` (`ldc2-c8305d0a`) | `ldc2-c8305d0a-linux-x86_64.tar.xz` | 142 MB |
 | 6 | LLVM-22 binutils *(opt)* | `ldc-developers/llvm-project` @ `ldc-v22.1.2` | `llvm-22.1.2-linux-x86_64.tar.zst` | 405 MB |
+| 7 | TinyGo | `tinygo-org/tinygo` @ `v0.41.1` | `tinygo0.41.1.linux-amd64.tar.gz` | 172 MB |
 
 `scripts/setup.sh` fetches, verifies (asset 5 also has a hand-pinned sha256)
 and lays out 1–5 under `$TC` (`/home/user/toolchains`). Components 5b
@@ -36,6 +39,7 @@ rustc              : 1.95.0-nightly (95e5bda86 2026-04-15)  →  LLVM version: 2
 xtensa-esp-elf-gcc : 15.2.0 (crosstool-NG esp-15.2.0_20251204)
 ldc2 (canonical)   : 1.42.0-git-04a6c8b (DMD v2.112.1)  →  LLVM version: 21.1.3 (espressif fork)
 ldc2 (upstream,opt): 1.42.0-git-c8305d0 (DMD v2.112.1)  →  LLVM version: 22.1.2
+tinygo             : 0.41.1 (Go 1.24.7)                 →  LLVM version: 20.1.1 (tinygo-org fork; bundled)
 ```
 
 **Backend alignment:** clang, rust **and the canonical D/LDC** are now *the
@@ -119,3 +123,23 @@ skew (see [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
   `XTENSA_GNU_CONFIG`. `env.sh` provides the `xtensa_cfg <cpu>` helper.
 - libgcc (soft-float/64-bit builtins) at
   `xtensa-esp-elf/lib/gcc/xtensa-esp-elf/15.2.0/libgcc.a`.
+
+### TinyGo (tinygo-org/tinygo)
+- `v0.41.1` ships **its own LLVM 20.1.1 bundle** (the only LLVM-20 in the
+  matrix; clang/rust/D-fork are 21.1.3, zig 21.1.0, upstream-LDC 22.1.2).
+- Targets `esp32 + esp32s3 + esp32c3` (per-board variants too); **no `esp32s2`** —
+  TinyGo upstream doesn't ship that target.
+- Build with `tinygo build -target=esp32-coreboard-v2 -o app.bin app.go`.
+  `tinygo info <target>` lists the per-board LLVM triple, `-mattr`, GOARCH
+  build tags, garbage collector, scheduler — see `experiments/tinygo/run.sh`.
+- **Whole-program compiler:** there's no `-c` relocatable mode outside wasm
+  (`-buildmode=c-shared` is wasm-only), so TinyGo can't join the FFI matrix as
+  a co-linkable column (docs/24). For inspection, `tinygo build -work`
+  preserves the intermediate dir under `/tmp/tinygo*/`; the linked `main` is a
+  real Xtensa ELF and `main.o` is LLVM-20 bitcode (readable by
+  `$LDC_LLVM_DIR/bin/llvm-dis` or any newer `llvm-dis`).
+- **CLI footguns** (encoded in `experiments/tinygo/run.sh` comments):
+  - Stdout/stderr merge (`2>&1`) silently truncates the build log and reports
+    `rc=1`; split the streams (`>out 2>err`).
+  - Go ignores files whose name starts with `_` even when named on the command
+    line; `_probe.go` silently compiles to no output.

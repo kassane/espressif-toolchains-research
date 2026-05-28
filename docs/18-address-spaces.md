@@ -20,12 +20,15 @@ AVR `__flash` or GPU `global`/`shared`).
 | **gcc** | (numbered attr is a clang ext) | **ignored** — `warning: 'address_space' attribute directive ignored`; gcc only has *named* spaces (none defined for Xtensa) |
 | **Zig** | `*addrspace(.x) T` + `std.builtin.AddressSpace` | **only `.generic`** — the enum's named spaces are target-gated; `*addrspace(.flash) T` errors: *"pointers with address space 'flash' are not supported on xtensa"* (flash is AVR; global/shared are GPU; gs/fs x86) |
 | **Rust** | — (no surface syntax) | **none** — all pointers are `addrspace(0)` |
+| **D / LDC** | no language syntax | **N/A** — `ldc.attributes` has `@llvmAttr` (function/param only), no pointer-addrspace; escape hatch via `__ir!` ("ptr addrspace(1)") carries through to IR but codegen flattens (`l8ui a2, a2, 0` for both as0 and as1 — confirmed in `experiments/addrspace/run.sh`) |
+| **TinyGo** | no language syntax | **N/A** — Go has no pointer-addrspace; TinyGo carries no Xtensa-specific addrspace mapping. Section placement via `//go:section ".iram1.text"` (compiler directive, equivalent to clang's section attribute) |
 
 So on Xtensa: clang carries the annotation through to IR (no-op codegen), Zig
 *validates* address spaces against the target (rejecting non-applicable ones — the
 strictest, most correct behavior), gcc silently ignores the numbered attribute,
-and Rust has no concept of it. None give distinct codegen, because the backend has
-no distinct spaces.
+Rust and D/LDC have no language-level concept, and TinyGo has none at the Go
+language level either. None give distinct codegen, because the backend has no
+distinct spaces.
 
 ## ESP memory regions are a *linker-section* job, not address spaces
 
@@ -39,6 +42,8 @@ section:
 | clang / gcc | `__attribute__((section(".iram1.text")))` | `.iram1.text` |
 | Zig | `linksection(".iram1.text")` | `.iram1.text` |
 | Rust | `#[link_section = ".iram1.text"]` | `.iram1.text` |
+| D / LDC | `import ldc.attributes; @section(".iram1.text")` | `.iram1.text` (verified in `experiments/addrspace`) |
+| TinyGo | `//go:section ".iram1.text"` (compiler directive) | `.iram1.text` (used internally by TinyGo's own runtime for vector table / IRAM bring-up) |
 
 (ESP-IDF's macros — `IRAM_ATTR`, `DRAM_ATTR`, `RTC_*_ATTR` — are exactly
 `section(...)` wrappers; the linker script maps those sections to the physical
@@ -49,7 +54,8 @@ regions.)
 Address spaces are effectively a **no-op on Xtensa** in every toolchain (the
 backend is single-flat-address-space). The differences are only in the *frontend
 syntax surface*: clang accepts numbered spaces (annotation), **Zig validates and
-rejects non-Xtensa ones** (the most rigorous), gcc ignores the numbered form, Rust
-has none. The real, fully-portable mechanism for ESP memory regions is **linker
-sections** (`section`/`linksection`/`link_section`) + the linker script — and
-there all four are at parity.
+rejects non-Xtensa ones** (the most rigorous), gcc ignores the numbered form,
+and Rust/D/TinyGo have no addrspace syntax at all. The real, fully-portable
+mechanism for ESP memory regions is **linker sections**
+(`section`/`linksection`/`link_section`/`@section`/`//go:section`) + the linker
+script — and there all six toolchains are at parity.

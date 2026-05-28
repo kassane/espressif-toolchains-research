@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh - DWARF / debug-info parity audit across all 5 toolchains on Xtensa.
+# run.sh - DWARF / debug-info parity audit across all 6 toolchains on Xtensa.
 # A reverse-engineering lens on the FFI matrix: same C-ABI function, same
 # target, what does each toolchain ship in .debug_*?
 #   (a) DWARF section bytes per toolchain (sizes of .debug_{info,line,abbrev,…})
@@ -7,6 +7,12 @@
 #   (c) Subprogram DIE for `add_i32` — args, types, source loc
 #   (d) Mangling: symbol-table name vs DWARF "DW_AT_name"
 #   (e) Reverse-engineer codegen for the SAME function across toolchains
+#   (f) Frame info (.eh_frame vs .debug_frame)
+#   (g) TinyGo addendum: it's a whole-program compiler so we work from the
+#       intermediate linked ELF (preserved with `-work`); the same function
+#       is exposed via `//go:noinline` + a side-effecting reference so LTO
+#       doesn't DCE it. Reported separately because the byte counts in §a/f
+#       are NOT apples-to-apples (TinyGo's ELF includes the full Go runtime).
 # Reproduces and extends docs/04/06/15; see docs/22.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -115,3 +121,42 @@ for tag in c_clang:clang c_gcc:gcc rs:rust z:zig d:LDC; do
     "$(h2d "$(sz "$B/$L" .eh_frame || true)")" \
     "$(h2d "$(sz "$B/$L" .debug_frame || true)")" 2>/dev/null || true
 done
+
+echo "== (g) TinyGo addendum: 6th toolchain via linked-ELF inspection =="
+# TinyGo never emits a -c relocatable .o (docs/24); it always builds a flash
+# image. With `-work` we preserve the intermediate dir; the linked ELF
+# `<work>/main` is a real Xtensa ELF with DWARF that we CAN inspect — but its
+# byte counts include the full Go runtime, so they're not apples-to-apples
+# with the 5 single-function .o files above. Reported here for completeness.
+if [ -x "${TINYGO:-}" ]; then
+  cat > "$B/dwarf.go" <<'EOF'
+package main
+//go:noinline
+func go_add_i32(a, b int32) int32 { return a + b }
+var x int32 = 7
+var y int32 = 11
+func main() {
+    x = go_add_i32(x, y)
+    for { x = go_add_i32(x, y) }
+}
+EOF
+  # Keep stdout and stderr split — TinyGo has an open bug where merging them
+  # to one fd silently truncates the build log and reports rc=1 (docs/24).
+  "$TINYGO" build -opt=0 -work -target=esp32-coreboard-v2 \
+      -o "$B/tg.bin" "$B/dwarf.go" >"$B/tg.out" 2>"$B/tg.err"
+  TG=$(ls -td /tmp/tinygo*/ 2>/dev/null | head -1)
+  if [ -n "$TG" ] && [ -f "$TG/main" ]; then
+    echo "  (Source: \$TG/main from $TG — preserved by tinygo -work.)"
+    printf "  %-10s %s\n" "TinyGo" \
+      "DWARFv$("$DWD" --debug-info "$TG/main" 2>/dev/null | grep -oE 'version = 0x000[1-9]' | grep -oE '[1-9]' | head -1) producer: $("$DWD" --debug-info "$TG/main" 2>/dev/null | grep -oE 'DW_AT_producer.*' | head -1 | sed -E 's/.*"([^"]*)".*/\1/')"
+    printf "  go_add_i32 (-opt=0) disasm:\n"
+    "$ESP_CLANG_DIR/llvm-objdump" -d --mcpu=esp32 --disassemble-symbols='main.go_add_i32' "$TG/main" 2>/dev/null \
+      | grep -E '^[0-9a-f]+:' | head -3 | sed 's/^/      /'
+    echo "  (NOTE: .text/.debug_* sizes include the full TinyGo Go runtime + std lib,"
+    echo "   not just the function; see docs/22 §g for the apples-to-apples caveat.)"
+  else
+    echo "  TinyGo build failed; see $B/tg.err"
+  fi
+else
+  echo "  \$TINYGO not set; skip (run: LDC_UPSTREAM=0 ./scripts/setup.sh + source scripts/env.sh)"
+fi

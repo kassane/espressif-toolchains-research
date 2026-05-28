@@ -13,6 +13,7 @@ Berkeley `llvm-size` "text" column, which folds in zig's default `.eh_frame`:
 | clang 21 (C++) | 212 | templates fully inlined; C-ABI exports only |
 | D 1.42 (LDC esp-fork, `-betterC`) | 533 | between clang and zig; verbose byte loops in `make_blob`/`blob_sum` (docs/19, /23) |
 | zig 0.16 (Zig) | **715** | ~3× — non-C-ABI large-struct marshalling (doc 05) |
+| TinyGo v0.41.1 | *whole firmware ~140 KB ELF (docs/24)* | not directly comparable: TinyGo emits a flash image (header `e9 02 02 1f`), not a per-function `.o`; the included Go runtime + std lib dominate. At -opt=0 the single-function disasm matches Rust release in 7 bytes (docs/22 §g). |
 
 Re-derive with `./scripts/analyze.sh esp32` (writes
 `build/analysis/sizes-esp32.txt`). The Zig outlier is entirely
