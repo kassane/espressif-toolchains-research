@@ -1,14 +1,16 @@
 # espressif-ffi-ai
 
-Research & test bed for **cross-language FFI on Xtensa (ESP32 / ESP32-S2 / ESP32-S3)**
-using the shared `espressif/llvm-project` backend.
+Research & test bed for **cross-language FFI on Espressif's Xtensa (ESP32 / S2
+/ S3) and RISC-V (ESP32-C3)** silicon, riding the shared `espressif/llvm-project`
+backend. Six toolchains in scope: clang, gcc, rustc, zig, ldc2, tinygo.
 
 The central question:
 
-> Zig, Rust, D and C/C++ can all target Xtensa through (forks of, or upstream)
-> the same LLVM backend. Does that shared backend actually give us a shared ABI —
-> i.e. can the five languages call each other freely on a real ESP32 core, and can
-> their intermediate representations and binaries be mixed?
+> Five LLVM frontends (clang, rustc, zig, ldc2, tinygo) plus a non-LLVM
+> control (gcc) all target Espressif Xtensa through some fork of LLVM. Does
+> that shared backend actually give a shared ABI — can the languages call
+> each other freely on a real ESP32 core, and can their IRs and binaries be
+> mixed?
 
 Short answer, established empirically in this repo:
 
@@ -71,7 +73,8 @@ committed; `.gitignore` guards against it.
 experiments/
   ffi-matrix/      5 languages implement one C-ABI contract (ffi_abi.h); a C
                    driver calls all of them. Builds for host + xtensa.
-  abi-structs/     5-frontend caller sweep — isolates the large-struct ABI bug
+  abi-structs/     clang/zig/D caller sweep — isolates the by-value struct-arg
+                   bug; covers byte arrays, word arrays, AND C-style bitfields
   llvm-ir-mix/     cross-language LTO / IR-merge probes (+ LLVM-22 llvm-link merge)
   dlang/           D/LDC deep-dive: ABI, extern(C++), -HC headers, LTO (docs/19)
   ldc-fork-comparison/ espressif-21 vs upstream-22 LDC side-by-side (docs/23)
@@ -106,17 +109,19 @@ CLAUDE.md          orientation for future automated sessions
   bitcode is LTO-mergeable (clang↔rust↔D); zig 21.1.0 and TinyGo 20.1.1 are
   version-skew outliers. With the LLVM-22 binutils, `llvm-link` merges all
   espressif-fork frontends' IR into one module (docs/04).
-- **Two frontends mis-handle by-value struct *arguments*** (Rust/clang/gcc are
+- **Three frontends mis-handle by-value struct *arguments*** (Rust/clang/gcc are
   correct): **Zig** stack-spills under-aligned (`align(1)`) structs on Xtensa and
   mis-lowers a small `{i32,i32}` to `[2 x i64]` on RISC-V (reproduces on upstream
   Zig). **D/LDC** marks *every* aggregate `byval`/`sret`, so it diverges more
   broadly — both `point_dot` (align-4) and `blob_sum` on Xtensa, plus small-struct
-  *returns* (docs/19). The espressif-fork LDC does NOT change this — the bug is
-  in LDC's frontend, not the LLVM backend ([proof: `experiments/ldc-fork-comparison`,
-  docs/23](docs/23-ldc-espressif-fork.md); same family as
-  [dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)).
-  Struct returns ≤reg-size, scalars, pointers and callbacks are fine everywhere;
-  **pass structs by pointer** across a Zig or D boundary.
+  *returns* AND C-style bitfields (extended sweep, docs/05). The espressif-fork
+  LDC does NOT change this — the bug is in LDC's frontend, not the LLVM backend
+  ([proof: `experiments/ldc-fork-comparison`, docs/23](docs/23-ldc-espressif-fork.md);
+  same family as [dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)).
+  **TinyGo** lowers `struct{[N]uint8}` as `[N x i8]` byte-per-register (docs/24
+  §e), so it joins the byte-array hole. Struct returns ≤reg-size, scalars,
+  pointers and callbacks are fine everywhere; **pass structs by pointer**
+  across a Zig, D, or TinyGo-byte-array boundary.
 - **Confirmed at runtime on qemu** (both `qemu-system-xtensa` and
   `qemu-system-riscv32`): Xtensa → `zig blob_sum FAIL` + `d point_dot`/`d blob_sum
   FAIL`; RISC-V → `zig point_dot FAIL` (D's small struct gated, TinyGo
