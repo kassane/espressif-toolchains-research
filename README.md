@@ -6,7 +6,7 @@ backend. Six toolchains in scope: clang, gcc, rustc, zig, ldc2, tinygo.
 
 The central question:
 
-> Five LLVM frontends (clang, rustc, zig, ldc2, tinygo) plus a non-LLVM
+> LLVM-frontend toolchains (clang, rustc, zig, ldc2, tinygo) plus a non-LLVM
 > control (gcc) all target Espressif Xtensa through some fork of LLVM. Does
 > that shared backend actually give a shared ABI — can the languages call
 > each other freely on a real ESP32 core, and can their IRs and binaries be
@@ -38,9 +38,10 @@ the detailed evidence.
 | Go | [tinygo-org/tinygo](https://github.com/tinygo-org/tinygo/releases/tag/v0.41.1) `v0.41.1` | TinyGo 0.41.1, bundled **LLVM 20.1.1** | LLVM Xtensa (tinygo-org fork; esp32/s3/c3 — no s2) |
 | C/C++ (gcc) | [espressif/crosstool-NG](https://github.com/espressif/crosstool-NG) `esp-15.2.0_20251204` | gcc **15.2.0** | GCC Xtensa (control) |
 
-Five LLVM frontends ride a fork of LLVM-Xtensa — four on `espressif/llvm-project`
-(clang/rust/D 21.1.3, zig 0.16 on bundled 21.1.0) and TinyGo on its own bundled
-`tinygo-org/llvm-project` 20.1.1. GCC is the non-LLVM control. TinyGo's output
+The LLVM-frontend toolchains ride a fork of LLVM-Xtensa — clang, rustc, and the
+canonical LDC on `espressif/llvm-project` 21.1.3, zig 0.16 on bundled 21.1.0,
+and TinyGo on its own bundled `tinygo-org/llvm-project` 20.1.1. GCC is the
+non-LLVM control. TinyGo's output
 defaults to a full ESP32 flash image but `-o foo.o` does produce a real
 relocatable Xtensa ELF (with ~196 KB of Go runtime + scheduler undefs — see
 docs/24 §d for what a consumer must supply). An *optional* `ldc-developers/ldc`
