@@ -48,10 +48,11 @@ export LDC2="$LDC_DIR/bin/ldc2"
 # -mcpu=esp32 (ldc #4919). Opt-in: setup.sh LDC_UPSTREAM=1.
 export LDC2_UPSTREAM="$TC/ldc2-c8305d0a-linux-x86_64/bin/ldc2"
 
-# Fallback: kassane/esp-idf-dlang upstream went 404 on 2026-05-28. If the fork
-# tarball isn't installed but the upstream-22 LDC is, promote it to canonical
-# so the rest of the build still runs (with the literal-pool + s2/s3 workarounds
-# back in scope). docs/23 then no longer holds for this session.
+# Fallback: kassane/esp-idf-dlang upstream has been unreachable since
+# 2026-05-28. If the fork tarball isn't installed but the upstream-22 LDC is,
+# promote it to canonical so the rest of the build still runs (with the
+# literal-pool + s2/s3 workarounds back in scope). docs/23 then no longer
+# holds for this session.
 if [ ! -x "$LDC2" ] && [ -x "$LDC2_UPSTREAM" ]; then
     echo "env.sh: \$LDC2 (esp-fork LDC) missing — promoting \$LDC2_UPSTREAM to canonical." >&2
     echo "        Re-enables the docs/23 workarounds (literal-pool, -mattr s2/s3)." >&2

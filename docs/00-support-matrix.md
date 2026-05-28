@@ -4,11 +4,12 @@ At-a-glance comparison for **Espressif Xtensa (ESP32 / S2 / S3)** and the
 RISC-V outlier **ESP32-C3**, distilled from the experiments in this repo.
 Legend: ✓ works / correct · ✗ broken · — n/a.
 
-> **LDC mirror outage (2026-05-28):** the canonical D toolchain's upstream
-> (`kassane/esp-idf-dlang`) returns HTTP 404. `scripts/setup.sh` auto-falls
-> back to the upstream LDC (LLVM 22.1.2) — re-enabling docs/23's workarounds
-> for fresh installs. See HANDOFF.md §"Known outages". The matrix below
-> describes the canonical-fork state; runtime reality may match the fallback.
+> **LDC mirror unavailable (since 2026-05-28):** the canonical D toolchain's
+> upstream (`kassane/esp-idf-dlang`) isn't fetchable. `scripts/setup.sh`
+> auto-falls back to the upstream LDC (LLVM 22.1.2) — re-enabling docs/23's
+> workarounds for fresh installs. See HANDOFF.md §"Known outages". The matrix
+> below describes the canonical-fork state; runtime reality may match the
+> fallback.
 
 ## Identity & availability
 
@@ -100,6 +101,28 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 | f32: esp32-**s2** (no FPU) | soft `__mulsf3` | soft | soft | soft | soft | n/a (no s2 target, docs/24 §a) |
 | soft-float/builtins | `compiler_builtins` | `compiler_rt` | `compiler-rt` | `compiler-rt` | `libgcc` | bundled `compiler-rt` + Go runtime |
 | runtime-run on qemu | ✓ (docs/08/09) | ✓ | ✓ (docs/19) | ✓ | ✓ (objs) | standalone via `tinygo flash` (docs/24) |
+
+## Safety-feature parity on Espressif targets
+
+| feature | **Rust** | **Zig** | **D** (LDC) | **esp-clang** | **GCC** | **TinyGo** |
+|---|---|---|---|---|---|---|
+| safe-by-default ("opt-in `unsafe`") | ✓ unsafe keyword | partial — runtime UB checks in Debug only (overflow/bounds/null deref) | opt-in `@safe`; default `@system`. `-preview=safer` enables stricter `@safe` (docs/20) | ✓ GC + bounds-checks; no raw pointer arithmetic | ✗ | ✗ |
+| compile-time array bounds | ✓ in safe Rust | ✓ in Debug | ✓ in `@safe` | ✓ always | ✗ (UB on overrun) | ✗ |
+| ownership / borrow checker | ✓ builtin | partial (single-ownership via `*const`/`*` distinction) | `@live` + `-preview=dip1021` (docs/20 §8 — catches LEAK Rust's checker doesn't) | n/a (GC) | n/a | n/a |
+| `-fsanitize=address` | n/a on Xtensa | n/a on Xtensa | **accepted but no runtime** (`libclang_rt.asan-xtensa.a` not shipped → link fails) | n/a on Xtensa | n/a on Xtensa | n/a |
+| `-fsanitize=undefined` (UBSan) | `-Zsanitize=…` (nightly) | `-fsanitize=undefined` | **rejected** by LDC (`Unrecognized -fsanitize value 'undefined'`) | n/a on Xtensa | n/a on Xtensa | n/a |
+| `-fstack-protector` on freestanding xtensa | depends on target spec | **errors**: `enabling stack protection requires libc` | accepts (linker pulls `__stack_chk_*` from runtime if available) | accepts — emits `*UND*` `__stack_chk_fail`/`_guard`, linkable | accepts | (Go runtime checks) |
+| `-fxray-instrument` (LLVM call tracing) | n/a | n/a | **silent no-op on Xtensa** (no `xray_*` sections emitted) | n/a on Xtensa | n/a | n/a |
+| `must-use` (`#[must_use]` / `@mustuse` / `[[nodiscard]]`) | ✓ fn + type, warn | partial via `_ = expr` discard requirement | ✓ DIP1038 TYPE-only; fn marker "reserved" (docs/20 §7) | ✓ `[[nodiscard]]` C++17+ | ✓ same | ✗ (no warning) |
+| explicit-discard (`_ = expr`) required | partial | ✓ | ✓ via `cast(void)` | n/a | n/a | implicit |
+| static borrow-leak detection | ✗ (`mem::forget` is safe) | ✗ | ✓ `@live` (docs/20 §8) | ✗ | ✗ | ✗ (GC handles) |
+| concurrency: data-race protection | ✓ `Send`/`Sync` | partial via `atomic` ordering | partial via `shared T*` (docs/atomics-orders) + `@safe` rules | ✓ Go scheduler + races detector (host only) | ✗ | ✗ |
+| TLS / `threadlocal` on baremetal Xtensa | not exposed | silently emits `R_XTENSA_TLS_TPOFF` + `rur threadptr` (no userland sets the SR) | `__thread` rejected on baremetal | n/a (GC + scheduler manages goroutine-locals) | not in scope | not in scope |
+| atomics — native `s32c1i` (esp32 LX6) | ✓ | ✓ | ✓ via `ldc.intrinsics.llvm_atomic_*` (`shared T*` required, docs/atomics-orders) | ✓ (compiler-rt fallback when not native) | ✓ inline | ✓ |
+| atomics — `compare_exchange` on **esp32-s2** | **✗** (target spec sets `atomic-cas=false`) | n/a | n/a | **✗** (lowers to `__atomic_compare_exchange_4` libcall → link fails) | n/a | n/a |
+| `f16` half-precision | accepted; libcalls (`__extendhfsf2`/`__truncsfhf2`) **missing** in xtensa `compiler_builtins` → link fails | f16 not exposed | not exposed | not exposed | `__fp16` accepted; needs compiler-rt | accepted | n/a |
+| u128 / `__int128` | ✓ native | ✓ native | **✗** `cent`/`ucent` formally obsoleted ("use core.int128.Cent", needs druntime) | ✗ rejected on xtensa | ✗ rejected on xtensa | ✗ no native |
+| `-fno-omit-frame-pointer` on register-heavy fn | rustc + `compiler_builtins` ICE (esp-rs #270) — Rust-specific | ✓ | ✓ no ICE (`-fp=all`) | ✓ no ICE | ✓ | ✓ |
 
 ## One-line verdict
 

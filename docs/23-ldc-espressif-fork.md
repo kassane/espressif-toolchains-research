@@ -1,9 +1,10 @@
 # 23 — LDC on the espressif fork: same frontend, two LLVM backends, what flips
 
-> **Upstream outage (2026-05-28):** `kassane/esp-idf-dlang` returns HTTP 404.
-> The pinned `xtensa-toolchain` asset is gone, so a clean `./scripts/setup.sh`
-> falls back to the upstream-LLVM-22 LDC (`$LDC2_UPSTREAM`) — which means the
-> workarounds this doc documents as "dropped" come back for fresh installs.
+> **Mirror unavailable (since 2026-05-28):** the `kassane/esp-idf-dlang`
+> `xtensa-toolchain` asset is no longer fetchable from the previously-pinned
+> URL, so a clean `./scripts/setup.sh` falls back to the upstream-LLVM-22 LDC
+> (`$LDC2_UPSTREAM`) — which means the workarounds this doc documents as
+> "dropped" come back for fresh installs.
 > If you have the original 49 MB tarball (sha256 `0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211`),
 > drop it at `$DL/ldc-esp.tar.xz` and re-run setup to keep the canonical fork
 > path. The architectural intent below is the steady-state; the operational
