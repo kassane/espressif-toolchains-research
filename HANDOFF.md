@@ -117,7 +117,7 @@ output.
       `extern(C++,"shims") extern(C++,class) struct Gpio(int Pin)` with the
       `pragma(mangle, "_ZN…")` escape hatch for the SFINAE/partial-spec/defaults D's
       TMP can't express; Rust consumer via `#[link_name="_ZN…"]`; Zig consumer via
-      `extern fn @"_ZN…"`. ld.lld + the xtensa.ld script links all five into one
+      `extern fn @"_ZN…"`. ld.lld + the xtensa.ld script links every FFI-matrix language into one
       esp32 ELF, **0 undefined**. LLVM-22 binutils (`ldc-developers/llvm` ≠
       `ldc-developers/ldc` tarball) `llvm-link`s clang+D+Rust IRs into a single
       11-define module. Empirical C++26 status on esp-clang 21.1.3: even P2686R5
@@ -244,7 +244,7 @@ output.
       `$LDC_LLVM_DIR`, `setup.sh LLVM22=1`, a 405 MB `.tar.zst` → needs `zstd`).
       These supply the `llvm-link`/`opt`/`llvm-dis`/`llvm-as` esp-clang doesn't
       ship, and being LLVM-22 they read all the post-18 IR the host LLVM-18 tools
-      reject. **`llvm-link` now merges all five frontends into one module** (42
+      reject. **`llvm-link` now merges every LLVM frontend into one module** (42
       defines), `opt -O2` inlines across the merge (D→D `x+2`), and `llvm-dis`
       reads LDC's LLVM-22 bitcode (producer `ldc version 1.42.0-git-c8305d0`).
       Caveats: cross-frontend `opt` inlining is gated by matching target-features

@@ -1,8 +1,8 @@
 # 04 — LLVM IR comparison & mixing
 
-## Same target, same datalayout (all five LLVM frontends, since docs/23/24)
+## Same target, same datalayout (every LLVM frontend, since docs/23/24)
 
-All five LLVM frontends now emit the identical datalayout for the Xtensa esp32
+Every LLVM frontend now emits the identical datalayout for the Xtensa esp32
 target; only the triple differs:
 
 ```
@@ -18,7 +18,7 @@ TinyGo : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
          target triple      = "xtensa"               [docs/24 §c]
 ```
 
-Byte-identical across all five → same memory model, mutually linkable in
+Byte-identical → same memory model, mutually linkable in
 theory. The old upstream-LLVM-22 LDC used to differ (`i8:8:32-i16:16:32` instead
 of `v1:8:8-i128:128`); `llvm-link` warned but merged. The espressif-fork LDC
 (LLVM 21.1.3) drops the warning; TinyGo (LLVM 20.1.1, its own bundled fork)
@@ -41,7 +41,7 @@ revealing rows:
 | `blob_sum` (24B) | `i32 ([6 x i32])` | `i32 ([6 x i32])` | `i32 (%Blob)` | `i32 (byval ptr)` | `i32 ([24 x i8])` |
 | `make_blob` (24B) | `void (sret ptr, i8)` | `void (sret ptr, i8)` | `%Blob (i8)` | `void (sret ptr, i8)` | `void (sret ptr, i8)` |
 
-Three strategies, five frontends: **clang and rust** coerce in-frontend to
+Three strategies: **clang and rust** coerce in-frontend to
 `[N x i32]` (C-ABI match); **Zig** hands raw aggregate types to the backend;
 **D/LDC** always pointer-indirects (`byval`/`sret`); **TinyGo** flattens
 struct-of-scalars to the scalar fields (`a.X`, `a.Y`, …) but leaves byte-array
@@ -87,7 +87,7 @@ opt -O2 over the merge: d_use -> `add i32 %x_arg, 2`  (D's d_inc inlined, x+2)
 llvm-dis reads LDC's LLVM-22 bitcode: producer "ldc version 1.42.0-git-c8305d0"
 ```
 
-So **true module-merge across all five frontends works** (the host LLVM-18 fails
+So **true module-merge across every LLVM frontend works** (the host LLVM-18 fails
 on the same input), and `opt -O2` then inlines across the merge. Two caveats:
 (1) cross-*frontend* inlining via `opt` is gated by matching `target-features`
 (clang carries espressif's full esp32 set, D the upstream set) — the `ld.lld`
@@ -115,12 +115,12 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
   IR-level mixing.
 
 > Takeaway: IR portability is real (shared backend; identical datalayout across
-> all five LLVM frontends since docs/23/24), and both merge paths work —
+> every LLVM frontend in this matrix since docs/23/24), and both merge paths work —
 > `llvm-link` (LLVM-22 binutils for the upstream-LDC comparison; esp-clang's
 > own 21.1.3 binutils for the canonical fork-LDC) merges across frontends, and
 > `ld.lld` LTO merges + inlines. The LTO reader (esp 21.1.3 `ld.lld`) accepts
 > clang/rust/**D** (all 21.1.3) — no skew. Zig (21.1.0) and TinyGo (20.1.1) are
 > the version-skew outliers; "same LLVM point release" remains the LTO rule of
 > thumb. Object-level FFI (docs 03/05) has no such constraint and is the robust
-> default for the five toolchains that produce relocatable `.o`; TinyGo
+> default for the toolchains that produce relocatable `.o` cleanly; TinyGo
 > doesn't (docs/24) so it stays standalone.

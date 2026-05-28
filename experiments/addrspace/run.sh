@@ -54,7 +54,7 @@ d_as1=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=load_as1 "$B/ir_as.o"
 d_as0=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=load_as0 "$B/ir_as.o" 2>/dev/null | grep -oE 'l8ui[[:space:]]+a[0-9]+, a[0-9]+, [0-9]+' | head -1)
 [ "$d_as1" = "$d_as0" ] && echo "  D codegen: load_as1 ($d_as1) == load_as0 ($d_as0) — addrspace flattened"
 
-echo "== ESP regions via linker SECTIONS (the real mechanism) — all five =="
+echo "== ESP regions via linker SECTIONS (the real mechanism) — every frontend =="
 echo 'void __attribute__((section(".iram1.text"))) hot(void){}' > "$B/sec.c"
 "$CLANG" $CT -ffreestanding -Os -c "$B/sec.c" -o "$B/sec_clang.o"
 eval $G "$GCC" -ffreestanding -Os -c "$B/sec.c" -o "$B/sec_gcc.o"

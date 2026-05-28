@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh - download, extract and prepare the five toolchains from scratch.
+# setup.sh - download, extract and prepare the six toolchains from scratch.
 # Idempotent: skips work already done. Toolchains land in $TC (default
 # /home/user/toolchains) and downloads in $DL (default /home/user/dl), both
 # OUTSIDE the repo so nothing large is ever committed.

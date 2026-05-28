@@ -72,7 +72,7 @@ total failures: 3
 ```
 
 This is the docs/05 + docs/19 predictions confirmed **at runtime on an emulated
-Xtensa core**: scalars interoperate across all five languages; the align-1 `Blob`
+Xtensa core**: scalars interoperate across every FFI-matrix language; the align-1 `Blob`
 by value is **misread by Zig** (`409 ≠ 300` — stack-spilled under-aligned struct
 while the clang driver passed it in registers). **D** fails *both* the align-4
 `Point` (`point_dot`) and `blob_sum` — it marks every aggregate `byval`/`sret`, so

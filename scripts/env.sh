@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# env.sh - point the experiments at the five downloaded toolchains.
+# env.sh - point the experiments at the six downloaded toolchains.
 # Source this: `source scripts/env.sh`
 #
 # Toolchains live OUTSIDE the repo (under /home/user/toolchains) and are never

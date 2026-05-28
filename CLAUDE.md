@@ -10,7 +10,7 @@ of Go runtime. Read `Research.md` first, then `docs/`.
 ## Environment facts
 
 - Host: x86_64 Linux, 4 CPUs, ~15 GB RAM, ~31 GB free disk. Network: outbound OK
-  (the five toolchains download from GitHub release CDNs).
+  (the six toolchains download from GitHub release CDNs).
 - **GitHub API is rate-limited** on this shared IP (unauthenticated 60/hr). To
   discover release assets use the **download CDN** (`releases/download/...`,
   `releases/expanded_assets/<tag>`) or `WebFetch`, not `api.github.com`.

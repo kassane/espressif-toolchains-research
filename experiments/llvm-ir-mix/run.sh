@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh - true LLVM module-merge across all five frontends, using the matching
+# run.sh - true LLVM module-merge across every LLVM frontend, using the matching
 # LLVM 22.1.2 binutils (ldc-developers/llvm-project ldc-v22.1.2) that esp-clang
 # does NOT ship. Closes the docs/04 §(b) gap: the host's llvm-link is LLVM 18 and
 # rejects the post-18 IR the frontends emit; the LLVM-22 tools read all of it.
@@ -24,7 +24,7 @@ echo "== (a) tools =="
 printf "  matching: %s\n" "$("$L/llvm-link" --version 2>/dev/null | grep -oE 'LLVM version [0-9.]+')"
 printf "  host:     %s (rejects post-18 IR)\n" "$(llvm-link --version 2>/dev/null | grep -oE 'LLVM version [0-9.]+' | head -1)"
 
-echo "== (b) emit IR for all five frontends (esp32), then llvm-link =="
+echo "== (b) emit IR for every LLVM frontend (esp32), then llvm-link =="
 "$CLANG" $CT -ffreestanding -O1 -S -emit-llvm -I"$INC" "$M/driver.c"  -o "$B/driver.ll" 2>/dev/null
 "$CLANG" $CT -ffreestanding -O1 -S -emit-llvm -I"$INC" "$M/c/lib_c.c" -o "$B/lib_c.ll"  2>/dev/null
 "$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -fno-emit-bin -femit-llvm-ir="$B/lib_zig.ll" "$M/zig/lib_zig.zig" 2>/dev/null
