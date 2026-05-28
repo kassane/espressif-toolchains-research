@@ -39,6 +39,14 @@ xtensa_cfg() { echo "$GCC_CFG_DIR/xtensa_${1}.so"; }  # xtensa_cfg esp32 -> .../
 export LDC_DIR="$TC/ldc2-c8305d0a-linux-x86_64"
 export LDC2="$LDC_DIR/bin/ldc2"
 
+# Matching LLVM 22.1.2 tools (ldc-developers/llvm-project ldc-v22.1.2): the full
+# binutils esp-clang does NOT ship — llvm-link / opt / llvm-dis / llvm-as / llc /
+# llvm-config. These finally read post-18 IR (the host's are LLVM 18), so they
+# can merge/inspect LDC's LLVM-22 bitcode (docs/04). NOT prepended to PATH: that
+# would shadow esp-clang's 21.1.3 llvm-objdump/nm/size and ld.lld. Reference the
+# tools explicitly via $LDC_LLVM_DIR/bin/<tool>. Optional (setup.sh LLVM22=1).
+export LDC_LLVM_DIR="$TC/llvm-22.1.2-linux-x86_64"
+
 # Keep cargo's caches local and offline-friendly.
 export CARGO_HOME="${CARGO_HOME:-$TC/.cargo-home}"
 

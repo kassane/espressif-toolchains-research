@@ -26,6 +26,7 @@ in `/home/user/dl`. **Never commit these** (`.gitignore` guards `toolchains/`,
 | `$RUSTC`/`$CARGO` | merged rust-esp prefix (1.95-nightly, LLVM 21.1.3) |
 | `$GCC` | xtensa-esp-elf-gcc 15.2.0 |
 | `$LDC2` | LDC 1.42-git, LLVM **22.1.2** (D; `-betterC` for bare-metal). Xtensa is upstream-LLVM experimental — needs the `-output-s`+esp-clang re-assembly in build-ffi.sh (docs/19) |
+| `$LDC_LLVM_DIR` | LLVM **22.1.2** binutils (llvm-link/opt/llvm-dis/llvm-as) matching LDC — the IR-merge tools esp-clang omits. Optional (`setup.sh LLVM22=1`; `.tar.zst`, needs `zstd`). NOT on PATH (would shadow esp-clang's 21.1.3 tools) — call `$LDC_LLVM_DIR/bin/<tool>` (docs/04) |
 | `xtensa_cfg <cpu>` | path to `xtensa_<cpu>.so` for `XTENSA_GNU_CONFIG` |
 
 ## Build / analyze
@@ -50,17 +51,20 @@ windowed `entry` instruction decodes as garbage.
    `--emit=...` must go after `--` in `cargo rustc`.
 3. **esp clang can't target the host** — use `zig cc` for host C/C++.
 4. **`llvm-link`/`opt`/`llvm-dis` are not shipped** by esp clang; the host's are
-   LLVM 18 and reject LLVM-21/22 IR. Mix IR via cross-language **LTO** (`ld.lld`,
-   the 21.1.3 reader) instead. clang↔rust (both 21.1.3) and — surprisingly —
-   clang↔D (LDC **22.1.2** bc) both link; zig (21.1.0) fails with "Invalid record"
-   (docs/19). Version skew is not a simple "must match" rule.
+   LLVM 18 and reject LLVM-21/22 IR. Two fixes: (a) the **LLVM-22 binutils**
+   (`$LDC_LLVM_DIR`, `setup.sh LLVM22=1`) read all post-18 IR — `llvm-link` merges
+   all five frontends into one module (`experiments/llvm-ir-mix/run.sh`); (b) for
+   esp32 *codegen*, mix via cross-language **LTO** (`ld.lld`, the 21.1.3 reader):
+   clang↔rust (both 21.1.3) and — surprisingly — clang↔D (LDC **22.1.2** bc) link;
+   zig (21.1.0) fails "Invalid record" (docs/04/19). Version skew is not a simple
+   "must match" rule; upstream LLVM-22 has no `esp32` CPU, so it can't codegen esp32.
 
 ## Repo map
 
 ```
 experiments/ffi-matrix/   the contract (include/ffi_abi.h) + 5 impls (c/cpp/rust/zig/d) + driver + xtensa.ld
 experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct ABI bug
-experiments/llvm-ir-mix/  mix*.c + mix_rs (crate) — cross-language LTO probes
+experiments/llvm-ir-mix/  mix*.c + mix_rs + run.sh — LTO probes & LLVM-22 llvm-link module-merge
 experiments/dlang/        cppiface.d + run.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO)
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
 docs/00..19               support-matrix / toolchains / abi / … / rust-zig / addrspace / dlang-ldc

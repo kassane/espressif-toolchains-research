@@ -141,7 +141,14 @@ cross-module `d_lto`+`c_lto` to `addi.n a2, a2, 2` (`x+2`). So despite shipping
 the *newest* LLVM, D's bitcode is the one that interops with the espressif LTO
 reader here — the version-skew rule is not simply "must match" (forward-compat
 held for this module; a feature using a 22-only record could still be rejected).
-Object-level FFI, as always, has no version constraint.
+Object-level FFI, as always, has no version constraint. The **matching LLVM
+22.1.2 binutils** (`ldc-developers/llvm-project` `ldc-v22.1.2`; `$LDC_LLVM_DIR`,
+`setup.sh LLVM22=1`) add the `llvm-link`/`opt`/`llvm-dis` esp-clang omits — being
+LLVM-22 they read every frontend's post-18 IR and **`llvm-link`-merge all five
+into one module** (docs/04, `experiments/llvm-ir-mix/run.sh`). They also expose a
+datalayout quirk: D's upstream-22 Xtensa datalayout
+(`…i8:8:32-i16:16:32…`) differs from the espressif-21 trio's (`…v1:8:8…i128:128…`)
+— `llvm-link` warns but merges; C-ABI struct layout is unaffected.
 
 ## 7. Tooling parity with clang
 

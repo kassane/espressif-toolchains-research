@@ -156,8 +156,20 @@ output.
       repro.
 - [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
       once reduced to a minimal repro (start from `experiments/abi-structs`).
-- [ ] Get a version-matched LLVM-21 `llvm-link`/`opt` to demonstrate true
-      module-merge (today only LTO is available; host tools are LLVM 18).
+- [x] **Version-matched LLVM binutils for true module-merge** (docs/04,
+      `experiments/llvm-ir-mix/run.sh`): added the **LLVM 22.1.2** tools from
+      `ldc-developers/llvm-project` `ldc-v22.1.2` (the LLVM LDC is built on;
+      `$LDC_LLVM_DIR`, `setup.sh LLVM22=1`, a 405 MB `.tar.zst` → needs `zstd`).
+      These supply the `llvm-link`/`opt`/`llvm-dis`/`llvm-as` esp-clang doesn't
+      ship, and being LLVM-22 they read all the post-18 IR the host LLVM-18 tools
+      reject. **`llvm-link` now merges all five frontends into one module** (42
+      defines), `opt -O2` inlines across the merge (D→D `x+2`), and `llvm-dis`
+      reads LDC's LLVM-22 bitcode (producer `ldc version 1.42.0-git-c8305d0`).
+      Caveats: cross-frontend `opt` inlining is gated by matching target-features
+      (the `ld.lld` LTO path inlines clang↔D regardless), and esp32 *codegen* of
+      the merged 22-IR still needs the espressif backend (upstream LLVM-22 has no
+      `esp32` CPU). Surfaced that **D's datalayout differs** (upstream-22:
+      `i8:8:32/i16:16:32`, no `v1:8:8`/`i128:128`) — llvm-link warns, still merges.
 
 ## How to resume
 

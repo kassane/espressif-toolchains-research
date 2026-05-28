@@ -19,6 +19,9 @@ GCC_URL="https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_
 # c8305d0a build so re-runs are reproducible; the CI tag is mutable, so a future
 # asset may use a different git hash (update LDC_URL + the extract marker below).
 LDC_URL="https://github.com/ldc-developers/ldc/releases/download/CI/ldc2-c8305d0a-linux-x86_64.tar.xz"
+# Matching LLVM 22.1.2 binutils (llvm-link/opt/llvm-dis) for cross-frontend IR
+# module-merge (docs/04). Large + opt-in (LLVM22=1); a .tar.zst (needs zstd).
+LLVM_URL="https://github.com/ldc-developers/llvm-project/releases/download/ldc-v22.1.2/llvm-22.1.2-linux-x86_64.tar.zst"
 # qemu (optional; only needed for scripts/run-qemu.sh). Both softmmu builds.
 QEMU_BASE="https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417"
 QEMU_XT_URL="$QEMU_BASE/qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz"
@@ -72,5 +75,19 @@ if [ "${QEMU:-0}" = 1 ]; then
     echo "  apt-get install -y libsdl2-2.0-0 libslirp0"
 fi
 
+# LLVM 22.1.2 binutils (optional): only fetched if LLVM22=1. Provides the
+# llvm-link/opt/llvm-dis/llvm-as that esp-clang doesn't ship, matching LDC's
+# LLVM so they can merge/inspect LDC's LLVM-22 IR (experiments/llvm-ir-mix,
+# docs/04). 405 MB download (.tar.zst), ~3.4 GB extracted.
+if [ "${LLVM22:-0}" = 1 ]; then
+    command -v zstd >/dev/null 2>&1 || apt-get install -y zstd >/dev/null 2>&1 || \
+        echo "WARNING: install zstd to extract the .tar.zst (apt-get install -y zstd)"
+    [ -f "$DL/llvm22-ldc.tar.zst" ] || { echo "downloading llvm-22.1.2"; \
+        curl -fsSL --retry 4 --retry-delay 2 -o "$DL/llvm22-ldc.tar.zst" "$LLVM_URL"; }
+    [ -x "$TC/llvm-22.1.2-linux-x86_64/bin/llvm-link" ] || \
+        tar --zstd -xf "$DL/llvm22-ldc.tar.zst" -C "$TC"
+    echo "llvm-22.1.2 tools installed (\$LDC_LLVM_DIR)."
+fi
+
 echo "setup complete. source scripts/env.sh to use the toolchains."
-echo "(run scripts/setup.sh with QEMU=1 to also fetch the espressif qemu fork.)"
+echo "(QEMU=1 also fetches the espressif qemu fork; LLVM22=1 the LLVM-22 binutils.)"
