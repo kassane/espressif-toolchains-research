@@ -56,11 +56,27 @@ fetch "$CLANG_URL"    "$DL/clang-xtensa.tar.xz"
 fetch "$RUST_URL"     "$DL/rust-xtensa.tar.xz"
 fetch "$RUST_SRC_URL" "$DL/rust-src.tar.xz"
 fetch "$GCC_URL"      "$DL/gcc-xtensa.tar.xz"
-fetch "$LDC_URL"      "$DL/ldc-esp.tar.xz"
+# kassane/esp-idf-dlang upstream returns 404 as of 2026-05-28 — the repo was
+# unpublished. The fork-LDC tarball is the canonical 5th frontend (docs/23);
+# until a new mirror is published, this step uses the cached copy under $DL/
+# if present, else falls back to fetching the upstream-LLVM-22 LDC (slightly
+# worse: brings back the literal-pool workaround, no esp32-s2/s3 -mcpu).
+# Vendoring the 49 MB tarball into git is not workable; if you have the file,
+# drop it at $DL/ldc-esp.tar.xz with sha256 $LDC_SHA256 before re-running.
+if [ -f "$DL/ldc-esp.tar.xz" ] && \
+   echo "$LDC_SHA256  $DL/ldc-esp.tar.xz" | sha256sum -c - >/dev/null 2>&1; then
+    echo "have ldc-esp.tar.xz (cached, sha256 verified)"
+elif fetch "$LDC_URL" "$DL/ldc-esp.tar.xz" && \
+     echo "$LDC_SHA256  $DL/ldc-esp.tar.xz" | sha256sum -c - >/dev/null 2>&1; then
+    echo "fetched ldc-esp.tar.xz from upstream"
+else
+    echo "WARNING: cannot get ldc-esp.tar.xz (esp-idf-dlang upstream is gone)."
+    echo "         Falling back to upstream-LLVM-22 LDC as canonical (regression"
+    echo "         vs docs/23 — see HANDOFF.md 'LDC mirror outage'). Forcing"
+    echo "         LDC_UPSTREAM=1."
+    LDC_UPSTREAM=1
+fi
 fetch "$TINYGO_URL"   "$DL/tinygo.tar.gz"
-# integrity check on the esp-LDC asset — it's the only one we hand-pin a sha256
-# for (the others are large multi-file archives where the URL+tag is the pin).
-echo "$LDC_SHA256  $DL/ldc-esp.tar.xz" | sha256sum -c - >/dev/null
 
 extract() { # tarball marker_dir
     [ -e "$TC/$2" ] && { echo "extracted $2"; return; }
@@ -70,7 +86,7 @@ extract() { # tarball marker_dir
 extract "$DL/zig-xtensa.tar.xz"   "zig-relsafe-x86_64-linux-musl-baseline"
 extract "$DL/clang-xtensa.tar.xz" "esp-clang"
 extract "$DL/gcc-xtensa.tar.xz"   "xtensa-esp-elf"
-extract "$DL/ldc-esp.tar.xz"      "ldc-xtensa"
+[ -f "$DL/ldc-esp.tar.xz" ] && extract "$DL/ldc-esp.tar.xz" "ldc-xtensa"
 extract "$DL/tinygo.tar.gz"       "tinygo"
 
 # Rust ships split components; merge rustc + host std + cargo into one prefix.

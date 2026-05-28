@@ -74,10 +74,13 @@ CPU *models* — present in its `lib/std/Target/xtensa.zig`, absent from the tag
 in **upstream Zig's frontend C-ABI handling** (it defers to LLVM's default instead
 of coercing per the platform C ABI), not a fork regression — consistent with the
 RISC-V case reproducing on stock upstream Zig (docs/10). It's tracked upstream by
-**ziglang/zig #5467 "Xtensa Support" (milestone 0.17.0)** — Xtensa is still being
-finalized for the next Zig release; the latest fork tag is `0.16.0-xtensa` (no
-0.17.x exists yet), so no current build fixes it. (Cf. the *data-layout* gap
-upstream #16616 / PR #16632, already fixed.)
+**ziglang/zig #5467 "Xtensa Support" CLOSED 2026-05-06 (milestone 0.17.0)** —
+the umbrella issue is now done; Xtensa support landed in 0.17.0 (along with
+#23088 for `xtensa(eb)-linux` tier). Our by-value aggregate mis-lowering
+either got fixed in that landing or carries as a separate live bug — when
+0.17.0 ships, re-run `experiments/abi-structs/sweep.sh` against upstream Zig
+to confirm. Our 0.16.0-xtensa bootstrap pin still reproduces the gap.
+(Cf. the *data-layout* gap upstream #16616 / PR #16632, already fixed.)
 
 ## 3. Linking & LTO
 

@@ -48,6 +48,18 @@ export LDC2="$LDC_DIR/bin/ldc2"
 # -mcpu=esp32 (ldc #4919). Opt-in: setup.sh LDC_UPSTREAM=1.
 export LDC2_UPSTREAM="$TC/ldc2-c8305d0a-linux-x86_64/bin/ldc2"
 
+# Fallback: kassane/esp-idf-dlang upstream went 404 on 2026-05-28. If the fork
+# tarball isn't installed but the upstream-22 LDC is, promote it to canonical
+# so the rest of the build still runs (with the literal-pool + s2/s3 workarounds
+# back in scope). docs/23 then no longer holds for this session.
+if [ ! -x "$LDC2" ] && [ -x "$LDC2_UPSTREAM" ]; then
+    echo "env.sh: \$LDC2 (esp-fork LDC) missing — promoting \$LDC2_UPSTREAM to canonical." >&2
+    echo "        Re-enables the docs/23 workarounds (literal-pool, -mattr s2/s3)." >&2
+    LDC2="$LDC2_UPSTREAM"
+    LDC_DIR="$TC/ldc2-c8305d0a-linux-x86_64"
+fi
+export LDC2 LDC_DIR
+
 # Matching LLVM 22.1.2 tools (ldc-developers/llvm-project ldc-v22.1.2): full
 # binutils (llvm-link/opt/llvm-dis/llvm-as/llc) for inspecting/merging the
 # upstream LDC's LLVM-22 bitcode (the host's are LLVM 18). NOT needed for the
