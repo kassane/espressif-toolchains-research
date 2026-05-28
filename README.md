@@ -12,17 +12,20 @@ The central question:
 
 Short answer, established empirically in this repo:
 
-> **Yes for scalars, floats, pointers, callbacks and struct returns — all five
-> toolchains agree on the ABI (verified in disassembly and live on qemu). The
-> holes are in by-value struct *arguments* on the two frontends that defer ABI
-> lowering to the backend: Zig (under-aligned structs on Xtensa; small `{i32,i32}`
-> on RISC-V) and — more broadly — D/LDC (every by-value struct + small-struct
-> return). Rust/clang/gcc are correct everywhere. Fix: pass structs by pointer.**
+> **Yes for scalars, floats, pointers, callbacks and struct returns — five
+> co-linkable toolchains (clang, rust, zig, D-LDC, gcc) agree on the ABI
+> (verified in disassembly and live on qemu). TinyGo joins the same backend
+> family on Xtensa but, in v0.41.1, drags its Go runtime into every `.o` so
+> we leave it out of the FFI matrix (docs/24). The holes are in by-value
+> struct *arguments* on the two frontends that defer ABI lowering to the
+> backend: Zig (under-aligned structs on Xtensa; small `{i32,i32}` on RISC-V)
+> and — more broadly — D/LDC (every by-value struct + small-struct return).
+> Rust/clang/gcc are correct everywhere. Fix: pass structs by pointer.**
 
 See **[Research.md](Research.md)** for the full write-up and **[docs/](docs/)** for
 the detailed evidence.
 
-## The five toolchains
+## The six toolchains
 
 | Lang | Toolchain | Version | Backend |
 |------|-----------|---------|---------|
@@ -30,27 +33,30 @@ the detailed evidence.
 | Rust | [esp-rs/rust-build](https://github.com/esp-rs/rust-build) `v1.95.0.0` | rustc 1.95.0-nightly, LLVM **21.1.3** | LLVM Xtensa |
 | Zig | [kassane/zig-espressif-bootstrap](https://github.com/kassane/zig-espressif-bootstrap) `0.16.0-xtensa` | Zig 0.16.0, clang/LLVM **21.1.0** | LLVM Xtensa |
 | D | [kassane/esp-idf-dlang](https://github.com/kassane/esp-idf-dlang/releases/tag/xtensa-toolchain) `xtensa-toolchain` (`-betterC`) | LDC 1.42-git, espressif/llvm-project **LLVM 21.1.3** | LLVM Xtensa (espressif fork) |
+| Go | [tinygo-org/tinygo](https://github.com/tinygo-org/tinygo/releases/tag/v0.41.1) `v0.41.1` | TinyGo 0.41.1, bundled **LLVM 20.1.1** | LLVM Xtensa (tinygo-org fork; esp32/s3/c3 — no s2) |
 | C/C++ (gcc) | [espressif/crosstool-NG](https://github.com/espressif/crosstool-NG) `esp-15.2.0_20251204` | gcc **15.2.0** | GCC Xtensa (control) |
 
-All four LLVM frontends now ride the **same espressif/llvm-project Xtensa
-backend** (clang/rust/D on 21.1.3; zig 0.16 on bundled 21.1.0). GCC is the
-non-LLVM control. An *optional* `ldc-developers/ldc` CI build of LDC on upstream
-LLVM **22.1.2** (`setup.sh LDC_UPSTREAM=1` → `$LDC2_UPSTREAM`) lives only as the
-"before" arm of [`experiments/ldc-fork-comparison`](experiments/ldc-fork-comparison/) —
-see [docs/23](docs/23-ldc-espressif-fork.md) for the five workarounds the
-espressif-fork LDC removes. The matching LLVM-22 binutils (`setup.sh LLVM22=1`)
-go with that comparison; esp-clang's own 21.1.x binutils handle canonical IR
-work.
+Five LLVM frontends ride a fork of LLVM-Xtensa — four on `espressif/llvm-project`
+(clang/rust/D 21.1.3, zig 0.16 on bundled 21.1.0) and TinyGo on its own bundled
+`tinygo-org/llvm-project` 20.1.1. GCC is the non-LLVM control. TinyGo's output
+defaults to a full ESP32 flash image but `-o foo.o` does produce a real
+relocatable Xtensa ELF (with ~196 KB of Go runtime + scheduler undefs — see
+docs/24 §d for what a consumer must supply). An *optional* `ldc-developers/ldc`
+CI build of LDC on upstream LLVM **22.1.2** (`setup.sh LDC_UPSTREAM=1` →
+`$LDC2_UPSTREAM`) lives only as the "before" arm of
+[`experiments/ldc-fork-comparison`](experiments/ldc-fork-comparison/) — see
+[docs/23](docs/23-ldc-espressif-fork.md) for the five workarounds the
+espressif-fork LDC removes.
 
 **At-a-glance comparison:** [docs/00-support-matrix.md](docs/00-support-matrix.md)
-(Rust × Zig × D × esp-clang × GCC — versions, targeting, ABI/FFI correctness,
-sizes, LTO, mangling). D deep-dive: [docs/19](docs/19-dlang-ldc.md) +
-[docs/23](docs/23-ldc-espressif-fork.md).
+(Rust × Zig × D × esp-clang × GCC × TinyGo — versions, targeting, ABI/FFI
+correctness, sizes, LTO, mangling). D deep-dive: [docs/19](docs/19-dlang-ldc.md)
++ [docs/23](docs/23-ldc-espressif-fork.md). TinyGo deep-dive: [docs/24](docs/24-tinygo.md).
 
 ## Quick start
 
 ```bash
-./scripts/setup.sh          # download + extract + install the 5 toolchains (~1 GB)
+./scripts/setup.sh          # download + extract + install the 6 toolchains (~1.2 GB)
 source scripts/env.sh       # point at the toolchains
 ./scripts/build-ffi.sh all  # build the FFI matrix: host (runs) + esp32/s2/s3 (link)
 ./scripts/analyze.sh esp32  # regenerate IR / disassembly / size evidence
@@ -84,17 +90,22 @@ CLAUDE.md          orientation for future automated sessions
 
 - **Host (x86_64) FFI matrix runs and passes** — all 45 cross-language calls
   (C↔C++↔Rust↔Zig↔D, incl. struct-by-value, sret, f32/f64, i64, callbacks).
+  TinyGo is exercised standalone in `experiments/tinygo/` and shares the
+  byte-identical datalayout but stays outside the matrix per docs/24.
 - **All three Xtensa cores link** as one ELF from a mix of compilers, under
   **both** `ld.lld` **and** GNU `ld`, with **0 unresolved symbols** — including
   images that mix **GCC-built** and **LLVM-built** (clang/rust/zig/D) objects.
 - **ABI agreement is verifiable in the disassembly**: `entry`/`retw.n` windowed
   frames, integer args in `a2..a7`, returns in `a2`, callbacks via `callx8` —
-  identical across clang, rust, zig, D and gcc.
-- **IR interop**: clang/rust/zig/**D** now share a byte-identical `target
-  datalayout` (the espressif-fork LDC matches the trio; the upstream-22 LDC
-  used to differ — docs/23). Same-version (21.1.3) bitcode is LTO-mergeable
-  (clang↔rust↔D, all 21.1.3); with the LLVM-22 binutils, `llvm-link` merges
-  **all five** frontends' IR into one module (docs/04).
+  identical across clang, rust, zig, D, gcc, *and* TinyGo (per its
+  intermediate ELF, docs/22 §g + docs/24).
+- **IR interop**: all five LLVM frontends share the byte-identical Xtensa
+  `target datalayout` (clang/rust/zig/D/TinyGo — docs/04). The espressif-fork
+  LDC matches the trio; the upstream-22 LDC used to differ (docs/23); TinyGo
+  on LLVM-20 still matches byte-for-byte (docs/24 §c). Same-version (21.1.3)
+  bitcode is LTO-mergeable (clang↔rust↔D); zig 21.1.0 and TinyGo 20.1.1 are
+  version-skew outliers. With the LLVM-22 binutils, `llvm-link` merges all
+  espressif-fork frontends' IR into one module (docs/04).
 - **Two frontends mis-handle by-value struct *arguments*** (Rust/clang/gcc are
   correct): **Zig** stack-spills under-aligned (`align(1)`) structs on Xtensa and
   mis-lowers a small `{i32,i32}` to `[2 x i64]` on RISC-V (reproduces on upstream
@@ -108,5 +119,6 @@ CLAUDE.md          orientation for future automated sessions
   **pass structs by pointer** across a Zig or D boundary.
 - **Confirmed at runtime on qemu** (both `qemu-system-xtensa` and
   `qemu-system-riscv32`): Xtensa → `zig blob_sum FAIL` + `d point_dot`/`d blob_sum
-  FAIL`; RISC-V → `zig point_dot FAIL`. The by-pointer variant and everything else
+  FAIL`; RISC-V → `zig point_dot FAIL` (D's small struct gated, TinyGo
+  out-of-matrix). The by-pointer variant and everything else
   pass for all five.

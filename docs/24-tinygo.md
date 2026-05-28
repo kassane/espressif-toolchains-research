@@ -55,22 +55,46 @@ Byte-identical datalayout — same memory model. The triple is just `xtensa` (no
 `-esp-elf` suffix); `GOARCH` is `arm` because Go's `runtime/GOARCH` doesn't
 include `xtensa` as a value, so TinyGo borrows `arm` for the build-tag plumbing.
 
-### (d) The output format
-TinyGo emits an **ESP32 flash image** (header `e9 02 02 1f`), not a relocatable
-ELF. `llvm-nm` / `llvm-objdump` can't parse it. To get a relocatable .o you'd
-need either a TinyGo flag that doesn't exist (`-buildmode=c-shared` is wasm-
-only), or to fork TinyGo's link driver. So the firmware is the unit of
-deployment, not a contributable object.
+### (d) The output formats
+By default `tinygo build app.go -o app.bin` emits an **ESP32 flash image**
+(header `e9 02 02 1f`) — not parseable by `llvm-nm`/`llvm-objdump`. **But** —
+correcting an earlier draft of this doc — `tinygo build -o app.o app.go`
+**does** produce a real `ELF 32-bit LSB relocatable, Tensilica Xtensa`, with
+the `//export`ed symbols intact (e.g. `00000cf0 T probe_add_i32`) and the
+function disassembling to the same `entry/add.n/retw.n` 7-byte body we see in
+§g and docs/22 §g.
 
-### (e) Struct ABI in the IR
+The catch is the runtime payload. A trivial `//export probe_add_i32` produces
+a ~196 KB `.o` that brings in undefs the host project must satisfy:
+
 ```
-define i32 @go_point_dot(i32 %a.X, i32 %a.Y, i32 %b.X, i32 %b.Y)
+U _heap_start  U _heap_end          memory layout symbols
+U tinygo_swapTask  U tinygo_startTask  U tinygo_scanCurrentStack    scheduler
 ```
-TinyGo **flattens** the struct into individual scalar fields at the IR level —
-closer to clang's `[2 x i32]` coercion than to Zig/D's "direct %T" pattern.
-Each i32 lands in `a2`/`a3`/`a4`/`a5` per the Xtensa SysV-style ABI, so the
-machine ABI matches clang exactly. That makes TinyGo's `//export go_*` C-ABI
-calls trivially compatible with C consumers, IF you could link them.
+
+So TinyGo `.o`s are co-linkable in *principle* (relocatable, EM_XTENSA, real
+symbols) but require the consumer to provide an `_heap_start..end` region and
+stub the scheduler hooks (or accept the full TinyGo runtime). That's why this
+doc still treats TinyGo as outside the FFI matrix in `experiments/ffi-matrix`
+— the matrix's `xtensa.ld` linker script doesn't define those symbols. A
+follow-up linking experiment would close the gap.
+
+### (e) Struct ABI in the IR — depends on the field type
+```
+define i32 @go_point_dot(i32 %a.X, i32 %a.Y, i32 %b.X, i32 %b.Y)   // struct{X,Y int32}
+define i32 @go_blob_sum([24 x i8] %b)                              // struct{Data [24]uint8}
+```
+TinyGo **flattens struct of scalars** into individual scalar fields at the IR
+level (closer to clang's `[2 x i32]` coercion than to Zig/D's `%T` direct), so
+a `struct {X, Y int32}` lands in `a2`/`a3`/`a4`/`a5` and the machine ABI
+matches clang. **But** a `struct {Data [24]uint8}` (or any byte array) is
+emitted as `[24 x i8]` and the backend lowers it byte-per-register: caller
+emits 24 `s8i` stores into the byval slot, callee reads them back as `l8ui`.
+A C caller of `//export go_blob_sum` written against clang's `[6 x i32]`
+flattening would mismatch on the very first 4 bytes — clang stores word 0 in
+`a2`, TinyGo reads `a2` as one byte. So TinyGo joins Zig + D in the
+struct-arg ABI cautionary list (docs/05) **for byte-array aggregates only**;
+scalar-field structs pass.
 
 ## Why the LLVM-20 version skew matters less than you'd expect
 

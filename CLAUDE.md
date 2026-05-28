@@ -1,9 +1,11 @@
 # CLAUDE.md — orientation for automated sessions
 
 This repo is a **research & test bed**, not a shipping product. Goal: study
-cross-language FFI (Zig / Rust / D / C / C++) on Xtensa (ESP32 / S2 / S3) over the
-shared LLVM backend, compare features / LLVM IR / binaries, and document the
-findings. Read `Research.md` first, then `docs/`.
+cross-language FFI (Zig / Rust / D / Go / C / C++) on Xtensa (ESP32 / S2 / S3 /
+C3) over the shared LLVM backend, compare features / LLVM IR / binaries, and
+document the findings. The six toolchains are tracked uniformly where they
+co-link; TinyGo is studied standalone (docs/24) because its `.o` drags ~196 KB
+of Go runtime. Read `Research.md` first, then `docs/`.
 
 ## Environment facts
 

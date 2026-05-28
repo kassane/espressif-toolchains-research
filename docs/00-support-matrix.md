@@ -43,55 +43,63 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 | D (LDC) | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -c` *(direct -c on the espressif-fork LDC; the upstream-22 LDC needs `-output-s` re-assembly — docs/23)* |
 | esp-clang | `clang --target=xtensa-esp-elf -mcpu=esp32` |
 | GCC | `XTENSA_GNU_CONFIG=…/xtensa_esp32.so xtensa-esp-elf-gcc` *(mandatory: default core is big-endian)* |
-| TinyGo | `tinygo build -target=esp32-coreboard-v2 -o app.bin app.go` *(whole-program; emits a flash image, not a `.o` — docs/24)* |
+| TinyGo | `tinygo build -target=esp32-coreboard-v2 -o app.bin app.go` *(default = ESP32 flash image; `-o app.o` does produce a relocatable Xtensa ELF with ~196 KB of Go runtime — docs/24 §d)* |
 
 ## ABI & FFI correctness (the core result — docs 03/05)
 
-| | **Rust** | **Zig** | **D** | **esp-clang** | **GCC** |
-|---|:---:|:---:|:---:|:---:|:---:|
-| windowed ABI (`entry`/`retw.n`, args `a2..a7`, `callx8`) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| int / i64 / f32 / f64 / pointer / callback C-ABI | ✓ | ✓ | ✓ | ✓ | ✓ |
-| small struct `{i32,i32}` by value | ✓ | ✓ | **✗** | ✓ | ✓ |
-| **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | **✗** | **✗** | ✓ | ✓ |
-| small struct return (8-byte, in regs) | ✓ | ✓ | **✗** | ✓ | ✓ |
-| large struct return (`sret`) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| links under `ld.lld` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| links under GNU `ld` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| | **Rust** | **Zig** | **D** | **esp-clang** | **GCC** | **TinyGo** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| windowed ABI (`entry`/`retw.n`, args `a2..a7`, `callx8`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| int / i64 / f32 / f64 / pointer / callback C-ABI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓¹ |
+| small struct `{i32,i32}` by value | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ (flattens to scalars) |
+| **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | **✗** | **✗** | ✓ | ✓ | **✗** (byte-per-register, docs/24 §e) |
+| small struct return (8-byte, in regs) | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ |
+| large struct return (`sret`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| links under `ld.lld` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓² |
+| links under GNU `ld` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓² |
 
-> Two experimental outliers. **Zig** stack-spills only the `align(1)` by-value
-> struct arg (alignment-, not size-driven; runtime `242≠300`). **D/LDC** is
-> broader: it marks *every* aggregate `byval`/`sret` (indirect), so it diverges
-> for the **small `{i32,i32}` arg AND the align-1 arg AND the small-struct
-> return** — everything the C ABI puts in registers (runtime `point_dot` + `blob_sum`
-> both FAIL on Xtensa; the small struct even *faults* on RISC-V). The lone struct
-> case D gets right is the >16-byte `sret` return (the C ABI is *also* indirect
-> there). The D divergence is **frontend-side** — the espressif-fork LDC
-> (LLVM 21.1.3) produces the identical broken IR as the upstream-22 LDC (docs/23,
-> §(h)), proving the bug isn't in the LLVM Xtensa backend. Rust, clang, GCC all
-> agree on everything. **Use by-pointer structs across any Zig or D boundary**
-> (runtime-verified fix; docs 10/11/19).
+> ¹ TinyGo scalar ABI matches clang per disasm (docs/22 §g; docs/24 §e).
+> ² TinyGo `.o` links per-symbol but the consumer must supply the Go runtime
+> undefs (`_heap_start`/`_heap_end`, `tinygo_swapTask`, `tinygo_startTask`,
+> `tinygo_scanCurrentStack`) or accept the full runtime — docs/24 §d.
+>
+> Three outliers. **Zig** stack-spills only the `align(1)` by-value struct arg
+> (alignment-, not size-driven; runtime `242≠300`). **D/LDC** is broader: it
+> marks *every* aggregate `byval`/`sret` (indirect), so it diverges for the
+> **small `{i32,i32}` arg AND the align-1 arg AND the small-struct return** —
+> everything the C ABI puts in registers (runtime `point_dot` + `blob_sum`
+> both FAIL on Xtensa; the small struct even *faults* on RISC-V). The lone
+> struct case D gets right is the >16-byte `sret` return (the C ABI is *also*
+> indirect there). **TinyGo** joins the byte-array hole: a `struct{[24]uint8}`
+> lowers as `[24 x i8]` byte-per-register, not clang's `[6 x i32]` (docs/24
+> §e). The D divergence is **frontend-side** — the espressif-fork LDC (LLVM
+> 21.1.3) produces the identical broken IR as the upstream-22 LDC (docs/23,
+> §(h)), proving the bug isn't in the LLVM Xtensa backend. Rust, clang, GCC
+> all agree on everything. **Use by-pointer structs across any Zig, D, or
+> TinyGo boundary** (runtime-verified for zig/D; docs/05/10/11/19/24).
 
 ## Codegen, tooling & misc
 
-| | **Rust** | **Zig** | **D** | **esp-clang** | **GCC** |
-|---|---|---|---|---|---|
-| 9-fn lib `.text`, esp32 `-Os` | 179 B | **715 B** | 533 B | 223 B | **201 B** |
-| symbol mangling (internal) | v0 `_R…` / legacy `_ZN…` | module-qualified + export alias | D `_D…` / Itanium `_Z…` for `extern(C++)` | Itanium `_Z…` | Itanium `_Z…` |
-| FFI export | `#[no_mangle] extern "C"` | `export fn` | `extern(C)` / `extern(C++[,"ns"])` | `extern "C"` | (C) |
-| call / emit `@"mangled"` symbols | — | ✓ (docs/12) | ✓ native `extern(C++)` + `-HC` header (docs/19) | — | — |
-| cross-language **LTO** peer | esp-clang (both 21.1.3) ✓ | ✗ skew (21.1.0 vs 21.1.3) | **esp-clang ✓** (same 21.1.3; docs/19) | Rust ✓ | — (not LLVM) |
-| call0 ABI | LLVM `-windowed` feat. | LLVM `-windowed` feat. | LLVM `-windowed` feat. | LLVM `-windowed` feat. | `-mabi=call0` |
-| f32: esp32 / esp32-s3 | HW FPU | HW FPU | HW FPU | HW FPU | HW FPU |
-| f32: esp32-**s2** (no FPU) | soft `__mulsf3` | soft | soft | soft | soft |
-| soft-float/builtins | `compiler_builtins` | `compiler_rt` | `compiler-rt` | `compiler-rt` | `libgcc` |
-| runtime-run on qemu | ✓ (docs/08/09) | ✓ | ✓ (docs/19) | ✓ | ✓ (objs) |
+| | **Rust** | **Zig** | **D** | **esp-clang** | **GCC** | **TinyGo** |
+|---|---|---|---|---|---|---|
+| 9-fn lib `.text`, esp32 `-Os` | 179 B | **715 B** | 533 B | 223 B | **201 B** | n/a (whole-firmware; single `add_i32` is 7 B, docs/22 §g) |
+| symbol mangling (internal) | v0 `_R…` / legacy `_ZN…` | module-qualified + export alias | D `_D…` / Itanium `_Z…` for `extern(C++)` | Itanium `_Z…` | Itanium `_Z…` | `<package>.<func>` (e.g. `main.go_add_i32`); `//export name` re-emits as bare `name` |
+| FFI export | `#[no_mangle] extern "C"` | `export fn` | `extern(C)` / `extern(C++[,"ns"])` | `extern "C"` | (C) | `//export name` |
+| call / emit `@"mangled"` symbols | — | ✓ (docs/12) | ✓ native `extern(C++)` + `-HC` header (docs/19) | — | — | — |
+| cross-language **LTO** peer | esp-clang (both 21.1.3) ✓ | ✗ skew (21.1.0 vs 21.1.3) | **esp-clang ✓** (same 21.1.3; docs/19) | Rust ✓ | — (not LLVM) | ✗ skew (LLVM 20.1.1, docs/24) |
+| call0 ABI | LLVM `-windowed` feat. | LLVM `-windowed` feat. | LLVM `-windowed` feat. | LLVM `-windowed` feat. | `-mabi=call0` | LLVM `-windowed` feat. (not exposed via TinyGo CLI) |
+| f32: esp32 / esp32-s3 | HW FPU | HW FPU | HW FPU | HW FPU | HW FPU | HW FPU |
+| f32: esp32-**s2** (no FPU) | soft `__mulsf3` | soft | soft | soft | soft | n/a (no s2 target, docs/24 §a) |
+| soft-float/builtins | `compiler_builtins` | `compiler_rt` | `compiler-rt` | `compiler-rt` | `libgcc` | bundled `compiler-rt` + Go runtime |
+| runtime-run on qemu | ✓ (docs/08/09) | ✓ | ✓ (docs/19) | ✓ | ✓ (objs) | standalone via `tinygo flash` (docs/24) |
 
 ## One-line verdict
 
-The shared LLVM backend gives a **shared, interoperable ABI** across all five
-toolchains on Xtensa for everything except **by-value aggregate lowering** in the
-two frontends that defer it (Zig) or universally `byval`/`sret`-it (D). Use
-**by-pointer** structs across either boundary. Rust matches clang/GCC
+The shared LLVM backend gives a **shared, interoperable ABI** across the six
+toolchains on Xtensa for everything except **by-value aggregate lowering** in
+the three frontends that defer it (Zig, D, TinyGo for byte-arrays) or universally
+`byval`/`sret`-it (D). Use **by-pointer** structs across those boundaries. Rust
+matches clang/GCC
 bit-for-bit; GCC is the smallest, Zig the largest. Object files link across all
 five with `ld.lld` and GNU `ld` (D direct `-c` since docs/23). Cross-language
 LTO needs compatible LLVM bitcode — clang↔rust↔D (all 21.1.3) work, while
