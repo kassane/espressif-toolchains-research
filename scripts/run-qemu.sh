@@ -3,10 +3,14 @@
 # the espressif qemu fork, reporting per-language results over semihosting.
 #   xtensa (default): -machine sim -cpu dc233c   (needs build-ffi.sh esp32)
 #   riscv:            -machine virt               (needs build-ffi.sh esp32c3)
-# Expected: scalars + struct returns pass for all 5 languages. By-value struct
-# ARGS diverge on the two experimental frontends: Zig per-arch (xtensa blob_sum,
-# riscv point_dot) and D (xtensa point_dot+blob_sum; riscv small struct gated,
-# docs/19). The by-pointer variant passes for all.
+# Frontends in this harness: esp-clang (c/cpp), gcc (lib_c.o variant), rustc,
+# zig, LDC — every toolchain whose .o links cleanly under xtensa.ld. TinyGo
+# is excluded by construction (it emits a flash image, not a co-linkable .o
+# the harness's linker script can absorb — docs/08 §TinyGo + docs/24 §d).
+# Expected: scalars + struct returns pass for every FFI-matrix language.
+# By-value struct ARGS diverge on the two experimental frontends: Zig per-arch
+# (xtensa blob_sum, riscv point_dot) and D (xtensa point_dot+blob_sum; riscv
+# small struct gated, docs/19). The by-pointer variant passes for all.
 # See docs/08 (xtensa), docs/09 (riscv). qemu fork lives at $TC/qemu (xtensa &
 # riscv softmmu tarballs from espressif/qemu esp-develop-9.2.2-20260417).
 set -euo pipefail

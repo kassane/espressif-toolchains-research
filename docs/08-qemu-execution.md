@@ -42,8 +42,11 @@ reset, so messages lead with a `\n`.)
 
 ## The full FFI matrix run — and the ABI bug, live
 
-`qemu_main.c` calls the `c_/cpp_/rs_/zig_/d_` functions and reports per language.
-`scripts/run-qemu.sh` runs it on `-machine sim -cpu dc233c`:
+`qemu_main.c` calls the `c_/cpp_/rs_/zig_/d_` functions (compiled by
+**esp-clang** for C, **esp-clang++** for C++, **rustc** for Rust, **zig
+build-obj** for Zig, and **LDC** for D — `scripts/build-ffi.sh esp32` is the
+one-step setup) and reports per language. `scripts/run-qemu.sh` runs it on
+`-machine sim -cpu dc233c`:
 
 ```
 == FFI runtime on emulated ESP core (qemu) ==
@@ -74,12 +77,14 @@ total failures: 3
 This is the docs/05 + docs/19 predictions confirmed **at runtime on an emulated
 Xtensa core**: scalars interoperate across every FFI-matrix language; the align-1 `Blob`
 by value is **misread by Zig** (`409 ≠ 300` — stack-spilled under-aligned struct
-while the clang driver passed it in registers). **D** fails *both* the align-4
-`Point` (`point_dot`) and `blob_sum` — it marks every aggregate `byval`/`sret`, so
-it diverges more broadly than Zig (docs/19). Passing the same struct **by
-pointer** works for all. (The `got=` values on the FAIL rows are whatever stale
-data sat in the stack slots, so they vary run-to-run; the *mismatch* is the
-point.) Static disassembly (docs/05, docs/19) and live execution agree.
+while the **clang** driver passed it in registers). **D/LDC** fails *both* the
+align-4 `Point` (`point_dot`) and `blob_sum` — it marks every aggregate
+`byval`/`sret`, so it diverges more broadly than Zig (docs/19). **rust** and
+**gcc**-built C agree with clang on every row, so they're not visibly distinct
+in the output table. Passing the same struct **by pointer** works for all.
+(The `got=` values on the FAIL rows are whatever stale data sat in the stack
+slots, so they vary run-to-run; the *mismatch* is the point.) Static
+disassembly (docs/05, docs/19) and live execution agree.
 
 ### Two bring-up issues solved to get here
 
@@ -105,3 +110,33 @@ simpler (no register windows, standard semihosting via the `ebreak` sequence,
 ELF at `0x80000000`). It surfaces a **different** Zig bug than Xtensa
 (`zig point_dot FAIL` on the small `{i32,i32}` struct, while `blob_sum` passes);
 see [docs/09](09-riscv.md).
+
+## TinyGo on qemu — different harness, different boot
+
+TinyGo's qemu story is **not** a drop-in to this `sim`/`virt` harness because
+TinyGo emits a flash image (`tinygo build -target=esp32-coreboard-v2 -o
+hello.bin`) — a ~2.6 KB raw binary containing TinyGo's startup, the Go
+runtime, and the user code, intended to be flashed at offset `0x10000` of an
+ESP32 SPI flash device. The Espressif qemu **does** ship the `-machine esp32`
+and `-machine esp32s3` targets, but they require a full flash image (2/4/8/16
+MB) including the **bootloader** at `0x0` and the partition table at `0x8000`:
+
+```
+$ qemu-system-xtensa -machine esp32 -drive file=hello.bin,if=mtd,format=raw
+qemu-system-xtensa: Error: only 2, 4, 8, 16 MB flash images are supported
+```
+
+The right path is `esptool merge_bin` to pad bootloader + partition table +
+TinyGo's app into a 4 MB flash image, then pass that to qemu — which means
+pulling in ESP-IDF for the bootloader binary. That's out of scope for the
+thin docs/08 semihosting harness. **What this means in practice**: TinyGo
+exercises the same espressif Xtensa backend (`-mcpu=esp32`, windowed ABI,
+`s32c1i` atomics) the FFI-matrix toolchains use — verified statically in
+docs/22 §g and the `experiments/tinygo/run.sh` probe — but the runtime
+proof for TinyGo is "flash an esp32-coreboard-v2 board" or "build a full
+flash image and use `-machine esp32`", not the sim/virt path the rest of
+this doc uses.
+
+(The other five FFI-matrix toolchains — esp-clang, gcc, rustc, zig, LDC —
+each produce a relocatable .o that the same `qemu_main.c` harness can
+co-link, which is why the matrix runs together under one `dc233c` boot.)
