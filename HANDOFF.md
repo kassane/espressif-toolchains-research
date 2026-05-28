@@ -189,7 +189,7 @@ output.
       struct-arg bug — small `{i32,i32}` mis-lowered to `[2 x i64]` →
       `zig point_dot FAIL (got=-2130706553)` at runtime (the large `[24]u8` is
       fine, by reference). Rust/clang/gcc correct on both arches.
-- [x] **Zig⇔Rust parity** (docs/10): Rust's ESP C-ABI matches clang/gcc on both
+- [x] **C-ABI completeness per frontend** (docs/10): Rust's ESP C-ABI matches clang/gcc on both
       arches; Zig's experimental targets have a by-value struct-arg gap on each.
 - [x] **Issue-tracker cross-checks** (docs/10): tested llvm-project #66 (narrow
       stack args — fixed; all toolchains agree on 4-byte slots), esp-rs/rust
