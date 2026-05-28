@@ -47,7 +47,7 @@ docs/24 §d for what a consumer must supply). An *optional* `ldc-developers/ldc`
 CI build of LDC on upstream LLVM **22.1.2** (`setup.sh LDC_UPSTREAM=1` →
 `$LDC2_UPSTREAM`) lives only as the "before" arm of
 [`experiments/ldc-fork-comparison`](experiments/ldc-fork-comparison/) — see
-[docs/23](docs/23-ldc-espressif-fork.md) for the five workarounds the
+[docs/23](docs/23-ldc-espressif-fork.md) for the workarounds the
 espressif-fork LDC removes.
 
 **At-a-glance comparison:** [docs/00-support-matrix.md](docs/00-support-matrix.md)
@@ -102,8 +102,8 @@ CLAUDE.md          orientation for future automated sessions
   frames, integer args in `a2..a7`, returns in `a2`, callbacks via `callx8` —
   identical across clang, rust, zig, D, gcc, *and* TinyGo (per its
   intermediate ELF, docs/22 §g + docs/24).
-- **IR interop**: all five LLVM frontends share the byte-identical Xtensa
-  `target datalayout` (clang/rust/zig/D/TinyGo — docs/04). The espressif-fork
+- **IR interop**: every LLVM frontend in the matrix shares the byte-identical
+  Xtensa `target datalayout` (clang/rust/zig/D/TinyGo — docs/04). The espressif-fork
   LDC matches the trio; the upstream-22 LDC used to differ (docs/23); TinyGo
   on LLVM-20 still matches byte-for-byte (docs/24 §c). Same-version (21.1.3)
   bitcode is LTO-mergeable (clang↔rust↔D); zig 21.1.0 and TinyGo 20.1.1 are
@@ -126,4 +126,4 @@ CLAUDE.md          orientation for future automated sessions
   `qemu-system-riscv32`): Xtensa → `zig blob_sum FAIL` + `d point_dot`/`d blob_sum
   FAIL`; RISC-V → `zig point_dot FAIL` (D's small struct gated, TinyGo
   out-of-matrix). The by-pointer variant and everything else
-  pass for all five.
+  pass for every FFI-matrix language.

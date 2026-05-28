@@ -1,6 +1,6 @@
-# 21 — Embedded template-metaprogramming FFI across all five toolchains
+# 21 — Embedded template-metaprogramming FFI across every FFI-matrix toolchain
 
-All five FFI-matrix toolchains — **gcc, esp-clang, zig, ldc2, rustc** — can
+All FFI-matrix toolchains — **gcc, esp-clang, zig, ldc2, rustc** — can
 participate in the **same C++-templated FFI on Xtensa**, linked into one esp32
 ELF, because the Itanium C++ ABI is shared (and matches the shared LLVM Xtensa
 backend). The bridge is the *raw mangled symbol*: every consumer language has a

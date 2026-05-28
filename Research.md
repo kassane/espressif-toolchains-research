@@ -25,7 +25,7 @@ language frontends** now ride an LLVM with that backend:
   and targets esp32 + esp32s3 + esp32c3 (no s2). Whole-program compiler,
   doesn't co-link with the rest; explored standalone in [docs/24](docs/24-tinygo.md).
 
-All five LLVM frontends require some fork of LLVM (four on the espressif fork,
+Every LLVM frontend require some fork of LLVM (four on the espressif fork,
 TinyGo on its own bundled fork). Stock upstream LLVM's Xtensa is still
 experimental (esp32/esp8266 only). `esp-rs/rust` is a fork of rustc (stock has
 Tier-3 target *specs* only). Upstream Zig 0.16 has no esp32 CPU; 0.17.0 ships
@@ -51,7 +51,7 @@ model**. For `esp32`, `rustc --print cfg`, clang's `target-features` attribute,
 absent) but agrees on every codegen-relevant essential. (Full tables:
 [docs/02-xtensa-abi.md](docs/02-xtensa-abi.md), [docs/24](docs/24-tinygo.md) §b.)
 
-All five LLVM frontends emit the **byte-identical LLVM `target datalayout`**:
+Every LLVM frontend emit the **byte-identical LLVM `target datalayout`**:
 
 ```
 e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32
@@ -82,7 +82,7 @@ Two tiers of evidence:
 
 ## 4. What works (the large majority)
 
-### 4.1 Host run: all five languages interoperate
+### 4.1 Host run: every FFI-matrix language interoperates
 
 ```
 == c == ok ×9   == cpp == ok ×9   == rs == ok ×9   == zig == ok ×9   == d == ok ×9
@@ -112,7 +112,7 @@ bug, docs/19 — but then links cleanly with the rest.)
 
 ### 4.3 The ABI is identical in the disassembly
 
-`add_i32` on esp32, all five toolchains use the **windowed ABI** — `entry a1,32`,
+`add_i32` on esp32, every FFI-matrix toolchain uses the **windowed ABI** — `entry a1,32`,
 args in `a2`/`a3`, result in `a2`, `retw.n`. clang-C and clang-C++ are
 byte-identical; rust and zig identical to each other; D matches the same windowed
 convention (docs/19); gcc differs only in commutative operand order:
@@ -223,7 +223,7 @@ on `qemu-system-xtensa` the align-1 `Blob` gives `zig FAIL (got≈242 want=300)`
 D fails both `point_dot` and `blob_sum`; on `qemu-system-riscv32` the `Point`
 gives `zig FAIL (got=-2130706553 want=11)` (D's `point_dot` faults there, so it's
 gated) while `Blob` passes for both. Passing the same struct **by pointer** works
-for all five. All match the disassembly. See
+for every FFI-matrix language. All match the disassembly. See
 [docs/08](docs/08-qemu-execution.md), [docs/19](docs/19-dlang-ldc.md).
 
 ## 6. Mixing LLVM IR across frontends — is it possible?
@@ -236,7 +236,7 @@ Yes, with a version caveat.
   clang ships only `llc`/`ld.lld` (no `llvm-link`/`opt`/`llvm-dis`), and the host's
   are LLVM 18 and reject LLVM-21 IR (`getelementptr … nuw`, `captures(none)`,
   `initializes(…)`). Adding the matching **LLVM 22.1.2 binutils** (the LLVM LDC is
-  built on; `setup.sh LLVM22=1`) reads all of it and **merges all five frontends'
+  built on; `setup.sh LLVM22=1`) reads all of it and **merges every LLVM frontend's
   IR into one 42-function module**; `opt -O2` then inlines across the merge.
 - **`llc`**: espressif's `llc -mcpu=esp32` consumes IR emitted by clang, rust
   **and** zig — they all feed the one backend. (Upstream LLVM-22's `llc` lacks the
@@ -254,7 +254,7 @@ Yes, with a version caveat.
 1. **The shared backend buys a shared ABI for the 95% case.** Integers, floats,
    doubles, pointers, function-pointer callbacks, small structs and struct
    returns interoperate across clang, rust, zig, D and (independently) gcc — host
-   runtime PASS for all five, identical windowed convention in the disassembly.
+   runtime PASS for every FFI-matrix language, identical windowed convention in the disassembly.
    Cross-language FFI on Xtensa is real and practical today.
 2. **Linkers are interchangeable.** lld and GNU ld each link both object
    families; GCC and LLVM (clang/rust/zig/D) objects coexist in one image.
@@ -266,7 +266,7 @@ Yes, with a version caveat.
    Rust/clang/gcc are correct everywhere. Confirmed live on qemu (xtensa + riscv).
 4. **IR is portable; tooling versions are the gotcha.** A compatible datalayout
    makes IR mixing sound; with the matching LLVM-22 binutils `llvm-link` merges
-   all five frontends, while the *LTO* reader is pickier (accepts clang/rust 21.1.3
+   every LLVM frontend, while the *LTO* reader is pickier (accepts clang/rust 21.1.3
    and D 22.1.2, rejects zig 21.1.0) — "same LLVM version" is a rule of thumb, not
    absolute.
 

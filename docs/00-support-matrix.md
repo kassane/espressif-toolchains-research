@@ -23,7 +23,7 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 | `core`/libc model | no prebuilt core → `-Zbuild-std=core` + rust-src | freestanding (no std) | `-betterC` (no druntime/Phobos) | freestanding | newlib + libgcc | Go runtime + picolibc (bundled) |
 | co-linkable `.o` for FFI matrix? | ✓ | ✓ | ✓ | ✓ | ✓ | **✗** — whole-program (firmware-only output; docs/24 §d) |
 
-> **All five LLVM frontends here ride a custom LLVM fork** for Xtensa support
+> **Every LLVM frontend here rides a custom LLVM fork** for Xtensa support
 > — four against `espressif/llvm-project` and TinyGo against its own
 > `tinygo-org/llvm-project` (LLVM 20.1.1, bundled inside the TinyGo tarball;
 > docs/24). Stock upstream LLVM's Xtensa is still experimental (esp32/8266 only). `esp-rs/rust` is a fork of rustc (built against

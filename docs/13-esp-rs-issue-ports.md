@@ -80,6 +80,6 @@ the bare-metal semihosting harness). Both are **fixed** on rustc 1.95 / LLVM 21:
 
 `experiments/esp-rs-issues/run.sh` (compile/codegen ports) and the runtime build
 in `experiments/esp-rs-issues/runtime` (built + run via the qemu harness, same as
-`scripts/run-qemu.sh`). Net: of the five issues, four are fixed on the current
+`scripts/run-qemu.sh`). Net: of the original tracked issues, four are fixed on the current
 toolchain and behave identically across the applicable frontends; **#277** is the
 only one still open, and only under its specific serde/espidf configuration.

@@ -191,7 +191,7 @@ Distilling what the prior docs have established + this audit:
 | toolchain | strengths on espressif | known gaps / bugs |
 |---|---|---|
 | **esp-clang** (LLVM 21.1.3, fork) | full esp32/s2/s3 (windowed ABI, FPU, SIMD on s3), DWARFv5, LTO with rust 21.1.3, all `EE.*` SIMD via inline asm (docs/16) | upstream LLVM Xtensa is experimental (esp32/8266 only); no `llvm-link`/`opt`/`llvm-dis` (use LDC LLVM-22 binutils) |
-| **gcc 15.2** (espressif crosstool-NG) | smallest `.text` of the five (docs/06: 174 B); fully resolved DWARFv5 names pre-link; non-LLVM ABI check | default core is big-endian (must set `XTENSA_GNU_CONFIG`, docs/01); no LLVM IR mix path; `-mlongcalls` only matters for call encoding (docs/02) |
+| **gcc 15.2** (espressif crosstool-NG) | smallest `.text` in the matrix (docs/06: 174 B); fully resolved DWARFv5 names pre-link; non-LLVM ABI check | default core is big-endian (must set `XTENSA_GNU_CONFIG`, docs/01); no LLVM IR mix path; `-mlongcalls` only matters for call encoding (docs/02) |
 | **rustc 1.95-nightly** (esp-rs fork) | C-ABI parity bit-for-bit with clang/gcc (docs/03), cross-language LTO with esp-clang ✓ (docs/04), v0 mangling for own symbols, atomics use s32c1i (docs/17) | esp-rs is a **fork** — upstream rustc has Tier-3 specs but no Xtensa codegen (docs/00); `_R…` v0 unstable hash discourages calling D/zig from rust by mangled name (docs/12) |
 | **Zig 0.16** (espressif bootstrap fork) | only host-capable C/C++ here (`zig cc`); native s32c1i atomics, smallest debug codegen, `EE.*` SIMD via struct-form clobbers (docs/16) | the experimental Xtensa ABI mis-lowers under-aligned (`align(1)`) by-value struct args on Xtensa AND `{i32,i32}` on RISC-V — the headline FFI hole (docs/05/09); 21.1.0 bitcode incompatible with esp 21.1.3 LTO reader (docs/04); huge `.debug_str` (§1); always emits `.eh_frame` (§6) |
 | **LDC 1.42-git** (LLVM 21.1.3, espressif fork — docs/23) | canonical 5th frontend now on the same espressif/llvm-project as clang/rust; Itanium-mangled `extern(C++[,"ns"])` for direct C++ template FFI (docs/21); compile-time reflection via `__traits`/`mixin`; `@safe`/`@live` static borrow analog (docs/20); cross-language LTO ✓ with clang (same 21.1.3); codegen now matches clang (§5); first-class esp32/s2/s3 `-mcpu`; direct `ldc2 -c` -> `ld.lld` (no re-assembly) | marks every by-value aggregate `byval`/`sret` (frontend bug, **unchanged** by the LLVM swap — docs/23 §(h)) → fails `point_dot` + `blob_sum` on Xtensa, faults on RISC-V small struct (docs/19); `cent`/`ucent` keywords formally obsoleted, no native 128-bit int in `-betterC` (docs/17 §g-D); `@live` silent without `-preview=dip1021` (docs/20); ICEs on Xtensa + EH + opt (ldc #5091) |
@@ -202,10 +202,10 @@ Distilling what the prior docs have established + this audit:
 What this whole repo has demonstrated about polyglot FFI on **ESP32-class
 hardware**:
 
-1. **The shared LLVM Xtensa backend is real and now spans five LLVM frontends**
+1. **The shared LLVM Xtensa backend is real and now spans every LLVM frontend in this matrix**
    — clang, rust, **D** (since docs/23) all on espressif LLVM **21.1.3**; zig on
    a bootstrap 21.1.0; **TinyGo** (docs/24) on its own bundled LLVM **20.1.1**.
-   All five emit the byte-identical Xtensa `target datalayout`
+   All of them emit the byte-identical Xtensa `target datalayout`
    (`e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32`, docs/04 + docs/24 §c). GCC
    sits outside as a non-LLVM independent control.
 2. **The Itanium C++ ABI is the cross-language bridge** — any C++ template

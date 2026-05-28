@@ -12,7 +12,7 @@ Why TinyGo isn't a drop-in 6th column in `experiments/ffi-matrix`: TinyGo is a
 ESP32, or a kernel ELF on other targets) — there's no `-c` flag for relocatable
 objects, and `-buildmode=c-shared` is gated to wasm only. So you can't co-link a
 TinyGo object with clang/rust/zig/D/gcc objects under `ld.lld -T xtensa.ld` the
-way the five LLVM/GCC frontends co-link. The exploration belongs in
+way the FFI-matrix frontends co-link. The exploration belongs in
 `experiments/tinygo/run.sh` instead, which pins what TinyGo CAN do on Xtensa
 and where the boundary is.
 
@@ -141,6 +141,6 @@ TinyGo is a useful 6th toolchain for studying yet-another-LLVM-version (LLVM
 20.1.1) on the same espressif Xtensa target, and for end-to-end Go-firmware
 work on esp32/s3/c3. It does **not** belong in `experiments/ffi-matrix` as a
 co-linkable column because the toolchain's output format is a flash image, not
-a relocatable object. Where the other five languages each contribute a `.o`
+a relocatable object. Where the other FFI-matrix languages each contribute a `.o`
 that participates in one mutual ELF, Go contributes its own complete image.
 The interop boundary is the device (or qemu) at runtime, not the linker.

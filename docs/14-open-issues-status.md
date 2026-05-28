@@ -45,7 +45,7 @@ Xtensa.
 ### #278 — narrow stack-arg store width (frontend-divergent, offsets agree)
 For a function with 6 register args + several `u8`/`u16` stack args
 (`experiments/esp-rs-issues` analysis), the **outgoing stack-slot offsets are
-4-byte-stepped in all five toolchains**. They differ only in *store width*:
+4-byte-stepped everywhere we measured**. They differ only in *store width*:
 
 | | caller writes a narrow stack arg | callee reads it |
 |---|---|---|
