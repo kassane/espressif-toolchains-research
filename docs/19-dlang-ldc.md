@@ -76,6 +76,16 @@ Xtensa (sim/dc233c)                       RISC-V (esp32c3, virt)
 scalar in `a2`, so `blob_sum_ptr(const Blob*)` returns `300` for C, Zig **and**
 D on both arches. Across any D↔{C,Rust,Zig} boundary, pass aggregates by pointer.
 
+**Bitfields fall in the same trap.** D supports C-style bitfield syntax
+natively inside `extern(C) struct { uint a : 4; uint b : 4; uint c : 8; }`
+(no `-preview=bitfields` flag needed on LDC 1.42-git), but the IR for a
+caller forwarding such a struct is `byval(%s.T) align <N>` — same as every
+other aggregate. clang for the same 16/32/64-bit bitfield total flattens to
+a single `i32`/`i32`/`[1 x i64]` scalar arg, and Zig's `packed struct(uN)`
+with explicit backing matches clang. `experiments/abi-structs/sweep.sh`'s
+bitfield rows pin this empirically. So the docs/05 universal-aggregate
+rule applies to bitfields too — pass them by pointer across an FFI boundary.
+
 ## 3. The LDC-Xtensa literal-pool bug — fixed on the espressif fork
 
 On the **upstream-LLVM-22** LDC a direct `ldc2 -c` Xtensa object failed to

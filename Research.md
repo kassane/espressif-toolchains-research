@@ -162,16 +162,26 @@ define i32 @c_blob_sum([6 x i32] %0)      ; rust identical; 24-byte [24]u8 → r
 
 Zig forwards the **raw aggregate** (`i32 @zig_blob_sum(%Blob)`) and inherits
 LLVM's default lowering, which only register-passes a *naturally word-aligned*
-aggregate. A size×alignment sweep (`experiments/abi-structs/sweep.sh`) isolates it:
+aggregate. A size×alignment sweep (`experiments/abi-structs/sweep.sh`)
+isolates it; the extended sweep also covers D and C-style bitfields:
 
 ```
-struct      align   clang        zig            FFI
-[8]u8         1     REGISTERS    STACK (movsp)   MISMATCH    <- even 8 bytes
-[16]u8        1     REGISTERS    STACK (movsp)   MISMATCH
-[24]u8        1     REGISTERS    STACK (movsp)   MISMATCH
-{2 x u32}     4     REGISTERS    REGISTERS       ok
-{6 x u32}     4     REGISTERS    REGISTERS       ok          <- 24 bytes, fine
+struct           align  clang IR arg | clang        zig            D            FFI
+[8]u8              1    [2 x i32]    | REGISTERS    STACK (movsp)  REGISTERS    MISMATCH (zig)
+[16]u8             1    [4 x i32]    | REGISTERS    STACK (movsp)  REGISTERS    MISMATCH (zig)
+[24]u8             1    [6 x i32]    | REGISTERS    STACK (movsp)  REGISTERS    MISMATCH (zig)
+{2 x u32}          4    [2 x i32]    | REGISTERS    REGISTERS      REGISTERS    ok
+{6 x u32}          4    [6 x i32]    | REGISTERS    REGISTERS      REGISTERS    ok          <- 24 bytes, fine
+
+bf 16b(4+4+8)      2    i32          | REGISTERS    REGISTERS      REGISTERS    D-IR=byval(%s.T)
+bf 32b(8+8+16)     4    i32          | REGISTERS    REGISTERS      REGISTERS    D-IR=byval(%s.T)
+bf 64b(32+32)      8    [1 x i64]    | REGISTERS    REGISTERS      REGISTERS    D-IR=byval(%s.T)
 ```
+
+clang flattens bitfields to their scalar backing type and Zig matches when
+you give `packed struct(uN)` an explicit backing integer; D wraps every
+bitfield struct as `byval(%s.T)` at the IR level, same as every other
+aggregate — confirming D's struct-ABI bug is universal (docs/05/19).
 
 So the earlier intuition "small OK / large broken" was a confound: `Point` (8 B)
 is `{i32,i32}` (align 4) and `Blob` (24 B) is `[24]u8` (align 1). At the call
