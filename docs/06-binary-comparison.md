@@ -44,6 +44,7 @@ The FFI surface is pure C ABI, so all *exported* symbols are flat C names
 | Rust | `#[no_mangle] pub extern "C"` | `rs_add_i32` | v0 `_R…` (e.g. `_RNvNtCs…17compiler_builtins3mem6memcpy`) |
 | Zig | `export fn` | `zig_add_i32` | module-qualified `lib_zig.*`; exports are aliases to them |
 | D | `extern(C)` | `d_add_i32` | D `_D…`; `extern(C++)` → Itanium `_Z…`/`_ZN…` (docs/19) |
+| TinyGo | `//export go_add_i32` | `go_add_i32` | package-qualified `main.go_add_i32`; `//export` adds a bare-C alias |
 
 Zig emits the exported name as an **alias** to a private, module-qualified
 definition:
@@ -56,8 +57,9 @@ definition:
 
 | objects | `ld.lld` | GNU `ld` |
 |---------|:-------:|:--------:|
-| all LLVM (clang/rust/zig) | ✓ 0 undef | ✓ 0 undef |
+| all LLVM (clang/rust/zig/D) | ✓ 0 undef | ✓ 0 undef |
 | GCC C + LLVM rest | ✓ 0 undef | ✓ (gcc-native) |
+| + TinyGo `.o` | ✓ links per-symbol, but the consumer must provide `_heap_start`/`_heap_end`/`tinygo_swapTask`/`tinygo_startTask`/`tinygo_scanCurrentStack` (docs/24 §d) | same |
 
 Both linkers resolve both object families; relocations and section layout from
 LLVM and GNU producers are mutually consumable. (GNU `ld` warns about the

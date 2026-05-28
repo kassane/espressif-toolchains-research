@@ -2,19 +2,23 @@
 
 Taking reported `esp-rs/rust` (Rust Xtensa fork) issues, re-testing them on the
 current toolchain (rustc 1.95.0-nightly / LLVM 21.1.3), and **porting the
-reproducer to every frontend** (clang, gcc, zig) to see whether each is a
-Rust-specific bug, a shared-backend bug, or fixed. Sources +
-`experiments/esp-rs-issues/run.sh`. Status legend: ✓ ok · ✗ broken · — n/a.
+reproducer to every frontend** (clang, gcc, zig, D/LDC) to see whether each is
+a Rust-specific bug, a shared-backend bug, or fixed. Sources +
+`experiments/esp-rs-issues/run.sh` + `ports.d`. TinyGo sits outside this
+matrix (whole-program, docs/24) and most reproducers wouldn't survive its
+runtime dependencies anyway. Status legend: ✓ ok · ✗ broken · — n/a.
 
 ## Summary
 
-| issue | what | upstream state | rustc 1.95 today | ported to C (clang/gcc) | ported to Zig |
-|-------|------|----------------|------------------|-------------------------|---------------|
-| **#95** | enum/match `Not supported instr` (LLVM 12) | CLOSED | ✓ compiles (fixed) | ✓ compiles | ✓ compiles |
-| **#137** | `u128` miscompile at `opt-level=z` | CLOSED | ✓ compiles | **— `__int128` unsupported on xtensa** | ✓ compiles |
-| **#277** | ICE `Cannot select XtensaISD::PCREL_WRAPPER` (serde `Vec<f32>`) | **OPEN** ([root cause: espressif/llvm-project #127](https://github.com/espressif/llvm-project/issues/127)) | narrowed to the **espidf (std) target**; the exact serde repro builds fine on `*-none-elf` | ✓ compiles (float pool fine) | ✓ compiles |
-| **#161** | `Iterator::position` miscompile at `opt-level=s` | CLOSED | ✓ **fixed** (runtime: index 1) | ✓ (manual loop, index 1) | — |
-| **#177** | C variadics garbage on Xtensa | CLOSED | ✓ **fixed** (runtime: sum 100) | ✓ baseline (sum 100) | — |
+| issue | what | upstream state | rustc 1.95 today | ported to C (clang/gcc) | ported to Zig | ported to D/LDC |
+|-------|------|----------------|------------------|-------------------------|---------------|-----------------|
+| **#95** | enum/match `Not supported instr` (LLVM 12) | CLOSED | ✓ compiles (fixed) | ✓ compiles | ✓ compiles | ✓ compiles (D `final switch`) |
+| **#137** | `u128` miscompile at `opt-level=z` | CLOSED | ✓ compiles | **— `__int128` unsupported on xtensa** | ✓ compiles | **✗** frontend rejects: `'cent' and 'ucent' types are obsolete, use core.int128.Cent instead` — no native 128-bit int in `-betterC` |
+| **#270** | force-frame-pointers register-scavenge ICE | **OPEN** (rustc + `compiler_builtins`) | ✗ reproduces (regalloc) | ✓ compiles | ✓ compiles | ✓ compiles clean with `--frame-pointer=all -Os` — no ICE |
+| **#277** | ICE `Cannot select XtensaISD::PCREL_WRAPPER` (serde `Vec<f32>`) | **OPEN** ([root cause: espressif/llvm-project #127](https://github.com/espressif/llvm-project/issues/127)) | narrowed to the **espidf (std) target**; the exact serde repro builds fine on `*-none-elf` | ✓ compiles (float pool fine) | ✓ compiles | not directly portable (no D serde) — but a `[2 x float]` constant pool compiles fine |
+| **#278** | narrow stack-arg store width | **OPEN** (rustc/clang narrow, gcc/zig wide) | uses `s8i/s16i` (narrow) | clang narrow / gcc wide | wide `s32i` | wide `s32i.n` (joins gcc + zig — disasm in `ports.d` at `d_issue278_callm`) |
+| **#161** | `Iterator::position` miscompile at `opt-level=s` | CLOSED | ✓ **fixed** (runtime: index 1) | ✓ (manual loop, index 1) | — | — |
+| **#177** | C variadics garbage on Xtensa | CLOSED | ✓ **fixed** (runtime: sum 100) | ✓ baseline (sum 100) | — | — |
 
 ## Per-issue notes
 

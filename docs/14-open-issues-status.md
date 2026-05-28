@@ -2,8 +2,11 @@
 
 Every **open** issue in `esp-rs/rust` (12 total at time of writing), re-tested on
 this toolchain (rustc 1.95.0-nightly / LLVM 21.1.3) and, where a frontend-neutral
-comparison is meaningful, ported to clang / gcc / zig. `esp-rs/rust` is a **fork**
-(see docs/00); "upstream" is not an option for any of this.
+comparison is meaningful, ported to clang / gcc / zig / D/LDC. `esp-rs/rust`
+is a **fork** (see docs/00); "upstream" is not an option for any of this.
+TinyGo is excluded — its whole-program model (docs/24) wouldn't survive most
+of these reproducers, which depend on cargo / build-std / per-symbol .o
+emission.
 
 | # | symptom | reproduced here? | needs | cross-frontend note |
 |---|---------|------------------|-------|---------------------|
@@ -42,7 +45,7 @@ Xtensa.
 ### #278 — narrow stack-arg store width (frontend-divergent, offsets agree)
 For a function with 6 register args + several `u8`/`u16` stack args
 (`experiments/esp-rs-issues` analysis), the **outgoing stack-slot offsets are
-4-byte-stepped in all four toolchains**. They differ only in *store width*:
+4-byte-stepped in all five toolchains**. They differ only in *store width*:
 
 | | caller writes a narrow stack arg | callee reads it |
 |---|---|---|
@@ -50,13 +53,22 @@ For a function with 6 register args + several `u8`/`u16` stack args
 | clang | `s8i`/`s16i` (narrow) | (narrow) |
 | gcc   | `s32i` (widened, fills the 4-byte slot) | `l8ui`/`l16ui` (narrow) |
 | zig   | `s32i` (widened) | — |
+| D/LDC | `s32i.n` (widened, joins gcc + zig; from `d_issue278_callm` disasm) | — |
 
-So rust and clang agree (narrow), gcc and zig agree (wide); since callees read
-*narrow* (gcc verified), the difference is benign for a callee that reads its
-`u8`/`u16` args narrowly. #278's reported corruption arises only if a callee reads
-the **full 32-bit slot** expecting a widened value — the safe FFI rule is the
-familiar one: declare such ABI-critical params as `u32` (its workaround), or keep
-≤ 6 args so nothing is stack-passed.
+So rust and clang agree (narrow), gcc and zig and **D/LDC** agree (wide);
+since callees read *narrow* (gcc verified), the difference is benign for a
+callee that reads its `u8`/`u16` args narrowly. #278's reported corruption
+arises only if a callee reads the **full 32-bit slot** expecting a widened
+value — the safe FFI rule is the familiar one: declare such ABI-critical
+params as `u32` (its workaround), or keep ≤ 6 args so nothing is stack-passed.
+
+### #270 cross-frontend cross-check: D/LDC compiles clean
+`ldc2 --frame-pointer=all -Os` on a 6-arg register-heavy function in `ports.d`
+compiles **without ICE** — matching clang/gcc and unlike Rust's
+`compiler_builtins` build. So #270 is a *Rust-specific* manifestation of an
+LLVM-Xtensa regalloc edge case; the backend isn't generally broken under
+forced FP, only when an ABI-critical, very high-pressure crate is
+build-std-ed under it.
 
 ## ESP-IDF-gated issues
 

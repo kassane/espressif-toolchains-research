@@ -5,6 +5,11 @@ symbol by its exact name using the `@"…"` identifier syntax, so it can call
 **non-`extern "C"`, name-mangled** C++ and Rust functions directly — no wrapper.
 Runnable demo: `experiments/mangled-ffi/run.sh` (host x86_64).
 
+TinyGo isn't a peer here: its symbols mangle as `<package>.<func>` (see
+docs/22 §g, docs/24), `//export name` adds a bare-C alias, and TinyGo's `.o`
+needs Go runtime undefs supplied (docs/24 §d) so the cross-language matrix
+this doc demonstrates is not the natural way to call into Go.
+
 ```zig
 // the symbol name is literally the mangled string; callconv(.c) sets the ABI
 extern fn @"_ZN4demo3addEii"(a: i32, b: i32) callconv(.c) i32; // demo::add(int,int)

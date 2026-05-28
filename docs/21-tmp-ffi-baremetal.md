@@ -1,11 +1,13 @@
 # 21 — Embedded template-metaprogramming FFI across all five toolchains
 
-All five toolchains in the matrix — **gcc, esp-clang, zig, ldc2, rustc** — can
+All five FFI-matrix toolchains — **gcc, esp-clang, zig, ldc2, rustc** — can
 participate in the **same C++-templated FFI on Xtensa**, linked into one esp32
 ELF, because the Itanium C++ ABI is shared (and matches the shared LLVM Xtensa
 backend). The bridge is the *raw mangled symbol*: every consumer language has a
 syntax to reference an exact Itanium name, so a C++ template instantiation
-becomes a normal linker-resolved symbol that any of them can call.
+becomes a normal linker-resolved symbol that any of them can call. TinyGo
+(docs/24) is excluded — Go has no template/generic-as-Itanium-symbol story
+and TinyGo's `.o`s carry their own runtime; the matrix pattern doesn't apply.
 
 Reproduce with `experiments/dlang/tmpffi.sh`. All output below is real.
 

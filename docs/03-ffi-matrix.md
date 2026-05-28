@@ -1,7 +1,10 @@
 # 03 — The FFI matrix
 
 `experiments/ffi-matrix` is the core experiment: one C-ABI contract, five
-implementations, one driver that calls all of them.
+implementations, one driver that calls all of them. TinyGo is exercised
+standalone in `experiments/tinygo/` instead — its `.o` is co-linkable in
+principle (docs/24 §d) but pulls a 196 KB Go runtime that this matrix's
+`xtensa.ld` doesn't define symbols for.
 
 ## The contract (`include/ffi_abi.h`)
 
