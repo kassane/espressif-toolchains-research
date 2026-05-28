@@ -55,3 +55,49 @@ echo "  autovec (vadd.d, 4 loops)         EE.*=$(ee "$B/vadd_d.o")  -> scalar, m
 echo "  __vector(byte[16]) (vec.d)        EE.*=$(ee "$B/vec_d.o")  -> scalarized, matches clang vector_size / zig @Vector"
 echo "  LDC __asm (ldc.llvmasm, ee.d)     EE.*=$(ee "$B/ee_d.o")  -> emits ee.vld/vadds/vst, full parity with clang/gcc/zig asm path"
 echo "  (D's classic DMD-style asm{} block has no Xtensa mnemonics; LDC's __asm lowers to LLVM 'call asm sideeffect ...' identical to clang's __asm__ volatile)"
+
+echo "== 6. C++26 <simd> (P1928) — host probe via zig c++ + zig-mos-bootstrap =="
+# C++26's std::simd is the C++-language analog of Rust's core::simd / Zig's
+# @Vector / D's __vector. Not relevant on the Xtensa target (esp-clang has no
+# libc++ on bare-metal) but probed here on the host libc++ that ships with
+# our two zig c++ builds to record availability for docs/16.
+# Skip silently if the optional zig-mos-bootstrap isn't installed.
+ZIG_MOS="${ZIG_MOS:-$TC/zig-mos/zig}"
+probe_cpp26_simd() {  # zig-binary label hdr
+    local zig="$1" label="$2" hdr="$3"
+    if "$zig" c++ -std=c++26 -fexperimental-library -x c++ - -o /dev/null >/dev/null 2>&1 <<EOF
+#include <$hdr>
+int main(){ return 0; }
+EOF
+    then printf "  %-30s <%s>  parses\n" "$label" "$hdr"
+    else printf "  %-30s <%s>  MISSING\n" "$label" "$hdr"
+    fi
+}
+probe_cpp26_simd "$ZIG" "zig 0.16 / libc++ 21" "simd"
+probe_cpp26_simd "$ZIG" "zig 0.16 / libc++ 21" "experimental/simd"
+if [ -x "$ZIG_MOS" ]; then
+    probe_cpp26_simd "$ZIG_MOS" "v0.17.0-dev / libc++ 22" "simd"
+    probe_cpp26_simd "$ZIG_MOS" "v0.17.0-dev / libc++ 22" "experimental/simd"
+    # Confirm the operator+ stub (libc++ 22 TS) blocks the basic add use case.
+    if "$ZIG_MOS" c++ -std=c++26 -fexperimental-library -x c++ - -o /dev/null >/dev/null 2>&1 <<EOF
+#include <experimental/simd>
+namespace stdx = std::experimental;
+int main() {
+    stdx::native_simd<int> a(1), b(2);
+    auto c = a + b;          // libc++ 22: operator+ is unary-only
+    return c[0];
+}
+EOF
+    then
+        echo "  v0.17.0-dev experimental/simd a+b   compiles (libc++ 22 has binary ops now)"
+    else
+        echo "  v0.17.0-dev experimental/simd a+b   ERROR: \"invalid operands to binary expression\""
+        echo "    libc++ 22 ships <experimental/simd> with operator+ as a no-arg unary stub;"
+        echo "    can't add two vectors yet. C++26 <simd> (P1928) hasn't landed in libc++ 22"
+        echo "    mainline either. Even when it does, no Xtensa cost model means it'd"
+        echo "    scalarize the same way the other vector types do (see §1/§2)."
+    fi
+else
+    echo "  (skip v0.17.0-dev rows — \$ZIG_MOS not set;"
+    echo "   see https://github.com/kassane/zig-mos-bootstrap/releases/tag/0.17.0-dev)"
+fi

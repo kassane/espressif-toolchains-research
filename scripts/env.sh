@@ -10,6 +10,13 @@ export TC="${TC:-/home/user/toolchains}"
 # Zig 0.16.0 (kassane/zig-espressif-bootstrap, built against espressif LLVM 21)
 export ZIG="$TC/zig-relsafe-x86_64-linux-musl-baseline/zig"
 
+# Zig v0.17.0-dev (kassane/zig-mos-bootstrap, bundled clang 22.0.0git / libc++ 22).
+# Optional: only used for the C++26 host-side re-probes (docs/20 §9, docs/21 §5,
+# experiments/simd/run.sh §6). Download from
+# https://github.com/kassane/zig-mos-bootstrap/releases/tag/0.17.0-dev and extract
+# to $TC/zig-mos.
+export ZIG_MOS="$TC/zig-mos/zig"
+
 # Espressif clang/LLVM 21.1.3 (espressif/llvm-project esp-21.1.3_20260408)
 export ESP_CLANG_DIR="$TC/esp-clang/bin"
 export CLANG="$ESP_CLANG_DIR/clang"

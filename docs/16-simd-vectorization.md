@@ -99,6 +99,40 @@ xtensa `asm!`, so you can't write `out(qreg) _` to let the compiler allocate or
 declare them clobbered (this is exactly esp-rs/rust **#265**). In practice the
 compiler never *uses* q regs, so hardcoding q0–q2 is safe.
 
+## C++26 `<simd>` (P1928) — not yet a path
+
+The natural seventh row in the parity table would be C++26's
+`std::simd` ([P1928](https://wg21.link/P1928)), the standardized version
+of `std::experimental::simd` (TS). It's the C++-language analog of Rust's
+`core::simd` / Zig's `@Vector` / D's `__vector(byte[16])` — a portable
+fixed-width vector type with abi tags (`std::simd_abi::native_abi<T>`).
+Status as of writing, probed at the shell against both clang versions
+in this matrix (`zig c++` 21.1.0 / libc++ 21; `kassane/zig-mos-bootstrap`
+v0.17.0-dev = clang 22.0.0git / libc++ 22):
+
+| header | libc++ 21 (Zig 0.16 bundle) | libc++ 22 (v0.17.0-dev bundle) |
+|---|---|---|
+| `<simd>` (P1928) | ✗ MISSING | ✗ MISSING — frontier item, not landed in libc++ 22 either |
+| `<experimental/simd>` (TS) | ✓ parses | ✓ parses, **but** operator+/-/*/etc. binary forms are stubs: |
+
+```
+error: invalid operands to binary expression
+  ('stdx::native_simd<int>' and 'stdx::native_simd<int>')
+note: candidate function not viable: requires 0 arguments, but 2 were provided
+  137 |   simd operator+() const noexcept { return *this; }
+```
+
+So you can declare a `native_simd<int>` and read elements, but you can't
+add two vectors together — the libc++ TS implementation is incomplete in
+both 21 and 22. Even if libc++ ships P1928 tomorrow, the codegen story is
+unchanged on Xtensa: the LLVM Xtensa backend has no vector register class
+or cost model (§"Why it's this way"), so `std::simd<int, 4> a, b; a + b;`
+would scalarize to 4× `add.n` just like clang's `vector_size(16)`,
+zig's `@Vector(16,i8)`, rust's `core::simd::i8x16`, and D's
+`__vector(byte[16])` do today. **C++26 `<simd>` is the missing portable
+SIMD API in this matrix, but landing it wouldn't help ESP32-S3 reach
+`EE.*` without an upstream cost-model patch.**
+
 ## Why it's this way & how to actually SIMD on S3
 
 The `EE.*`/PIE extension is a **non-standard Xtensa option**; the LLVM Xtensa
