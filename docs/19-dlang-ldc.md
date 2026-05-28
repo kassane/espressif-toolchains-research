@@ -5,20 +5,21 @@ alongside Rust and Zig. How does D's C/C++ FFI and its ABI lowering compare on
 the espressif backend? Reproduce with `experiments/dlang/run.sh`; the runtime
 PASS/FAIL matrix (D added to all four other languages) is `scripts/run-qemu.sh`.
 
-## 1. Identity — the only LLVM-22 toolchain here
+## 1. Identity — now on the espressif fork (see docs/23 for the swap)
 
 | | value |
 |---|---|
-| compiler | **LDC 1.42.0-git-c8305d0** (DMD v2.112.1 frontend) |
-| backend | **LLVM 22.1.2** — *newer* than clang/rust (21.1.3) and zig (21.1.0) |
-| source | `ldc-developers/ldc` rolling **`CI`** pre-release (LLVM 21.1.8 stable 1.42 is too old) |
-| Xtensa | a **registered, experimental** LLVM target (`xtensa - Xtensa 32`); upstream LLVM, not an espressif fork — issue #4725 asks to bundle it in the standard distro |
+| compiler | **LDC 1.42.0-git-04a6c8b** (DMD v2.112.1 frontend) |
+| backend | **espressif/llvm-project LLVM 21.1.3** — same family as esp-clang and rustc |
+| source | [`kassane/esp-idf-dlang`](https://github.com/kassane/esp-idf-dlang/releases/tag/xtensa-toolchain) `xtensa-toolchain` (static-musl); the upstream `ldc-developers/ldc` CI build (LLVM 22.1.2) remains as `$LDC2_UPSTREAM` for the comparison in docs/23 |
+| Xtensa | **first-class** in the espressif fork: `-mcpu=esp32`/`s2`/`s3` all recognized natively |
 | bare-metal | **`-betterC`** (no druntime/Phobos/GC/ModuleInfo) — D's analogue of Rust `no_std` / Zig `freestanding` |
-| invocation | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC` |
+| invocation | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -c` |
 
 D is a *systems* language with first-class C and C++ interop, so the FFI surface
-is the richest of the five (see §5). It is the only frontend whose Xtensa support
-rides **upstream** LLVM (Rust/Zig/clang all need an espressif LLVM fork).
+is the richest of the five (see §5). With the espressif-fork LDC it now rides
+the **same backend family** as clang/rust/zig (all 21.1.x); the
+upstream-LLVM-22 path is documented in [docs/23](23-ldc-espressif-fork.md).
 
 ## 2. The headline: D mis-lowers **every** by-value aggregate
 
@@ -75,22 +76,23 @@ Xtensa (sim/dc233c)                       RISC-V (esp32c3, virt)
 scalar in `a2`, so `blob_sum_ptr(const Blob*)` returns `300` for C, Zig **and**
 D on both arches. Across any D↔{C,Rust,Zig} boundary, pass aggregates by pointer.
 
-## 3. A real LDC-on-Xtensa linker bug (and the workaround)
+## 3. The LDC-Xtensa literal-pool bug — fixed on the espressif fork
 
-A *direct* `ldc2 -c` Xtensa object **fails to link**:
-`ld.lld: … R_XTENSA_SLOT0_OP: … is not aligned to 4 bytes`. LDC's **LLVM-22
-integrated assembler** mis-lays the `l32r` literal pool under function-sections:
-the `__muldf3` address that `d_mul_f64` loads is emitted into the *preceding*
-function's `.text.d_mul_f32` section at an unaligned offset (`+0x11`), and `l32r`
-requires a 4-aligned target. clang/zig instead emit a separate, 4-aligned
-`.literal` section.
+On the **upstream-LLVM-22** LDC a direct `ldc2 -c` Xtensa object failed to
+link: `ld.lld: … R_XTENSA_SLOT0_OP: … is not aligned to 4 bytes`. The LLVM-22
+integrated assembler mis-laid the `l32r` literal pool under function-sections:
+the `__muldf3` address that `d_mul_f64` loads was emitted into the *preceding*
+function's `.text.d_mul_f32` section at an unaligned offset (`+0x11`), and
+`l32r` requires a 4-aligned target. The workaround was to emit textual asm
+(`ldc2 -output-s`), strip `.cfi_*` (the espressif Xtensa assembler rejects
+CFI), and re-assemble with esp clang's LLVM-21 MC.
 
-**Workaround (used throughout the build):** emit textual asm (`ldc2 -output-s`),
-strip `.cfi_*` (the Xtensa assembler rejects CFI — *"CFI is not supported for
-this target"* — which LDC emits anyway), and re-assemble with **esp clang**
-(LLVM-21 MC, which uses separate aligned `.literal.*` sections). See
-`ldc_xtensa_obj` in `scripts/build-ffi.sh`. RISC-V has no literal pool
-(`auipc`/`jalr`), so a direct object links there.
+The **canonical espressif-fork LDC** (LLVM 21.1.3) lays the `.literal.<fn>`
+section correctly under function-sections, so direct `ldc2 -c` produces a
+linkable object — `scripts/build-ffi.sh:ldc_xtensa_obj()` is now a one-liner.
+`experiments/ldc-fork-comparison §(c)` reproduces both behaviors side by side
+([docs/23](23-ldc-espressif-fork.md)). RISC-V has no literal pool
+(`auipc`/`jalr`), so a direct object always linked there.
 
 ## 4. Scalars & linking — full parity
 
@@ -132,23 +134,20 @@ a C++ TU that `#include`s the generated header **calls back into D** and prints
 `cpp_add=42 espffi::ns_add=42 vec_dot=12.5`. (Templates differ syntactically —
 C++/Rust `<T,N>`, D `(T,N)` — but that's source, not ABI.)
 
-## 6. Cross-language LTO — D + clang **works** (the surprise)
+## 6. Cross-language LTO — D + clang works (and now with no skew)
 
 Unlike clang↔zig (blocked by a 21.1.0-vs-21.1.3 bitcode skew, docs/04/17),
-**clang(21.1.3) + D(LDC 22.1.2) LTO links and inlines across the boundary**: the
-`ld.lld` 21.1.3 LTO reader accepts LDC's LLVM-**22** bitcode and constant-folds a
-cross-module `d_lto`+`c_lto` to `addi.n a2, a2, 2` (`x+2`). So despite shipping
-the *newest* LLVM, D's bitcode is the one that interops with the espressif LTO
-reader here — the version-skew rule is not simply "must match" (forward-compat
-held for this module; a feature using a 22-only record could still be rejected).
-Object-level FFI, as always, has no version constraint. The **matching LLVM
-22.1.2 binutils** (`ldc-developers/llvm-project` `ldc-v22.1.2`; `$LDC_LLVM_DIR`,
-`setup.sh LLVM22=1`) add the `llvm-link`/`opt`/`llvm-dis` esp-clang omits — being
-LLVM-22 they read every frontend's post-18 IR and **`llvm-link`-merge all five
-into one module** (docs/04, `experiments/llvm-ir-mix/run.sh`). They also expose a
-datalayout quirk: D's upstream-22 Xtensa datalayout
-(`…i8:8:32-i16:16:32…`) differs from the espressif-21 trio's (`…v1:8:8…i128:128…`)
-— `llvm-link` warns but merges; C-ABI struct layout is unaffected.
+**clang + D LTO links and inlines across the boundary** — and on the
+canonical espressif-fork LDC there's no skew at all (both producers are
+LLVM 21.1.3). The `ld.lld` LTO reader merges `d_lto`+`c_lto` and constant-folds
+to `addi.n a2, a2, 2` (`x+2`). The same test on the upstream-LDC arm (LLVM 22.1.2
+bitcode → 21.1.3 LTO reader) historically also worked despite the version skew —
+see [docs/23](23-ldc-espressif-fork.md). Object-level FFI, as always, has no
+version constraint. The **LLVM 22.1.2 binutils** (`$LDC_LLVM_DIR`,
+`setup.sh LLVM22=1`) remain in the box only for the upstream-LDC arm of the
+comparison; for canonical IR work, esp-clang's 21.1.x binutils handle every
+frontend's post-18 IR (datalayout is now byte-identical across all four
+LLVM frontends — no llvm-link warning).
 
 ## 7. Tooling parity with clang
 
@@ -164,29 +163,34 @@ datalayout quirk: D's upstream-22 Xtensa datalayout
   backend ICEs when optimization (`-O1`, needed for code size) is combined with
   **exception handling** (`-mtriple=xtensa-none-elf -mattr=+density,+mul16,
   +mul32,+div32,+windowed -O1`). Avoid by disabling EH (`-betterC` does) or opt.
-- **ldc #4919 "Missing default LLVM `cpu-features` in some targets"** (OPEN):
-  LDC doesn't set default CPU features for some targets (notably wasm32 →
-  empty feature set), where Rust/Zig do. **Reproduced here:** LDC's upstream
-  LLVM-22 only knows the `esp32` Xtensa CPU — `-mcpu=esp32s2`/`esp32s3` give
-  *"'esp32s2' is not a recognized processor for this target (ignoring
-  processor)"* and fall back to generic Xtensa (no `mul32`), so `a*b` becomes an
-  `__mulsi3` libcall the RT lib lacks → link error. Fix: pass features explicitly
-  (`-mattr=+windowed,+density,+mul32,+mul16,+div32`; `build-ffi.sh` does this for
-  s2/s3). esp clang, by contrast, recognizes all three cores.
+- **ldc #4919 "Missing default LLVM `cpu-features` in some targets"** (OPEN
+  upstream; **fixed for esp32-s2/s3 on the espressif fork**): the upstream-LLVM
+  LDC only knows `-mcpu=esp32`; `esp32s2`/`s3` are *"not a recognized
+  processor"* and fall back to generic Xtensa, so `a*b` becomes an `__mulsi3`
+  libcall. The fork ships LLVM with all three esp32 CPUs as first-class values
+  (`experiments/ldc-fork-comparison §(d)`); `env.sh:ldc_xtensa_flags` still
+  pins an explicit `-mattr=` mirroring esp-clang's feature set for
+  self-documentation and to make the same flag string drive both LDC arms in
+  the comparison.
 
 ## Verdict
 
 D/LDC slots in as a **5th frontend on the shared backend** and is a strong C/C++
 FFI citizen: scalars at parity, object-level linking with all four others (0
 undef), **byte-identical Itanium mangling**, C++-header generation (`-HC`) with a
-verified C++→D round-trip, and — uniquely — **working cross-language LTO with
-clang** despite its newer LLVM 22.1.2. The caveats are (1) **by-value aggregates**
-— D marks *every* struct `byval`/`sret`, so it diverges from the register-based
-Xtensa C ABI more broadly than Zig (both `point_dot` and `blob_sum`; on RISC-V
-the small struct even faults). Pass structs **by pointer**. And (2) a real
-**LDC-Xtensa literal-pool link bug** — re-assemble LDC's `-output-s` with esp
-clang. Both are LLVM-backend / LDC-codegen issues on an experimental target, not
-D-language limitations (host D interops fully).
+verified C++→D round-trip, and **working cross-language LTO with clang**
+(same-21.1.3 since docs/23, so no skew). The caveat that survives is
+**by-value aggregates** — D marks *every* struct `byval`/`sret`, so it diverges
+from the register-based Xtensa C ABI more broadly than Zig (both `point_dot` and
+`blob_sum`; on RISC-V the small struct even faults). Pass structs **by
+pointer**. Crucially, this bug is **frontend-side**: both the canonical
+espressif-fork LDC (LLVM 21.1.3) and the upstream-22 LDC produce the identical
+broken IR ([docs/23](23-ldc-espressif-fork.md) §(h)), and the same family of
+narrow-target-blind frontend bug shows up on MOS 6502 too
+([kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1),
+wontfix). So the fix would need to land in LDC's DMD-ABI lowering, not in a
+downstream LLVM fork. The historical literal-pool link bug is **gone** on the
+fork — direct `ldc2 -c` works (§3).
 
 **See also [docs/20](20-dlang-safety-features.md)** for LDC's exclusive features
 (`@fastmath`/`@section`/`@weak`/inline LLVM IR), the `-preview=`/`--edition=`

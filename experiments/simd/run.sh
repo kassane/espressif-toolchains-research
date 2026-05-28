@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # run.sh - explore SIMD/vectorization on Xtensa (esp32s3 is the only ESP with a
 # vector unit: the 128-bit `EE.*` "PIE" extension, q0-q7). See docs/16.
-#   1. autovectorization: does any frontend vectorize a loop to EE.*?  (no)
-#   2. explicit vector types: vector_size / @Vector -> EE.* or scalarized? (scalar)
+#   1. autovectorization: does any frontend vectorize a loop to EE.?  (no)
+#   2. explicit vector types: vector_size / @Vector / __vector -> EE. or scalar? (scalar)
 #   3. inline asm: can clang/gcc/zig emit EE.* by hand?                  (yes)
 #   4. EE.* on esp32 (no SIMD) -> rejected.
+#   5. D parity (autovec / __vector / LDC __asm)                         (yes, asm path works)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/env.sh
 D=experiments/simd; B=build/simd; mkdir -p "$B"
 S3C="--target=xtensa-esp-elf -mcpu=esp32s3"; S3Z="-target xtensa-freestanding-none -mcpu=esp32s3"
+S3L="-mtriple=xtensa-esp-elf -mcpu=esp32s3"
  G3="XTENSA_GNU_CONFIG=$(xtensa_cfg esp32s3)"
 ee(){ llvm-objdump -d --mcpu=esp32s3 "$1" 2>/dev/null | grep -ciE 'ee\.v'; }
 
@@ -42,3 +44,14 @@ if "$CLANG" --target=xtensa-esp-elf -mcpu=esp32 -ffreestanding -O2 -c "$D/ee.c" 
 else
     echo "  rejected: 'instruction use requires an option to be enabled' (S3-only)"
 fi
+
+echo "== 5. D parity: autovec / __vector / inline asm =="
+# LDC ($LDC2 = espressif/llvm-project 21.1.3 build) speaks -mcpu=esp32s3 natively.
+# -betterC drops druntime so the object links with -nostdlib like clang/zig output.
+"$LDC2" $S3L -betterC -O3 -c "$D/vadd.d" -of="$B/vadd_d.o"
+"$LDC2" $S3L -betterC -O3 -c "$D/vec.d"  -of="$B/vec_d.o"
+"$LDC2" $S3L -betterC -O2 -c "$D/ee.d"   -of="$B/ee_d.o"
+echo "  autovec (vadd.d, 4 loops)         EE.*=$(ee "$B/vadd_d.o")  -> scalar, matches clang/gcc"
+echo "  __vector(byte[16]) (vec.d)        EE.*=$(ee "$B/vec_d.o")  -> scalarized, matches clang vector_size / zig @Vector"
+echo "  LDC __asm (ldc.llvmasm, ee.d)     EE.*=$(ee "$B/ee_d.o")  -> emits ee.vld/vadds/vst, full parity with clang/gcc/zig asm path"
+echo "  (D's classic DMD-style asm{} block has no Xtensa mnemonics; LDC's __asm lowers to LLVM 'call asm sideeffect ...' identical to clang's __asm__ volatile)"

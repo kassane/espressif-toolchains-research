@@ -25,9 +25,11 @@ in `/home/user/dl`. **Never commit these** (`.gitignore` guards `toolchains/`,
 | `$CLANG`/`$CLANGXX` | esp clang 21.1.3 (cross-only: **no X86 target**) |
 | `$RUSTC`/`$CARGO` | merged rust-esp prefix (1.95-nightly, LLVM 21.1.3) |
 | `$GCC` | xtensa-esp-elf-gcc 15.2.0 |
-| `$LDC2` | LDC 1.42-git, LLVM **22.1.2** (D; `-betterC` for bare-metal). Xtensa is upstream-LLVM experimental — needs the `-output-s`+esp-clang re-assembly in build-ffi.sh (docs/19) |
-| `$LDC_LLVM_DIR` | LLVM **22.1.2** binutils (llvm-link/opt/llvm-dis/llvm-as) matching LDC — the IR-merge tools esp-clang omits. Optional (`setup.sh LLVM22=1`; `.tar.zst`, needs `zstd`). NOT on PATH (would shadow esp-clang's 21.1.3 tools) — call `$LDC_LLVM_DIR/bin/<tool>` (docs/04) |
+| `$LDC2` | LDC 1.42-git, espressif/llvm-project **LLVM 21.1.3** (kassane/esp-idf-dlang xtensa-toolchain). D; `-betterC` for bare-metal. esp32/s2/s3 are first-class `-mcpu`; direct `ldc2 -c` -> `ld.lld` works, no re-assembly (docs/19, docs/23) |
+| `$LDC2_UPSTREAM` | LDC 1.42-git, **upstream LLVM 22.1.2** (`ldc-developers/ldc CI`). Comparison-only — used by `experiments/ldc-fork-comparison`. Opt-in: `LDC_UPSTREAM=1 ./scripts/setup.sh` |
+| `$LDC_LLVM_DIR` | **LLVM 22.1.2** binutils (llvm-link/opt/llvm-dis/llvm-as). Only useful with `$LDC2_UPSTREAM` — esp-clang's 21.1.3 binutils version-match the canonical `$LDC2` now. Opt-in (`LLVM22=1`; `.tar.zst`, needs `zstd`); NOT on PATH (would shadow esp-clang's tools); call `$LDC_LLVM_DIR/bin/<tool>` (docs/04) |
 | `xtensa_cfg <cpu>` | path to `xtensa_<cpu>.so` for `XTENSA_GNU_CONFIG` |
+| `ldc_xtensa_flags <cpu>` | `-mcpu=<cpu> -mattr=<features>` string; word-splits in build-ffi.sh/analyze.sh. Mirrors esp-clang's implicit feature set; intersection of both LDC versions' feature lists so the comparison can drive both arms with one string |
 
 ## Build / analyze
 
@@ -51,13 +53,18 @@ windowed `entry` instruction decodes as garbage.
    `--emit=...` must go after `--` in `cargo rustc`.
 3. **esp clang can't target the host** — use `zig cc` for host C/C++.
 4. **`llvm-link`/`opt`/`llvm-dis` are not shipped** by esp clang; the host's are
-   LLVM 18 and reject LLVM-21/22 IR. Two fixes: (a) the **LLVM-22 binutils**
-   (`$LDC_LLVM_DIR`, `setup.sh LLVM22=1`) read all post-18 IR — `llvm-link` merges
-   all five frontends into one module (`experiments/llvm-ir-mix/run.sh`); (b) for
-   esp32 *codegen*, mix via cross-language **LTO** (`ld.lld`, the 21.1.3 reader):
-   clang↔rust (both 21.1.3) and — surprisingly — clang↔D (LDC **22.1.2** bc) link;
-   zig (21.1.0) fails "Invalid record" (docs/04/19). Version skew is not a simple
-   "must match" rule; upstream LLVM-22 has no `esp32` CPU, so it can't codegen esp32.
+   LLVM 18 and reject LLVM-21/22 IR. The canonical 21.1.3 LDC's bitcode reads
+   cleanly via esp-clang's own 21.1.3 binutils — no skew, no extra download.
+   Cross-language **LTO** (`ld.lld`): clang↔rust↔D all on 21.1.3, all link;
+   zig (21.1.0) fails "Invalid record". The optional **LLVM-22 binutils**
+   (`$LDC_LLVM_DIR`, `setup.sh LLVM22=1`) are only needed for the upstream-LDC
+   comparison in `experiments/ldc-fork-comparison` / docs/23.
+5. **D's by-value struct ABI is a frontend bug, not a backend one.** Both LDC
+   variants emit `byval`/`sret` for every aggregate; the espressif-21 fork
+   doesn't change that, so `point_dot`/`blob_sum` still FAIL at runtime on
+   Xtensa. Pass structs by pointer across a D (or Zig) boundary. Same family as
+   [kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
+   (wontfix) — docs/23.
 
 ## Repo map
 
@@ -66,8 +73,9 @@ experiments/ffi-matrix/   the contract (include/ffi_abi.h) + 5 impls (c/cpp/rust
 experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct ABI bug
 experiments/llvm-ir-mix/  mix*.c + mix_rs + run.sh — LTO probes & LLVM-22 llvm-link module-merge
 experiments/dlang/        cppiface.d + run.sh + safety.sh + tmpffi.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO; @safe/@mustuse/@live/preview/edition vs Rust × C++26; embedded TMP-FFI matrix on Xtensa)
+experiments/ldc-fork-comparison/ run.sh — espressif-21 vs upstream-22 LDC side-by-side (docs/23). Requires LDC_UPSTREAM=1.
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
-docs/00..22               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity
+docs/00..23               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork
 experiments/dwarf-parity/ run.sh — DWARF & disassembly audit across all 5 toolchains on Xtensa (docs/22)
 Research.md HANDOFF.md     headline write-up / status
 ```

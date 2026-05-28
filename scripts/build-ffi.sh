@@ -13,24 +13,16 @@ source scripts/env.sh
 SRC=experiments/ffi-matrix
 INC="$PWD/$SRC/include"
 
-# LDC -> Xtensa object. LDC's LLVM-22 integrated assembler mis-lays the Xtensa
-# literal pool under function-sections: a function's l32r literal (e.g. the
-# __muldf3 address in d_mul_f64) is emitted into the PRECEDING function's
-# section at an unaligned offset, so ld.lld rejects it
-# ("R_XTENSA_SLOT0_OP ... not aligned to 4 bytes"). Work around it by emitting
-# textual asm and re-assembling with esp clang (LLVM 21), whose Xtensa MC uses
-# separate, 4-aligned .literal sections. Also strip .cfi_* — the Xtensa
-# assembler rejects CFI directives ("CFI is not supported for this target"),
-# which LDC emits anyway. See docs/19.
+# LDC -> Xtensa object. The canonical LDC (espressif/llvm-project 21.1.3) lays
+# the .literal pool correctly under function-sections and recognizes esp32 /
+# esp32s2 / esp32s3 as first-class -mcpu values, so a direct -c works for every
+# core with no re-assembly. (Compare experiments/ldc-fork-comparison: the
+# upstream-LLVM-22 LDC needed -output-s -> esp-clang -c plus .cfi_* stripping
+# to dodge "R_XTENSA_SLOT0_OP not aligned to 4 bytes" and CFI-not-supported.)
 ldc_xtensa_obj() { # mcpu out src
-    local cpu=$1 out=$2 src=$3 s="${2%.o}.s"
-    # ldc_xtensa_flags (env.sh) picks -mcpu=esp32 or, for the s2/s3 cores LDC's
-    # LLVM-22 doesn't recognize, an explicit -mattr (ldc #4919; else `a*b`
-    # becomes an __mulsi3 libcall the RT lib lacks). Float stays soft, which is
-    # interop-safe: f32/f64 cross the C ABI in a-registers regardless.
-    "$LDC2" -mtriple=xtensa-esp-elf "$(ldc_xtensa_flags "$cpu")" -betterC -Os -output-s -of="$s" "$src"
-    sed -E -i '/^[[:space:]]*\.cfi_/d' "$s"
-    "$CLANG" --target=xtensa-esp-elf -mcpu="$cpu" -c "$s" -o "$out"
+    local cpu=$1 out=$2 src=$3
+    # shellcheck disable=SC2046  -- intentional word-splitting on the helper's output
+    "$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags "$cpu") -betterC -Os -c -of="$out" "$src"
 }
 
 build_host() {
@@ -60,8 +52,7 @@ build_xtensa() {
                                                -c "$SRC/cpp/lib_cpp.cpp" -o "$B/lib_cpp.o"
     "$ZIG" build-obj -target xtensa-freestanding-none -mcpu="$CPU" -O ReleaseSmall \
                                                -femit-bin="$B/lib_zig.o" "$SRC/zig/lib_zig.zig"
-    # D via LDC (-betterC; Xtensa is an experimental LLVM-22 target in this build).
-    # See ldc_xtensa_obj for the literal-pool re-assembly workaround.
+    # D via LDC (-betterC; espressif/llvm-project 21.1.3 build, native -mcpu).
     ldc_xtensa_obj "$CPU" "$B/lib_d.o" "$SRC/d/lib_d.d"
     # GCC variant of the C lib (note: XTENSA_GNU_CONFIG selects the little-endian esp core)
     XTENSA_GNU_CONFIG="$(xtensa_cfg "$CPU")" "$GCC" -ffreestanding -Os -I"$INC" \
@@ -97,9 +88,9 @@ build_riscv() {
     "$CLANG"   $CT -ffreestanding -Os -I"$INC" -c "$SRC/c/lib_c.c"      -o "$B/lib_c.o"
     "$CLANGXX" $CT -ffreestanding -fno-exceptions -fno-rtti -Os -I"$INC" -c "$SRC/cpp/lib_cpp.cpp" -o "$B/lib_cpp.o"
     "$ZIG" build-obj -target riscv32-freestanding-none -mcpu=esp32c3 -O ReleaseSmall -femit-bin="$B/lib_zig.o" "$SRC/zig/lib_zig.zig"
-    # D via LDC. esp32c3 = rv32imc; upstream LLVM-22 has no esp32c3 CPU, so use
-    # the generic rv32 + explicit +m,+c features. No literal-pool quirk here
-    # (RISC-V calls use auipc/jalr, not Xtensa's l32r), so a direct object works.
+    # D via LDC. esp32c3 = rv32imc; no fork-specific RISC-V CPU name, so use
+    # generic rv32 + explicit +m,+c features (same on both LDCs). RISC-V uses
+    # auipc/jalr, not Xtensa's l32r, so no literal-pool quirk regardless.
     "$LDC2" -mtriple=riscv32-unknown-none-elf -mattr=+m,+c -betterC -Os -c -of="$B/lib_d.o" "$SRC/d/lib_d.d"
     ( cd "$SRC/rust" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target riscv32imc-unknown-none-elf >/dev/null 2>&1 )
     cp "$SRC/rust/target/riscv32imc-unknown-none-elf/release/libffi_rs.a" "$B/"

@@ -7,20 +7,23 @@ Berkeley `llvm-size` "text" column, which folds in zig's default `.eh_frame`:
 
 | toolchain | `.text` (bytes) | notes |
 |-----------|:--------------:|-------|
-| gcc 15.2 (C) | **174** | smallest; mature Xtensa codegen, uses zero-overhead `loop` |
-| rust 1.95 | ~171 | matches gcc/clang closely (per-function sections) |
-| clang 21 (C) | 192 | (`+ mov.n a7,a1` frame setup at `-Os`; Berkeley "text" 196) |
-| clang 21 (C++) | 204 | templates fully inlined; C-ABI exports only |
-| D 1.42 (LDC, `-betterC`) | ~366 | between clang and zig; verbose byte loops in `make_blob`/`blob_sum` (docs/19) |
-| zig 0.16 (Zig) | **443** | ~2.3× — non-C-ABI large-struct marshalling (doc 05) |
+| gcc 15.2 (C) | **201** | smallest; mature Xtensa codegen, uses zero-overhead `loop` |
+| rust 1.95 | ~179 | matches gcc/clang closely (per-function sections) |
+| clang 21 (C) | 223 | (`+ mov.n a7,a1` frame setup at `-Os`) |
+| clang 21 (C++) | 212 | templates fully inlined; C-ABI exports only |
+| D 1.42 (LDC esp-fork, `-betterC`) | 533 | between clang and zig; verbose byte loops in `make_blob`/`blob_sum` (docs/19, /23) |
+| zig 0.16 (Zig) | **715** | ~3× — non-C-ABI large-struct marshalling (doc 05) |
 
-The Zig outlier is entirely `blob_sum`/`make_blob`: the byte-by-byte stack
-shuffling for the large by-value struct. On scalar/callback/small-struct
-functions Zig matches the others closely. (The often-quoted "647 B" is the
-Berkeley `llvm-size` total, which adds ~200 B of `.eh_frame` unwind tables that
-zig's *driver* emits by default — see docs/15; the actual code is 443 B.) D sits
-in between — its `make_blob`/`blob_sum` byte loops (131/123 B) inflate it much
-like zig's, the rest is tight.
+Re-derive with `./scripts/analyze.sh esp32` (writes
+`build/analysis/sizes-esp32.txt`). The Zig outlier is entirely
+`blob_sum`/`make_blob`: the byte-by-byte stack shuffling for the large by-value
+struct. On scalar/callback/small-struct functions Zig matches the others
+closely. D sits in between — its `make_blob`/`blob_sum` byte loops inflate it
+much like zig's, the rest is tight. The D figure is for the canonical
+espressif-fork LDC; the upstream-LLVM-22 LDC produces a *smaller* `.text`
+(~366 B) but with non-compact codegen (docs/22) — the fork now uses the same
+`.n` compact forms as clang, so its individual functions are tighter even
+though the total grew slightly from a different byte-loop shape.
 
 ## Endianness & machine
 

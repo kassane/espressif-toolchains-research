@@ -32,28 +32,50 @@ export GXX="$GCC_DIR/bin/xtensa-esp-elf-g++"
 export GCC_CFG_DIR="$GCC_DIR/lib"
 xtensa_cfg() { echo "$GCC_CFG_DIR/xtensa_${1}.so"; }  # xtensa_cfg esp32 -> .../xtensa_esp32.so
 
-# LDC 1.42.0-git (LLVM 22.1.2) - LLVM-based D compiler, ldc-developers/ldc CI
-# build. The ONLY toolchain here on LLVM 22 (clang/rust are 21.1.3, zig 21.1.0),
-# and it carries Xtensa as an experimental LLVM target. Bare-metal uses -betterC
-# (no druntime/Phobos), the D analogue of Rust no_std / Zig freestanding.
-export LDC_DIR="$TC/ldc2-c8305d0a-linux-x86_64"
+# LDC 1.42.0-git (espressif/llvm-project, LLVM 21.1.3) - kassane/esp-idf-dlang
+# fork build. The canonical 5th frontend. Same LLVM family as esp-clang and
+# rustc (21.1.3), so no bitcode-version skew and no -output-s re-assembly
+# workaround (its Xtensa MC lays literal pools correctly). First-class -mcpu
+# values: esp32, esp32s2, esp32s3, esp8266, cnl, generic. Static-musl binary;
+# ldc2.conf pre-bundled. Bare-metal uses -betterC (no druntime/Phobos), the D
+# analogue of Rust no_std / Zig freestanding. See docs/23.
+export LDC_DIR="$TC/ldc-xtensa"
 export LDC2="$LDC_DIR/bin/ldc2"
 
-# Matching LLVM 22.1.2 tools (ldc-developers/llvm-project ldc-v22.1.2): the full
-# binutils esp-clang does NOT ship — llvm-link / opt / llvm-dis / llvm-as / llc /
-# llvm-config. These finally read post-18 IR (the host's are LLVM 18), so they
-# can merge/inspect LDC's LLVM-22 bitcode (docs/04). NOT prepended to PATH: that
-# would shadow esp-clang's 21.1.3 llvm-objdump/nm/size and ld.lld. Reference the
-# tools explicitly via $LDC_LLVM_DIR/bin/<tool>. Optional (setup.sh LLVM22=1).
+# Upstream LDC 1.42 (LLVM 22.1.2) - ldc-developers/ldc CI build. Comparison
+# only, referenced by experiments/ldc-fork-comparison/ + docs/23. Has the
+# Xtensa literal-pool MC bug ("not aligned to 4 bytes") and only recognizes
+# -mcpu=esp32 (ldc #4919). Opt-in: setup.sh LDC_UPSTREAM=1.
+export LDC2_UPSTREAM="$TC/ldc2-c8305d0a-linux-x86_64/bin/ldc2"
+
+# Matching LLVM 22.1.2 tools (ldc-developers/llvm-project ldc-v22.1.2): full
+# binutils (llvm-link/opt/llvm-dis/llvm-as/llc) for inspecting/merging the
+# upstream LDC's LLVM-22 bitcode (the host's are LLVM 18). NOT needed for the
+# canonical 21.1.3 LDC — esp-clang ships matching binutils. NOT prepended to
+# PATH (would shadow esp-clang's tools). Reference explicitly via
+# $LDC_LLVM_DIR/bin/<tool>. Optional (setup.sh LLVM22=1). See docs/04, docs/23.
 export LDC_LLVM_DIR="$TC/llvm-22.1.2-linux-x86_64"
 
-# LDC Xtensa codegen flags for a core. LDC's upstream LLVM-22 only knows the
-# `esp32` CPU; esp32s2/s3 are "not a recognized processor", so spell out the
-# features by hand (ldc #4919). Single source of truth — used by build-ffi.sh
-# and analyze.sh so their D objects/IR can't drift apart.
+# LDC Xtensa codegen flags for a core. Pairs -mcpu (canonical CPU name; the
+# fork LDC recognizes esp32/s2/s3 natively) with an explicit -mattr= feature
+# list that pins the codegen-relevant ISA options esp-clang implicitly enables
+# for the same -mcpu. Two reasons to be explicit even though -mcpu already
+# enables these via the CPU definition: (1) the user-facing tests are then
+# self-documenting about what ISA they need (windowed call ABI, density compact
+# insns, mul/div, atomics, FP); (2) future LDC versions can't silently change a
+# per-CPU default and drift D's codegen away from clang's. The feature subset
+# below is the intersection of features both LDC versions recognize, so the
+# same string drives experiments/ldc-fork-comparison's upstream-LDC arm too.
+# Fork-only features (+esp32s2ops/+esp32s3ops/+expstate/+hifi3) come implicitly
+# from -mcpu on the fork LDC — they only exist there.
+LDC_MATTR_E32="+bool,+clamps,+coprocessor,+dcache,+debug,+density,+dfpaccel,+div32,+exception,+fp,+highpriinterrupts,+interrupt,+loop,+mac16,+minmax,+miscsr,+mul16,+mul32,+mul32high,+nsa,+prid,+regprotect,+rvector,+s32c1i,+sext,+threadptr,+windowed"
+LDC_MATTR_S2="+clamps,+coprocessor,+dcache,+debug,+density,+div32,+exception,+highpriinterrupts,+interrupt,+minmax,+miscsr,+mul16,+mul32,+mul32high,+nsa,+prid,+regprotect,+rvector,+sext,+threadptr,+windowed"
+LDC_MATTR_S3="+bool,+clamps,+coprocessor,+dcache,+debug,+density,+div32,+exception,+fp,+highpriinterrupts,+interrupt,+loop,+mac16,+minmax,+miscsr,+mul16,+mul32,+mul32high,+nsa,+prid,+regprotect,+rvector,+s32c1i,+sext,+threadptr,+windowed"
 ldc_xtensa_flags() { case "$1" in
-    esp32) echo "-mcpu=esp32" ;;
-    *)     echo "-mattr=+windowed,+density,+mul32,+mul16,+div32" ;;
+    esp32)   echo "-mcpu=esp32   -mattr=$LDC_MATTR_E32" ;;
+    esp32s2) echo "-mcpu=esp32s2 -mattr=$LDC_MATTR_S2" ;;
+    esp32s3) echo "-mcpu=esp32s3 -mattr=$LDC_MATTR_S3" ;;
+    *)       echo "-mcpu=$1" ;;
 esac; }
 
 # Keep cargo's caches local and offline-friendly.

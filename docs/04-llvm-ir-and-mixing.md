@@ -1,9 +1,9 @@
 # 04 — LLVM IR comparison & mixing
 
-## Same target, (almost) same datalayout
+## Same target, same datalayout (all four frontends, since docs/23)
 
-The three espressif-LLVM-21 frontends emit the identical datalayout for the
-Xtensa esp32 target; only the triple differs:
+All four LLVM frontends now emit the identical datalayout for the Xtensa esp32
+target; only the triple differs:
 
 ```
 clang : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
@@ -12,16 +12,15 @@ rust  : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
         target triple      = "xtensa-unknown-none-elf"
 zig   : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
         target triple      = "xtensa-unknown-unknown-unknown"
-D/LDC : target datalayout = "e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-n32"
+D/LDC : target datalayout = "e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32"
         target triple      = "xtensa-esp-unknown-elf"
 ```
 
-The first three are byte-identical → same memory model, mutually linkable. **D
-differs** because LDC rides *upstream* LLVM **22.1.2** (vs the espressif LLVM-21
-fork): it drops `v1:8:8`/`i128:128` and adds `i8:8:32`/`i16:16:32` (preferred
-32-bit alloca alignment for `i8`/`i16`). `llvm-link` warns on the mismatch but
-merges anyway (below); C-ABI struct layout is unaffected (runtime-verified,
-docs/19).
+Byte-identical across all four → same memory model, mutually linkable. The
+old upstream-LLVM-22 LDC used to differ (`i8:8:32-i16:16:32` instead of
+`v1:8:8-i128:128`); `llvm-link` warned but merged. The espressif-fork LDC
+(LLVM 21.1.3) drops the warning — same memory model going in, same coming out.
+See [docs/23](23-ldc-espressif-fork.md) §(e) for the side-by-side.
 
 ## Where the frontends lower the ABI differs (but the backend often reconciles)
 
@@ -103,12 +102,11 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
   Cross-language inlining across a C↔Zig boundary is the strongest proof of
   IR-level mixing.
 
-> Takeaway: IR portability is real (shared backend; near-identical datalayout),
-> and both merge paths now work — `llvm-link` (with the LLVM-22 binutils) merges
-> all five frontends into one module, and `ld.lld` LTO merges + inlines across the
-> language boundary. The constraints differ by path: a **newer** `llvm-link`
-> (22.1.2) reads older IR fine (it merged the 21.x trio + D), whereas the **LTO
-> reader** is pickier — the esp 21.1.3 `ld.lld` accepts clang/rust (21.1.3) and
-> even D (22.1.2) bitcode but rejects zig's 21.1.0. So "same LLVM point release"
-> is a rule of thumb for LTO, not an absolute, and not required for `llvm-link`.
-> Object-level FFI (docs 03/05) has no such constraint and is the robust default.
+> Takeaway: IR portability is real (shared backend; identical datalayout across
+> all four LLVM frontends since docs/23), and both merge paths work —
+> `llvm-link` (LLVM-22 binutils for the upstream-LDC comparison; esp-clang's
+> own 21.1.3 binutils for the canonical fork-LDC) merges across frontends, and
+> `ld.lld` LTO merges + inlines. The LTO reader (esp 21.1.3 `ld.lld`) accepts
+> clang/rust/**D** (all 21.1.3) — no skew. Zig (21.1.0) is the lone outlier;
+> "same LLVM point release" remains the LTO rule of thumb. Object-level FFI
+> (docs 03/05) has no such constraint and is the robust default.
