@@ -30,6 +30,7 @@ in `/home/user/dl`. **Never commit these** (`.gitignore` guards `toolchains/`,
 | `$LDC_LLVM_DIR` | **LLVM 22.1.2** binutils (llvm-link/opt/llvm-dis/llvm-as). Only useful with `$LDC2_UPSTREAM` — esp-clang's 21.1.3 binutils version-match the canonical `$LDC2` now. Opt-in (`LLVM22=1`; `.tar.zst`, needs `zstd`); NOT on PATH (would shadow esp-clang's tools); call `$LDC_LLVM_DIR/bin/<tool>` (docs/04) |
 | `xtensa_cfg <cpu>` | path to `xtensa_<cpu>.so` for `XTENSA_GNU_CONFIG` |
 | `ldc_xtensa_flags <cpu>` | `-mcpu=<cpu> -mattr=<features>` string; word-splits in build-ffi.sh/analyze.sh. Mirrors esp-clang's implicit feature set; intersection of both LDC versions' feature lists so the comparison can drive both arms with one string |
+| `$TINYGO` | TinyGo v0.41.1 (Go 1.24.7, LLVM **20.1.1** bundled). Targets esp32 / esp32s3 / esp32c3 (no s2). Whole-program compiler — emits a firmware image, not relocatable `.o`, so it sits outside the FFI matrix in `experiments/tinygo/` (docs/24) |
 
 ## Build / analyze
 
@@ -74,8 +75,10 @@ experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct AB
 experiments/llvm-ir-mix/  mix*.c + mix_rs + run.sh — LTO probes & LLVM-22 llvm-link module-merge
 experiments/dlang/        cppiface.d + run.sh + safety.sh + tmpffi.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO; @safe/@mustuse/@live/preview/edition vs Rust × C++26; embedded TMP-FFI matrix on Xtensa)
 experiments/ldc-fork-comparison/ run.sh — espressif-21 vs upstream-22 LDC side-by-side (docs/23). Requires LDC_UPSTREAM=1.
+experiments/atomics-orders/ run.sh — 4-frontend × stores/loads × N orderings, esp32 (atomics gap closed beyond docs/17's single-order probe)
+experiments/tinygo/       run.sh — TinyGo v0.41.1 / LLVM 20.1.1 probe; whole-program compiler, outside the FFI matrix (docs/24)
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
-docs/00..23               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork
+docs/00..24               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork / tinygo
 experiments/dwarf-parity/ run.sh — DWARF & disassembly audit across all 5 toolchains on Xtensa (docs/22)
 Research.md HANDOFF.md     headline write-up / status
 ```

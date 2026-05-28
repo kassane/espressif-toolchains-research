@@ -56,6 +56,14 @@ export LDC2_UPSTREAM="$TC/ldc2-c8305d0a-linux-x86_64/bin/ldc2"
 # $LDC_LLVM_DIR/bin/<tool>. Optional (setup.sh LLVM22=1). See docs/04, docs/23.
 export LDC_LLVM_DIR="$TC/llvm-22.1.2-linux-x86_64"
 
+# TinyGo v0.41.1 — Go-to-LLVM compiler (its own bundled LLVM 20.1.1; yet a third
+# LLVM family in the matrix, after 21.1.x and 22.1.2). Whole-program compiler
+# (no -c relocatable mode outside wasm), so it sits outside the FFI matrix:
+# experiments/tinygo/run.sh probes its target list / feature set / firmware
+# build flow. Xtensa targets: esp32 + esp32s3 + esp32c3 (no esp32s2). docs/24.
+export TINYGO_DIR="$TC/tinygo"
+export TINYGO="$TINYGO_DIR/bin/tinygo"
+
 # LDC Xtensa codegen flags for a core. Pairs -mcpu (canonical CPU name; the
 # fork LDC recognizes esp32/s2/s3 natively) with an explicit -mattr= feature
 # list that pins the codegen-relevant ISA options esp-clang implicitly enables
