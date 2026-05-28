@@ -7,27 +7,28 @@ by-value struct *arguments* (returns are fine).
 ## The discriminator is alignment
 
 `experiments/abi-structs/sweep.sh` forwards a by-value struct to an external
-function and classifies how clang vs zig vs D pass it on esp32:
+function and classifies how every available toolchain passes it on esp32:
 
 ```
-struct                align  clang IR arg   | clang        zig            D            FFI
-[8]u8                  1     [2 x i32]      | REGISTERS    STACK (movsp)  REGISTERS    MISMATCH (zig)
-[16]u8                 1     [4 x i32]      | REGISTERS    STACK (movsp)  REGISTERS    MISMATCH (zig)
-[24]u8                 1     [6 x i32]      | REGISTERS    STACK (movsp)  REGISTERS    MISMATCH (zig)
-{2 x u32}              4     [2 x i32]      | REGISTERS    REGISTERS      REGISTERS    ok
-{6 x u32}              4     [6 x i32]      | REGISTERS    REGISTERS      REGISTERS    ok
+struct                align  clang IR arg   | clang        gcc          rust         zig            D            TinyGo
+[8]u8                  1     [2 x i32]      | REGISTERS    REGISTERS    REGISTERS    STACK (movsp)  REGISTERS    REGISTERS
+[16]u8                 1     [4 x i32]      | REGISTERS    REGISTERS    REGISTERS    STACK (movsp)  REGISTERS    REGISTERS
+[24]u8                 1     [6 x i32]      | REGISTERS    REGISTERS    REGISTERS    STACK (movsp)  REGISTERS    REGISTERS
+{2 x u32}              4     [2 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS      REGISTERS    REGISTERS
+{6 x u32}              4     [6 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS      REGISTERS    REGISTERS
 
-C-bitfield rows (D supports C-style bitfields natively in extern(C); Zig uses
-packed struct(uN) with EXPLICIT backing — implicit-backing errors on Xtensa):
+C-bitfield rows (clang/gcc/zig packed struct(uN)/D — rust + TinyGo have no
+native bitfield syntax):
 
-bf 16b(4+4+8)          2     i32            | REGISTERS    REGISTERS      REGISTERS  D-IR=byval(%s.T)
-bf 32b(8+8+16)         4     i32            | REGISTERS    REGISTERS      REGISTERS  D-IR=byval(%s.T)
-bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS      REGISTERS  D-IR=byval(%s.T)
+bf 16b(4+4+8)          2     i32            | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a
+bf 32b(8+8+16)         4     i32            | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a
+bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a   (D IR: byval(%s.T))
 ```
 
-- **align-1 byte arrays diverge at every size — even 8 bytes.**
+- **align-1 byte arrays diverge at every size — even 8 bytes.** Five of six
+  toolchains classify REGISTERS; **Zig alone uses movsp**.
 - **align-4 structs match at every size — even 24 bytes.**
-- **Bitfields: clang flattens to the scalar backing type** (`i32`/`i32`/
+- **Bitfields: clang/gcc flatten to the scalar backing type** (`i32`/`i32`/
   `[1 x i64]` for the 16/32/64-bit total widths). **Zig matches clang
   exactly** when you give the `packed struct(uN)` an explicit backing
   integer; without the backing, Zig errors:
@@ -44,6 +45,9 @@ bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS      REGIST
   its bitfields from `a2` (not `[a1 + off]`). This is the strongest
   evidence yet that D's struct-ABI bug is universal: byte-array, word-array,
   bitfield — every aggregate shape lowers the same broken way.
+- **Rust + TinyGo have no native bitfield syntax** — Rust offers
+  `bitfield-struct` and similar crates (not in this baremetal probe);
+  TinyGo/Go has no analog at all.
 
 So the earlier intuition "small structs OK, large structs broken" was a
 confound: our `Point` (8 B) is `{i32,i32}` (align 4) and our `Blob` (24 B) is
