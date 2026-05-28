@@ -145,18 +145,17 @@ output.
 
 ## Known outages
 
-- **LDC mirror outage (2026-05-28):** the `kassane/esp-idf-dlang` upstream
-  repo went 404 — the pinned `xtensa-toolchain` release at
-  `https://github.com/kassane/esp-idf-dlang/releases/download/xtensa-toolchain/ldc2-v1.42.0-espressif-linux-musl-static.tar.xz`
-  returns HTTP 404. `scripts/setup.sh` was updated to detect the failed fetch
-  and auto-promote `$LDC2_UPSTREAM` (the ldc-developers CI build on LLVM
-  22.1.2) to canonical so the build still completes — but that re-enables the
-  docs/23 workarounds (literal-pool re-assembly, `-mattr` fallback for s2/s3).
-  If you have the original 49 MB tarball (sha256
+- **LDC mirror unavailability (since 2026-05-28):** the `kassane/esp-idf-dlang`
+  `xtensa-toolchain` release isn't reachable from the previously-pinned URL.
+  `scripts/setup.sh` detects the failed fetch and auto-promotes
+  `$LDC2_UPSTREAM` (the ldc-developers CI build on LLVM 22.1.2) to canonical
+  so the build still completes — but that re-enables the docs/23 workarounds
+  (literal-pool re-assembly, `-mattr` fallback for s2/s3). If you have the
+  original 49 MB tarball (sha256
   `0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211`), drop it
   at `$DL/ldc-esp.tar.xz` to restore the canonical fork-LDC path. Until a new
-  upstream mirror is published, docs/23 reads as the architectural intent —
-  the auto-fallback in `env.sh` is the operational path.
+  mirror is published, docs/23 reads as the architectural intent — the
+  auto-fallback in `env.sh` is the operational path.
 
 ## Not done / next steps
 

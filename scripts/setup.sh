@@ -56,8 +56,8 @@ fetch "$CLANG_URL"    "$DL/clang-xtensa.tar.xz"
 fetch "$RUST_URL"     "$DL/rust-xtensa.tar.xz"
 fetch "$RUST_SRC_URL" "$DL/rust-src.tar.xz"
 fetch "$GCC_URL"      "$DL/gcc-xtensa.tar.xz"
-# kassane/esp-idf-dlang upstream returns 404 as of 2026-05-28 — the repo was
-# unpublished. The fork-LDC tarball is the canonical 5th frontend (docs/23);
+# kassane/esp-idf-dlang upstream has been unreachable since 2026-05-28 — the
+# pinned URL is gone. The fork-LDC tarball is the canonical 5th frontend (docs/23);
 # until a new mirror is published, this step uses the cached copy under $DL/
 # if present, else falls back to fetching the upstream-LLVM-22 LDC (slightly
 # worse: brings back the literal-pool workaround, no esp32-s2/s3 -mcpu).
