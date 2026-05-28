@@ -8,7 +8,9 @@ output.
 
 - [x] Pinned + scripted setup of all **five** toolchains (`scripts/setup.sh`).
       Versions confirmed: clang/LLVM 21.1.3, rustc 1.95-nightly/LLVM 21.1.3,
-      zig 0.16.0/LLVM 21.1.0, gcc 15.2.0, **LDC 1.42-git/LLVM 22.1.2** (D).
+      zig 0.16.0/LLVM 21.1.0, gcc 15.2.0, **LDC 1.42-git on espressif LLVM
+      21.1.3** (D; canonical fork build, swapped in — docs/23). The upstream
+      LLVM-22 LDC remains as `$LDC2_UPSTREAM` for the side-by-side comparison.
 - [x] Confirmed the shared backend: identical CPU feature sets and identical
       `target datalayout` across clang/rust/zig (docs 02, 04).
 - [x] FFI matrix (`experiments/ffi-matrix`): one C-ABI contract, 5 implementations
@@ -48,22 +50,29 @@ output.
       single `ptr`, FFI-safe, runtime-verified). **Atomics** match (native
       `s32c1i`). Object FFI links; **cross-language LTO fails** (21.1.3 vs 21.1.0).
 - [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D added
-      to the FFI matrix + qemu harness). LDC 1.42-git on **LLVM 22.1.2** (the only
-      LLVM-22 here; Xtensa is an *upstream*-LLVM experimental target — no espressif
-      fork). `-betterC` = freestanding. **Headline:** D marks **every** by-value
-      aggregate `byval`/`sret` (indirect) and defers to the backend, so it diverges
-      from the register-based Xtensa C ABI **more broadly than Zig** — runtime
-      `point_dot` (align-4) **and** `blob_sum` (align-1) both FAIL on Xtensa (Zig
-      fails only align-1); on RISC-V the small struct even *faults* while the large
-      one PASSES (the RISC-V ABI is itself by-ref there → D's `byval` matches). Fix:
-      **pass structs by pointer** (runtime-verified). Scalars at parity; links into
-      the one ELF with all four others (0 undef). Rich C/C++ FFI: byte-identical
-      Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref), `-HC` C++-header gen
-      with a verified C++→D round-trip, `--extern-std`/`--link-internally`/
-      `--help-hidden`. Cross-language **LTO with clang SUCCEEDS** (21.1.3 reader
-      accepts LDC's 22.1.2 bc + inlines) — unlike clang↔zig. Two real issues: a
-      **LDC-Xtensa literal-pool link bug** (re-assemble `-output-s` with esp clang;
-      ldc #5091 ICE EH+opt, #4919 cpu-feature defaults).
+      to the FFI matrix + qemu harness). The canonical LDC is now LDC 1.42-git on
+      **espressif/llvm-project LLVM 21.1.3** (kassane/esp-idf-dlang, docs/23) —
+      same backend family as clang/rust. `-betterC` = freestanding. **Headline:**
+      D marks **every** by-value aggregate `byval`/`sret` (indirect) and defers
+      to the backend, so it diverges from the register-based Xtensa C ABI **more
+      broadly than Zig** — runtime `point_dot` (align-4) **and** `blob_sum`
+      (align-1) both FAIL on Xtensa; on RISC-V the small struct even *faults*
+      while the large one PASSES. The fork LDC produces the **identical broken
+      IR** as the upstream-22 LDC (docs/23 §(h)), so the bug is **frontend-side**
+      — same family as kassane/dlang-mos-hello-world#1 (wontfix). Fix: **pass
+      structs by pointer** (runtime-verified). Scalars at parity; links into the
+      one ELF with all four others (0 undef). Rich C/C++ FFI: byte-identical
+      Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref), `-HC` C++-header
+      gen with a verified C++→D round-trip. Cross-language LTO with clang
+      succeeds (both on 21.1.3, no skew). Known issues: ldc #5091 (ICE EH+opt);
+      ldc #4919 (cpu-feature defaults — fixed for esp32-s2/s3 on the fork).
+- [x] **LDC espressif-fork comparison** (docs/23, `experiments/ldc-fork-comparison`).
+      Side-by-side both LDCs on the same `lib_d.d` for esp32. The fork drops 5
+      workarounds (literal-pool re-assembly, `.cfi_*` strip, `-output-s` step,
+      `-mattr` fallback for s2/s3, LLVM-22 binutils dependency for canonical IR
+      work), gives `mov.n`/`s32i.n`/`l32i.n` compact codegen byte-identical to
+      clang, and makes the datalayout match the trio. The byval/sret bug
+      survives — proving it's a frontend issue.
 - [x] **D/LDC exclusive features + `@safe` parity with Rust** (docs/20,
       `experiments/dlang/safety.sh`). LDC-only, Xtensa-verified: `@fastmath`
       (`fmul fast`), `@section`→`.iram1.text`, `@weak`, inline LLVM IR `__ir!`→real
@@ -217,8 +226,9 @@ output.
       Caveats: cross-frontend `opt` inlining is gated by matching target-features
       (the `ld.lld` LTO path inlines clang↔D regardless), and esp32 *codegen* of
       the merged 22-IR still needs the espressif backend (upstream LLVM-22 has no
-      `esp32` CPU). Surfaced that **D's datalayout differs** (upstream-22:
-      `i8:8:32/i16:16:32`, no `v1:8:8`/`i128:128`) — llvm-link warns, still merges.
+      `esp32` CPU). The "D's datalayout differs" caveat went away when D moved to
+      the espressif-21 fork (docs/23 §(e)) — all 4 LLVM frontends now share the
+      identical Xtensa datalayout, no llvm-link warning.
 - [x] **Full parity audit + DWARF/codegen reverse-engineering** (docs/22,
       `experiments/dwarf-parity/run.sh`). Re-ran every canonical claim:
       `build-ffi.sh all` (host PASS, 9 Xtensa ELFs + riscv all 0 undef),
@@ -233,10 +243,21 @@ output.
       archives), **frame info** (clang/gcc/rust use `.debug_frame`; **zig/LDC
       emit `.eh_frame`** even on baremetal — wasted bytes without an unwinder),
       and **disassembled add_i32** across all 5 (rust release: 6 B; clang/gcc:
-      14 B; zig: 12 B; **LDC: 19 B because it doesn't reach for `.n` compact
-      forms** at -Os baseline). Plus consolidated capability / known-vulns
+      14 B; zig: 12 B; **LDC: 17 B byte-identical to clang** on the canonical
+      espressif-fork LDC — the 19 B / 35 %-bigger figure was on the upstream-22
+      LDC, preserved in docs/23 §(g)). Plus consolidated capability / known-vulns
       table per toolchain (§7) and the espressif baremetal advantages roll-up
-      (§8). docs/00-22 final.
+      (§8).
+- [x] **D coverage extended into the silent experiments** (companion to docs/23).
+      D rows added to: `simd` (LDC `__asm` → 4 `EE.*` instructions, full parity),
+      `abi-structs` (D classifies REGISTERS via byval-passthrough), `addrspace`
+      (no addrspace syntax; `@section .iram1.text` works), `rust-zig` (u64/
+      atomics/opt-ptr match; u128 diverges via `core.int128.Cent` — `cent`/
+      `ucent` keywords formally obsoleted), `mangled-ffi` (4 ABI paths: D-native
+      `_D…`, Itanium `_Z…` via extern(C++), Rust v0 consumption via
+      pragma(mangle), Zig consumption via extern(C++,"ns")), `esp-rs-issues`
+      (#137 `cent` rejected, #270 no ICE on forced FP, #278 wide stack-arg
+      stores — D joins gcc/zig). docs/00-23 final.
 
 ## How to resume
 

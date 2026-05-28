@@ -6,9 +6,13 @@
 #   (a) the tools (LLVM 22.1.2 vs the host's LLVM 18)
 #   (b) llvm-link: host-18 FAILS, LLVM-22 merges driver+C+Rust+Zig+D into 1 module
 #   (c) opt -O2 over the merged module -> cross-module inline (D->D: x+2)
-#   (d) llvm-dis reads LDC's LLVM-22 bitcode (host-18 cannot)
-#   (e) datalayout: D (upstream LLVM-22) differs from the espressif-LLVM-21 trio
-# Needs setup.sh LLVM22=1 (the 405 MB LLVM tarball). See docs/04.
+#   (d) llvm-dis reads LDC's LLVM-21 bitcode (host-18 cannot — Unknown attribute kind 102)
+#   (e) datalayout: all 5 frontends now match exactly (fork-LDC is on LLVM 21.1.3,
+#       same as the trio; cf. experiments/ldc-fork-comparison §(e) for the
+#       upstream-LDC-22 "differs" case kept for docs/23)
+# Needs setup.sh LLVM22=1 only if you ALSO want to inspect upstream-LDC-22 IR;
+# the canonical fork-LDC bitcode is LLVM 21 and esp-clang's own llvm-link/opt
+# (LLVM 21.1.3) read it natively. See docs/04 + docs/23.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/env.sh
@@ -42,17 +46,22 @@ printf "  d_use after merge+opt: %s  (d_inc inlined -> x+2)\n" "$(sed -n '/defin
 echo "  (cross-FRONTEND inline is gated by matching target-features; the ld.lld"
 echo "   LTO path inlines clang<->D regardless — docs/19 §6.)"
 
-echo "== (d) llvm-dis reads LDC's LLVM-22 bitcode (host-18 cannot) =="
+echo "== (d) llvm-dis reads LDC's LLVM-21 bitcode (host-18 cannot) =="
 "$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -O1 -output-bc -of="$B/lib_d.bc" "$M/d/lib_d.d" 2>/dev/null
 "$L/llvm-dis" "$B/lib_d.bc" -o "$B/lib_d_dis.ll" 2>/dev/null
 printf "  producer: %s\n" "$(grep -oE '"ldc version[^"]*"' "$B/lib_d_dis.ll" | head -1)"
 hostdis=$(llvm-dis "$B/lib_d.bc" -o /dev/null 2>&1 | grep -oiE 'Unknown attribute[^)]*\)|Invalid record' | head -1 || true)
-printf "  host-18 llvm-dis on the 22 bitcode: %s\n" "${hostdis:-(read ok)}"
+printf "  host-18 llvm-dis on the 21 bitcode: %s\n" "${hostdis:-(read ok)}"
 
-echo "== (e) datalayout: D (upstream LLVM-22) vs the espressif-LLVM-21 trio =="
-printf "  clang/rust/zig: %s\n" "$(grep -oE 'target datalayout = "[^"]*"' "$B/lib_c.ll" | head -1 | sed -E 's/target datalayout = //')"
-printf "  D (LDC 22):     %s\n" "$(grep -oE 'target datalayout = "[^"]*"' "$B/lib_d.ll" | head -1 | sed -E 's/target datalayout = //')"
-echo "  (differs: D drops v1:8:8/i128:128, adds i8:8:32/i16:16:32 — llvm-link warns,"
-echo "   still merges; C-ABI struct layout is unaffected, runtime-verified docs/19.)"
-echo "  NOTE: esp32 *codegen* of the merged/22 IR still needs the espressif backend"
-echo "  (upstream LLVM-22 has no esp32 CPU model); these tools are for IR merge/inspect."
+echo "== (e) datalayout: D (fork-LDC LLVM-21) matches the espressif-LLVM-21 trio =="
+cdl=$(grep -oE 'target datalayout = "[^"]*"' "$B/lib_c.ll" | head -1 | sed -E 's/target datalayout = //')
+ddl=$(grep -oE 'target datalayout = "[^"]*"' "$B/lib_d.ll" | head -1 | sed -E 's/target datalayout = //')
+printf "  clang/rust/zig: %s\n" "$cdl"
+printf "  D (fork LDC):   %s\n" "$ddl"
+if [ "$cdl" = "$ddl" ]; then
+  echo "  -> byte-identical (was 'differs' on upstream-LLVM-22 LDC; see"
+  echo "     experiments/ldc-fork-comparison §(e) + docs/23). No llvm-link"
+  echo "     datalayout warning anymore."
+else
+  echo "  (differs: cf. experiments/ldc-fork-comparison for the diff.)"
+fi

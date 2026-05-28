@@ -68,3 +68,56 @@ printf 'const P=packed struct{a:u8,b:u8};\nexport fn bad(s:P) u8 {return s.a;}\n
 pkerr=$("$ZIG" build-obj $ZT -fno-emit-bin -femit-llvm-ir="$B/b.ll" "$B/bad.zig" 2>&1 || true)
 echo "  packed-by-value in C-ABI fn: $(printf '%s' "$pkerr" | grep -oE "not allowed in .*calling convention '[a-z0-9_]+'" | head -1 || echo '(allowed?!)')"
 echo "  => use Zig extern struct <-> Rust #[repr(C)] for FFI; packed means different things"
+
+# ---------------------------------------------------------------------------
+# D parity probes ($LDC2 = espressif/llvm-project 21.1.3, same family as rust/clang)
+# Adds a 3rd column to the same scalar/atomic/opt/u64 questions §(a),(d),(e).
+# ---------------------------------------------------------------------------
+echo "== (g-D) D probes via LDC (espressif 21.1.3, -betterC, -mcpu=esp32) =="
+
+# (D-1) cent/ucent reserved keyword probe: should be a hard compile error.
+# Capture the exact LDC diagnostic verbatim.
+centerr=$("$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os -c \
+    -of="$B/_cent.o" "$D/d/cent_probe.d" 2>&1 || true)
+echo "  cent/ucent: $(printf '%s' "$centerr" | grep -oE '(Error:.*obsolete[^|]*|use .core\.int128\.Cent.[^|]*)' | head -1)"
+
+# Compile iface.d to IR + object on esp32.
+# shellcheck disable=SC2046
+"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os \
+    -output-ll -of="$B/d_iface.ll" -c "$D/d/iface.d" >/dev/null 2>&1
+# shellcheck disable=SC2046
+"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os \
+    -c -of="$B/d_iface.o" "$D/d/iface.d" >/dev/null 2>&1
+
+# Re-use the §(a) `sig` helper on the D IR (must be in scope -- it is).
+dsig(){ grep -hE "define .*@$1\b" "$B/d_iface.ll" 2>/dev/null | head -1 | grep -oE '\([^{]*' \
+  | sed -E 's/ ?(noundef|noalias|readonly|captures\([^)]*\)|dereferenceable\([^)]*\)|align [0-9]+|writable|writeonly|zeroext|range\([^)]*\)|dead_on_unwind|initializes\([^)]*\)|sret\([^)]*\))//g; s/  */ /g'; }
+
+# (D-2) Atomics: disassemble d_atomic_add, count native s32c1i (esp32 CAS).
+dc_add=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=d_atomic_add "$B/d_iface.o" 2>/dev/null | (grep -c s32c1i || true))
+dc_cas=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=d_atomic_cas "$B/d_iface.o" 2>/dev/null | (grep -c s32c1i || true))
+dc_lib=$(llvm-nm "$B/d_iface.o" 2>/dev/null | (grep -cE ' U __(atomic|sync)_' || true))
+echo "  d_atomic_add s32c1i=$dc_add  d_atomic_cas s32c1i=$dc_cas  __atomic/__sync libcalls=$dc_lib  (native CAS, no libcall)"
+
+# (D-4) u64: confirm i64 IR + a2..a5 in the disassembly entry (same as rust/zig).
+du64_first=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=d_add_u64 "$B/d_iface.o" 2>/dev/null | (grep -oE 'add\.n\s+a[0-9]+,\s*a[0-9]+,\s*a[0-9]+' || true) | head -1)
+echo "  d_add_u64 first add: $du64_first  (expect a4|a2 lo halves -> a-regs, matches rust/zig)"
+
+# 3-frontend parity table on the same questions answered for rust/zig above.
+echo "  --- 3-frontend parity (rust | zig | d) ---"
+printf "  %-12s  %-22s  %-22s  %s\n" "probe" "rust IR arg-shape" "zig IR arg-shape" "d IR arg-shape"
+printf "  %-12s  %-22s  %-22s  %s\n" "add_u128" "$(sig rs_add_u128 "$RLL")" "$(sig iface.zig_add_u128 "$B/iface.ll")" "$(dsig d_add_u128)"
+printf "  %-12s  %-22s  %-22s  %s\n" "add_u64"  "(i64,i64)->i64 [n/a]" "(i64,i64)->i64 [n/a]" "$(dsig d_add_u64)"
+printf "  %-12s  %-22s  %-22s  %s\n" "opt-ptr"  "(ptr)->i32 [Option<&T>]" "$(grep -hoE 'i32 @opt.zig_opt\([^)]*\)' "$B/opt.ll" | head -1)" "$(dsig d_opt)"
+printf "  %-12s  rust=%d  zig=%d  d=%d (per fn)  -- all emit native esp32 CAS\n" "atomic+s32c1i" "$rc" "$zc" "$dc_add"
+
+# Parity verdict.
+echo "  --- verdict ---"
+echo "  u128:    D mismatches rust/zig -- D has NO native i128. core.int128.Cent is a"
+echo "           struct{ulong lo,hi}, so the ABI is sret+byval (NOT a2..a5 like the"
+echo "           others). Cross-language u128 D<->rust/zig would corrupt data."
+echo "  f128/f16: D has neither (real==double==8B on Xtensa). C-equivalent gap."
+echo "  atomics: D matches -- LDC emits native s32c1i+memw, no __atomic libcall."
+echo "  opt-ptr: D matches -- bare extern(C) ptr is the same i32 nullable as the"
+echo "           other two; no Option wrapper needed (D has no native Option)."
+echo "  u64:     D matches -- i64 ABI uses 2 a-reg pairs like rust/zig."

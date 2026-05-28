@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 # run.sh - LDC (LLVM D compiler) as a 5th frontend on the espressif backend.
-#   (a) toolchain: LDC 1.42 / LLVM 22.1.2, Xtensa registered target
+# Uses the espressif/llvm-project-based LDC ($LDC2 -> LLVM 21.1.3 fork, same
+# family as esp-clang/rustc). The upstream-LLVM-22 LDC ($LDC2_UPSTREAM) is the
+# subject of experiments/ldc-fork-comparison + docs/23.
+#   (a) toolchain: LDC 1.42-git / LLVM 21.1.3 (esp fork), Xtensa first-class
 #   (b) struct ABI: D marks ALL aggregates byval/sret -> compare vs clang/zig IR
 #   (c) machine ABI: where the struct args are read (regs vs stack), per arch
-#   (d) the LDC-Xtensa literal-pool bug + the re-assembly workaround
+#   (d) literal-pool bug is *gone* in this fork — direct ldc2 -c links cleanly
+#       (was: needed -output-s + esp-clang re-assembly + .cfi_* strip)
 #   (e) C/C++ FFI mangling: extern(C)/extern(C++)/extern(C++,"ns")/ref
 #   (f) -HC: generate a C++ header from D, then C++ calls back INTO D (host run)
 #   (g) --extern-std / --link-internally / --help-hidden
-#   (h) cross-language LTO: D (LLVM 22.1.2) + clang (21.1.3) bitcode
-# See docs/19. The runtime PASS/FAIL matrix (incl. D) is scripts/run-qemu.sh.
+#   (h) cross-language LTO: D + clang bitcode (both 21.1.3 — same-LLVM, no skew)
+# See docs/19 + docs/23. Runtime PASS/FAIL matrix is scripts/run-qemu.sh.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/env.sh
 D=experiments/dlang; M=experiments/ffi-matrix; B=build/dlang; mkdir -p "$B"
 CT="--target=xtensa-esp-elf -mcpu=esp32"; LT="-mtriple=xtensa-esp-elf -mcpu=esp32"
 
-# LDC -> Xtensa object, via esp clang's assembler (LDC's LLVM-22 integrated
-# assembler mis-aligns the l32r literal pool under function-sections; clang's
-# LLVM-21 MC uses separate aligned .literal sections). Strip .cfi_* (the Xtensa
-# assembler rejects CFI directives). See section (d) and docs/19.
-ldc_xt(){ local out=$1 src=$2 s="${1%.o}.s"; "$LDC2" $LT -betterC -Os -output-s -of="$s" "$src"; \
-  sed -E -i '/^[[:space:]]*\.cfi_/d' "$s"; "$CLANG" $CT -c "$s" -o "$out"; }
+# LDC -> Xtensa object. Direct -c on the fork LDC produces a properly aligned
+# literal pool, so no re-assembly is needed. See section (d) and docs/23.
+ldc_xt(){ "$LDC2" $LT -betterC -Os -c -of="$1" "$2"; }
 sig(){ grep -hE "define .*@$1\b" "$2" 2>/dev/null | head -1 | grep -oE '\([^{]*' \
   | sed -E 's/ ?(noalias|writeonly|readonly|captures\([^)]*\)|initializes\([^)]*\)|range\([^)]*\)|noundef|zeroext|dead_on_unwind|writable|local_unnamed_addr|align [0-9]+)//g; s/  */ /g'; }
 
@@ -44,13 +45,19 @@ ldc_xt "$B/lib_d.o" "$M/d/lib_d.d"
 printf "  clang c_point_dot multiplies:  %s   (operands a2..a5 = registers)\n" "$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=c_point_dot "$B/lib_c.o" 2>/dev/null | grep -oE 'mull[[:space:]]+a[0-9]+, a[0-9]+, a[0-9]+' | head -1)"
 printf "  D     d_point_dot first load:   %s   (a1=SP => reads the STACK)\n" "$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=d_point_dot "$B/lib_d.o" 2>/dev/null | grep -oE 'l32i(\.n)?[[:space:]]+a[0-9]+, a1, [0-9]+' | head -1)"
 
-echo "== (d) the LDC-Xtensa literal-pool bug (why ldc_xt re-assembles) =="
-if "$LDC2" $LT -betterC -Os -c -of="$B/direct.o" "$M/d/lib_d.d" 2>/dev/null && \
-   ld.lld -e d_mul_f64 "$B/direct.o" "$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/libclang_rt.builtins.a" -o "$B/direct.elf" 2>"$B/d.err"; then
-  echo "  direct ldc2 -c object linked (bug fixed upstream?)"
+echo "== (d) literal-pool: direct ldc2 -c -> ld.lld with the FFI linker script =="
+"$LDC2" $LT -betterC -Os -c -of="$B/direct.o" "$M/d/lib_d.d" 2>/dev/null
+RT_E32="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/libclang_rt.builtins.a"
+if ld.lld -T "$M/xtensa.ld" -o "$B/direct.elf" \
+    build/xtensa-esp32/driver.o build/xtensa-esp32/entry.o \
+    build/xtensa-esp32/lib_cpp.o build/xtensa-esp32/lib_zig.o \
+    "$B/direct.o" build/xtensa-esp32/lib_c_clang.o \
+    --start-group build/xtensa-esp32/libffi_rs.a "$RT_E32" --end-group 2>"$B/d.err"; then
+  echo "  direct ldc2 -c -> ld.lld: OK ($(stat -c%s "$B/direct.elf") B, 0 undef)"
+  echo "  (the upstream-LLVM-22 LDC fails this with 'R_XTENSA_SLOT0_OP not aligned"
+  echo "   to 4 bytes' — see experiments/ldc-fork-comparison §(c) + docs/23.)"
 else
-  echo "  direct ldc2 -c object: $(grep -oiE 'not aligned to 4 bytes' "$B/d.err" | head -1) (R_XTENSA_SLOT0_OP on the __muldf3 l32r literal)"
-  echo "  -> re-assembled object links fine (used everywhere else here)"
+  echo "  unexpected link failure: $(head -1 "$B/d.err")"
 fi
 
 echo "== (e) C/C++ FFI mangling (extern(C)/(C++)/(C++,\"ns\")/ref) =="
@@ -83,7 +90,7 @@ else li="external linker"; fi
 printf "  --link-internally uses LDC's in-process LLD: %s\n" "$li"
 printf "  --help-hidden options: %s (clang/LLVM-style full help)\n" "$("$LDC2" --help-hidden 2>&1 | grep -cE '^[[:space:]]+--')"
 
-echo "== (h) cross-language LTO: D (LLVM 22.1.2) + clang (21.1.3) bitcode =="
+echo "== (h) cross-language LTO: D + clang bitcode (both LLVM 21.1.3 — no skew) =="
 printf 'extern(C) int d_lto(int x){return x+1;}\n' > "$B/l.d"
 printf 'extern int d_lto(int);\nint c_lto(int x){return d_lto(x)+1;}\n' > "$B/l.c"
 "$LDC2" $LT -betterC -Os -output-bc -of="$B/d.bc" "$B/l.d"

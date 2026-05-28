@@ -1,9 +1,10 @@
 # 01 — Toolchains
 
 Five toolchains, pinned. All are x86_64-linux hosted cross-compilers (except the
-host-capable parts of Zig/Rust used for the runnable host test). The four LLVM
-frontends are clang/rust/zig (espressif LLVM-21 fork) + D/LDC (upstream LLVM-22);
-GCC is the non-LLVM control.
+host-capable parts of Zig/Rust used for the runnable host test). All four LLVM
+frontends — clang/rust/zig **and now D/LDC** (since docs/23) — ride the same
+espressif/llvm-project Xtensa fork (LLVM 21.x). GCC is the non-LLVM control.
+The upstream-LLVM-22 LDC remains as `$LDC2_UPSTREAM` for the comparison.
 
 ## Pins & download URLs
 
@@ -13,13 +14,17 @@ GCC is the non-LLVM control.
 | 2 | clang/LLVM | `espressif/llvm-project` @ `esp-21.1.3_20260408` | `clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz` | 398 MB |
 | 3 | Rust | `esp-rs/rust-build` @ `v1.95.0.0` | `rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz` (+ `rust-src-1.95.0.0.tar.xz`) | 168 MB |
 | 4 | GCC | `espressif/crosstool-NG` @ `esp-15.2.0_20251204` | `xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz` | 173 MB |
-| 5 | D / LDC | `ldc-developers/ldc` @ `CI` (`ldc2-c8305d0a`) | `ldc2-c8305d0a-linux-x86_64.tar.xz` | 142 MB |
+| 5 | D / LDC (canonical) | `kassane/esp-idf-dlang` @ `xtensa-toolchain` | `ldc2-v1.42.0-espressif-linux-musl-static.tar.xz` | 48 MB |
+| 5b | D / LDC (upstream, *opt*) | `ldc-developers/ldc` @ `CI` (`ldc2-c8305d0a`) | `ldc2-c8305d0a-linux-x86_64.tar.xz` | 142 MB |
 | 6 | LLVM-22 binutils *(opt)* | `ldc-developers/llvm-project` @ `ldc-v22.1.2` | `llvm-22.1.2-linux-x86_64.tar.zst` | 405 MB |
 
-`scripts/setup.sh` fetches, verifies (`xz -t`) and lays out 1–5 under `$TC`
-(`/home/user/toolchains`). Component 6 (the matching LLVM-22 `llvm-link`/`opt`/
-`llvm-dis`, a `.tar.zst` needing `zstd`) is optional — fetched only with
-`LLVM22=1` (it enables cross-frontend IR module-merge, docs/04).
+`scripts/setup.sh` fetches, verifies (asset 5 also has a hand-pinned sha256)
+and lays out 1–5 under `$TC` (`/home/user/toolchains`). Components 5b
+(comparison-only upstream LDC) and 6 (the matching LLVM-22 `llvm-link`/`opt`/
+`llvm-dis`, a `.tar.zst` needing `zstd`) are opt-in via
+`LDC_UPSTREAM=1`/`LLVM22=1`; needed only to run `experiments/ldc-fork-comparison`
+(docs/23). The canonical 5th frontend (asset 5) version-matches esp-clang's
+21.1.x binutils, so cross-frontend IR work doesn't require asset 6.
 
 ## Reported versions
 
@@ -29,15 +34,17 @@ zig cc (bundled)   : clang version 21.1.0  (kassane/zig-espressif-bootstrap)
 esp clang          : Espressif clang version 21.1.3 (esp-21.1.3_20260408)   [LLVM 21.1.3]
 rustc              : 1.95.0-nightly (95e5bda86 2026-04-15)  →  LLVM version: 21.1.3
 xtensa-esp-elf-gcc : 15.2.0 (crosstool-NG esp-15.2.0_20251204)
-ldc2               : 1.42.0-git-c8305d0 (DMD v2.112.1)  →  LLVM version: 22.1.2
+ldc2 (canonical)   : 1.42.0-git-04a6c8b (DMD v2.112.1)  →  LLVM version: 21.1.3 (espressif fork)
+ldc2 (upstream,opt): 1.42.0-git-c8305d0 (DMD v2.112.1)  →  LLVM version: 22.1.2
 ```
 
-**Backend alignment:** clang and rust are *the same* LLVM point release (21.1.3);
-Zig is one patch behind (21.1.0); D/LDC is a whole release ahead (**22.1.2**, on
-*upstream* LLVM). The 21.1.0 vs 21.1.3 gap is invisible for object-level FFI but
-blocks cross-language **LTO** with Zig; D's 22.1.2 bitcode, surprisingly, still
-LTO-links with the 21.1.3 reader (see
-[04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md)).
+**Backend alignment:** clang, rust **and the canonical D/LDC** are now *the
+same* LLVM point release (21.1.3, espressif fork); Zig is one patch behind
+(21.1.0); the optional upstream LDC is on LLVM 22.1.2 for the comparison. The
+21.1.0 vs 21.1.3 gap is invisible for object-level FFI but blocks cross-language
+**LTO** with Zig; clang↔rust↔D LTO all share 21.1.3 so they link without
+skew (see [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
+[23-ldc-espressif-fork.md](23-ldc-espressif-fork.md)).
 
 ## Per-toolchain notes / gotchas
 
@@ -73,19 +80,35 @@ LTO-links with the 21.1.3 reader (see
   doubles as the host C/C++ compiler. By default it enables ubsan-rt and (for
   C++) libc++; on bare-metal use `-nostdlib`/`-ffreestanding`.
 
-### D / LDC (ldc-developers/ldc)
-- The rolling **`CI`** pre-release (LLVM **22.1.2**); the tagged stable LDC 1.42
-  is LLVM 21.1.8, too old. The **only** toolchain here not on an espressif fork —
-  it rides *upstream* LLVM's experimental Xtensa target.
-- Build with `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC` (`-betterC` drops
-  druntime/Phobos = freestanding). **Only `esp32` is a recognized CPU** —
-  `esp32s2`/`esp32s3` are "not a recognized processor", so pass features by hand
-  (`-mattr=+windowed,+density,+mul32,…`; `env.sh` has `ldc_xtensa_flags`).
-- A direct `ldc2 -c` Xtensa object **fails to link** (the integrated assembler
-  mis-aligns the `l32r` literal pool); `build-ffi.sh` works around it by emitting
-  `-output-s`, stripping `.cfi_*`, and re-assembling with esp clang. See docs/19.
-- Component 6 ships the matching LLVM-22 `llvm-link`/`opt`/`llvm-dis` under
-  `$LDC_LLVM_DIR/bin` (not on PATH — call explicitly).
+### D / LDC (kassane/esp-idf-dlang — canonical 5th frontend)
+- Built from `ldc-developers/ldc` against **`espressif/llvm-project` LLVM 21.1.3**
+  — same backend family as esp-clang and rustc. Static-musl, single 156 MB
+  binary; ships its own `ldc2.conf` (including a pre-bundled
+  `xtensa-esp32-none-elf` triple alias).
+- Build with `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -c`. `-betterC`
+  drops druntime/Phobos (= freestanding). **All three esp32 cores are
+  first-class `-mcpu` values:** `esp32` / `esp32s2` / `esp32s3` (no `-mattr`
+  fallback needed for the CPU; `env.sh:ldc_xtensa_flags` still pins the
+  feature set explicitly to match esp-clang).
+- Direct `ldc2 -c` Xtensa objects link cleanly under `ld.lld -T xtensa.ld`
+  (literal pools are correctly aligned). The `-output-s` + esp-clang
+  re-assembly workaround is **gone**. DWARF survives end-to-end; the producer
+  DIE reads `LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)`.
+
+### D / LDC (ldc-developers/ldc — comparison-only, opt-in)
+- The rolling **`CI`** pre-release (LLVM **22.1.2**), pinned to `c8305d0a`. The
+  *upstream* LLVM Xtensa target is still experimental: only `esp32` is a
+  recognized `-mcpu` (esp32s2/s3 are *not a recognized processor* —
+  [ldc#4919](https://github.com/ldc-developers/ldc/issues/4919)); direct
+  `ldc2 -c` fails to link (`R_XTENSA_SLOT0_OP not aligned to 4 bytes` on the
+  `l32r` literal pool); `.cfi_*` directives are emitted but esp-clang's Xtensa
+  MC rejects them on re-assembly. Datalayout differs slightly from the
+  espressif-21 trio (`i8:8:32-i16:16:32` vs `v1:8:8-i128:128`).
+- Opt-in via `LDC_UPSTREAM=1 ./scripts/setup.sh` → `$LDC2_UPSTREAM`. Used only
+  by `experiments/ldc-fork-comparison` + docs/23.
+- Component 6 (LLVM-22 binutils) version-matches *this* LDC and is what powers
+  `experiments/llvm-ir-mix` for the upstream-LDC arm; for the canonical LDC,
+  esp-clang's 21.1.3 binutils suffice.
 
 ### GCC (espressif/crosstool-NG)
 - The unified `xtensa-esp-elf-gcc` selects the Xtensa **core *and endianness*** at

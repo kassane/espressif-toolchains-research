@@ -26,7 +26,11 @@ int add_i32(int a, int b) { return a + b; }
 | **gcc** | 212 | 112 | 90 | **45** | — |
 | **rust** | 94 | 461 | 176 | 1219 | 67 |
 | **zig** | 1108 | 1418 | 339 | **12964** | — |
-| **LDC** | 75 | 168 | 76 | 284 | — |
+| **LDC** (fork, 21.1.3) | 69 | 162 | 76 | 278 | — |
+
+(LDC's row used to be 75/168/76/284 on the upstream-LLVM-22 build; the
+espressif-fork LDC produces slightly tighter DWARF. See
+[docs/23](23-ldc-espressif-fork.md) §(f) for the side-by-side.)
 
 Two genuine surprises:
 
@@ -64,7 +68,7 @@ compile unit:
 ```
 rust  DW_AT_name ("clang LLVM (rustc version 1.95.0-nightly …)")
 zig   DW_AT_name ("pre")
-LDC   DW_AT_name ("LDC 1.42.0-git-c8305d0 (LLVM 22.1.2)")
+LDC   DW_AT_name ("LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)")
 ```
 
 GCC's DWARFv5 is **fully self-contained** in the `.o` (`DW_AT_name ("add_i32")`,
@@ -108,12 +112,12 @@ clang (-g -O0):                gcc (-g -O0):                  rust (release+debu
 
 zig (-O Debug):                LDC (-g):
   entry  a1, 48                  entry  a1, 48
-  mov.n  a7, a1                  or     a7, a1, a1     ← non-compact `or` not `mov.n`
-  s32i.n a2, a7, 0               s32i   a2, a7, 4      ← non-compact `s32i`
-  s32i.n a3, a7, 4               s32i   a3, a7, 0
-  add.n  a2, a2, a3               l32i   a8, a7, 4
-  retw.n                         l32i   a9, a7, 0
-                                 add    a2, a8, a9
+  mov.n  a7, a1                  mov.n  a7, a1     ← byte-identical to clang
+  s32i.n a2, a7, 0               s32i.n a2, a7, 4
+  s32i.n a3, a7, 4               s32i.n a3, a7, 0
+  add.n  a2, a2, a3               l32i.n a8, a7, 4
+  retw.n                          l32i.n a9, a7, 0
+                                  add.n  a2, a8, a9
 ```
 
 Three observations a reverse-engineer cares about:
@@ -122,11 +126,11 @@ Three observations a reverse-engineer cares about:
    retw.n`. By default `cargo build --release` (with `debug=full`) keeps the
    debug info but optimizes — the others were `-O0`/Debug. Rust at `-Og`
    equivalent is the smallest debug build.
-2. **LDC emits non-compact instructions** at `-Os` baseline — `or a7,a1,a1`
-   instead of `mov.n a7,a1`, full-width `s32i`/`l32i` instead of the 2-byte
-   `.n` forms. esp32 has the `density` extension so the `.n` forms are valid;
-   LDC's instruction selector just doesn't reach for them here. The resulting
-   function is 19 B vs clang's 14 B (35 % bigger).
+2. **LDC's codegen now matches clang's** — the espressif-fork LDC (LLVM 21.1.3)
+   reaches for `mov.n`/`s32i.n`/`l32i.n` compact forms; the function is 17 B,
+   byte-identical to clang. The upstream-LLVM-22 LDC used to emit non-compact
+   `or`/`s32i`/`l32i` and weigh 19 B (35 % bigger; that finding is preserved in
+   [docs/23](23-ldc-espressif-fork.md) §(g) on the comparison toolchain).
 3. **gcc and clang differ only in commutative operand order** on the final
    `add.n` — `a8,a9,a8` vs `a8,a9` source operands switched — but otherwise
    step-for-step the same windowed save/restore pattern.
@@ -159,16 +163,16 @@ Distilling what the prior docs have established + this audit:
 | **gcc 15.2** (espressif crosstool-NG) | smallest `.text` of the five (docs/06: 174 B); fully resolved DWARFv5 names pre-link; non-LLVM ABI check | default core is big-endian (must set `XTENSA_GNU_CONFIG`, docs/01); no LLVM IR mix path; `-mlongcalls` only matters for call encoding (docs/02) |
 | **rustc 1.95-nightly** (esp-rs fork) | C-ABI parity bit-for-bit with clang/gcc (docs/03), cross-language LTO with esp-clang ✓ (docs/04), v0 mangling for own symbols, atomics use s32c1i (docs/17) | esp-rs is a **fork** — upstream rustc has Tier-3 specs but no Xtensa codegen (docs/00); `_R…` v0 unstable hash discourages calling D/zig from rust by mangled name (docs/12) |
 | **Zig 0.16** (espressif bootstrap fork) | only host-capable C/C++ here (`zig cc`); native s32c1i atomics, smallest debug codegen, `EE.*` SIMD via struct-form clobbers (docs/16) | the experimental Xtensa ABI mis-lowers under-aligned (`align(1)`) by-value struct args on Xtensa AND `{i32,i32}` on RISC-V — the headline FFI hole (docs/05/09); 21.1.0 bitcode incompatible with esp 21.1.3 LTO reader (docs/04); huge `.debug_str` (§1); always emits `.eh_frame` (§6) |
-| **LDC 1.42-git** (LLVM 22.1.2, upstream) | only frontend on upstream LLVM (no espressif fork); Itanium-mangled `extern(C++[,"ns"])` for direct C++ template FFI (docs/21); compile-time reflection via `__traits`/`mixin`; `@safe`/`@live` static borrow analog (docs/20); cross-language LTO ✓ with clang despite 22.1.2 vs 21.1.3 (docs/19) | upstream LLVM-22 only recognizes `esp32` CPU — `s2`/`s3` are "not a recognized processor" (ldc #4919; docs/19); literal-pool placement bug in LDC's integrated assembler → re-assemble `-output-s` with esp clang (docs/19); marks every by-value aggregate `byval`/`sret` → fails `point_dot` + `blob_sum` on Xtensa, faults on RISC-V small struct (docs/19); `@live` silent without `-preview=dip1021` (docs/20); non-compact instruction selection at `-Os` (§5: 35 % bigger codegen than clang); ICEs on Xtensa + EH + opt (ldc #5091) |
+| **LDC 1.42-git** (LLVM 21.1.3, espressif fork — docs/23) | canonical 5th frontend now on the same espressif/llvm-project as clang/rust; Itanium-mangled `extern(C++[,"ns"])` for direct C++ template FFI (docs/21); compile-time reflection via `__traits`/`mixin`; `@safe`/`@live` static borrow analog (docs/20); cross-language LTO ✓ with clang (same 21.1.3); codegen now matches clang (§5); first-class esp32/s2/s3 `-mcpu`; direct `ldc2 -c` -> `ld.lld` (no re-assembly) | marks every by-value aggregate `byval`/`sret` (frontend bug, **unchanged** by the LLVM swap — docs/23 §(h)) → fails `point_dot` + `blob_sum` on Xtensa, faults on RISC-V small struct (docs/19); `cent`/`ucent` keywords formally obsoleted, no native 128-bit int in `-betterC` (docs/17 §g-D); `@live` silent without `-preview=dip1021` (docs/20); ICEs on Xtensa + EH + opt (ldc #5091) |
 
 ## 8. Espressif baremetal advantages — the consolidated story
 
 What this whole repo has demonstrated about polyglot FFI on **ESP32-class
 hardware**:
 
-1. **The shared LLVM Xtensa backend is real** — clang, rust, zig, D all feed
-   the same backend (clang/rust on espressif LLVM 21.1.3, zig on a 21.1.0
-   bootstrap, D on upstream LLVM 22.1.2). All four emit the identical Xtensa
+1. **The shared LLVM Xtensa backend is real and now spans all four frontends**
+   — clang, rust, **D** (since docs/23) all on espressif LLVM **21.1.3**; zig on
+   a bootstrap 21.1.0. All four now emit the byte-identical Xtensa
    `target datalayout` (docs/04). GCC sits outside as an independent control.
 2. **The Itanium C++ ABI is the cross-language bridge** — any C++ template
    instantiation can be called from D (`extern(C++,class) struct T(int Slot)`),
@@ -189,10 +193,10 @@ hardware**:
    doesn't, docs/20). `__traits`+`mixin`+`static foreach` is the P2996 analog
    shipping today (docs/20/21).
 6. **Best-of-breed picks for a polyglot ESP32 codebase**: GCC for the absolute
-   smallest C code (`.text` 174 B for the 9-fn lib, docs/06); Rust for safe C
+   smallest C code (`.text` 201 B for the 9-fn lib, docs/06); Rust for safe C
    ABI exports; clang for C++ template *providers* (consumed by everyone);
-   LDC for compile-time reflection-heavy or borrow-checker-needing components,
-   with the literal-pool re-assembly workaround; Zig for the host runner
+   LDC for compile-time reflection-heavy or borrow-checker-needing components
+   (direct `-c` since docs/23, codegen matches clang); Zig for the host runner
    harness (`zig cc`/`zig c++` is the only host-capable C/C++ in the set).
 
 ## Repro

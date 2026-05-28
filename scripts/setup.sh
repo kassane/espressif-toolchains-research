@@ -15,12 +15,21 @@ CLANG_URL="https://github.com/espressif/llvm-project/releases/download/esp-21.1.
 RUST_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz"
 RUST_SRC_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-src-1.95.0.0.tar.xz"
 GCC_URL="https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20251204/xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz"
-# LDC: rolling "CI" pre-release (LLVM 22.1.2, Xtensa target). Pinned to the
-# c8305d0a build so re-runs are reproducible; the CI tag is mutable, so a future
-# asset may use a different git hash (update LDC_URL + the extract marker below).
-LDC_URL="https://github.com/ldc-developers/ldc/releases/download/CI/ldc2-c8305d0a-linux-x86_64.tar.xz"
-# Matching LLVM 22.1.2 binutils (llvm-link/opt/llvm-dis) for cross-frontend IR
-# module-merge (docs/04). Large + opt-in (LLVM22=1); a .tar.zst (needs zstd).
+# LDC: kassane/esp-idf-dlang esp-fork build (LDC 1.42 / espressif LLVM 21.1.3).
+# Static-musl, ships ldc2.conf with first-class esp32/esp32s2/esp32s3 -mcpu values
+# (no -mattr fallback) AND a Xtensa MC that lays literal pools correctly (no
+# -output-s re-assembly), so this is the canonical 5th-frontend toolchain. See
+# docs/23. The upstream CI LDC (below, LLVM 22.1.2) is kept as a comparison-only
+# toolchain referenced by experiments/ldc-fork-comparison/.
+LDC_URL="https://github.com/kassane/esp-idf-dlang/releases/download/xtensa-toolchain/ldc2-v1.42.0-espressif-linux-musl-static.tar.xz"
+LDC_SHA256="0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211"
+# Upstream LDC CI (LLVM 22.1.2, upstream-LLVM Xtensa): the "before" of the fork
+# comparison. Pinned to c8305d0a; the CI tag is mutable. Fetched only when
+# LDC_UPSTREAM=1 (opt-in; ~57 MB) so default users don't pay for the comparison.
+LDC_UPSTREAM_URL="https://github.com/ldc-developers/ldc/releases/download/CI/ldc2-c8305d0a-linux-x86_64.tar.xz"
+# Matching LLVM 22.1.2 binutils (llvm-link/opt/llvm-dis) — only useful with the
+# upstream LDC since esp-clang's 21.1.x binutils now match the canonical LDC.
+# Large + opt-in (LLVM22=1); a .tar.zst (needs zstd).
 LLVM_URL="https://github.com/ldc-developers/llvm-project/releases/download/ldc-v22.1.2/llvm-22.1.2-linux-x86_64.tar.zst"
 # qemu (optional; only needed for scripts/run-qemu.sh). Both softmmu builds.
 QEMU_BASE="https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417"
@@ -39,7 +48,10 @@ fetch "$CLANG_URL"    "$DL/clang-xtensa.tar.xz"
 fetch "$RUST_URL"     "$DL/rust-xtensa.tar.xz"
 fetch "$RUST_SRC_URL" "$DL/rust-src.tar.xz"
 fetch "$GCC_URL"      "$DL/gcc-xtensa.tar.xz"
-fetch "$LDC_URL"      "$DL/ldc-xtensa.tar.xz"
+fetch "$LDC_URL"      "$DL/ldc-esp.tar.xz"
+# integrity check on the esp-LDC asset — it's the only one we hand-pin a sha256
+# for (the others are large multi-file archives where the URL+tag is the pin).
+echo "$LDC_SHA256  $DL/ldc-esp.tar.xz" | sha256sum -c - >/dev/null
 
 extract() { # tarball marker_dir
     [ -e "$TC/$2" ] && { echo "extracted $2"; return; }
@@ -49,7 +61,7 @@ extract() { # tarball marker_dir
 extract "$DL/zig-xtensa.tar.xz"   "zig-relsafe-x86_64-linux-musl-baseline"
 extract "$DL/clang-xtensa.tar.xz" "esp-clang"
 extract "$DL/gcc-xtensa.tar.xz"   "xtensa-esp-elf"
-extract "$DL/ldc-xtensa.tar.xz"   "ldc2-c8305d0a-linux-x86_64"
+extract "$DL/ldc-esp.tar.xz"      "ldc-xtensa"
 
 # Rust ships split components; merge rustc + host std + cargo into one prefix.
 if [ ! -x "$TC/rust-esp/bin/rustc" ]; then
@@ -75,10 +87,17 @@ if [ "${QEMU:-0}" = 1 ]; then
     echo "  apt-get install -y libsdl2-2.0-0 libslirp0"
 fi
 
-# LLVM 22.1.2 binutils (optional): only fetched if LLVM22=1. Provides the
-# llvm-link/opt/llvm-dis/llvm-as that esp-clang doesn't ship, matching LDC's
-# LLVM so they can merge/inspect LDC's LLVM-22 IR (experiments/llvm-ir-mix,
-# docs/04). 405 MB download (.tar.zst), ~3.4 GB extracted.
+# Upstream LDC + matching LLVM 22.1.2 binutils (optional, comparison-only).
+#   LDC_UPSTREAM=1 -> $LDC2_UPSTREAM (the "before" of the fork comparison;
+#                    docs/23, experiments/ldc-fork-comparison/).
+#   LLVM22=1       -> $LDC_LLVM_DIR (llvm-link/opt/llvm-dis at LLVM 22.1.2;
+#                    only useful with the upstream LDC, since esp-clang's
+#                    21.1.x binutils now version-match the canonical LDC).
+if [ "${LDC_UPSTREAM:-0}" = 1 ]; then
+    fetch "$LDC_UPSTREAM_URL" "$DL/ldc-upstream.tar.xz"
+    [ -e "$TC/ldc2-c8305d0a-linux-x86_64" ] || tar xf "$DL/ldc-upstream.tar.xz" -C "$TC"
+    echo "upstream-LLVM-22 LDC installed (\$LDC2_UPSTREAM, comparison only)."
+fi
 if [ "${LLVM22:-0}" = 1 ]; then
     command -v zstd >/dev/null 2>&1 || apt-get install -y zstd >/dev/null 2>&1 || \
         echo "WARNING: install zstd to extract the .tar.zst (apt-get install -y zstd)"
@@ -90,4 +109,4 @@ if [ "${LLVM22:-0}" = 1 ]; then
 fi
 
 echo "setup complete. source scripts/env.sh to use the toolchains."
-echo "(QEMU=1 also fetches the espressif qemu fork; LLVM22=1 the LLVM-22 binutils.)"
+echo "(QEMU=1 also fetches the espressif qemu fork; LDC_UPSTREAM=1 the upstream-LLVM-22 LDC; LLVM22=1 its matching binutils.)"
