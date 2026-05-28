@@ -200,7 +200,7 @@ the large `[24]u8` is fine there (by reference). The RISC-V case reproduces on
 *upstream* Zig too (`pip install ziglang`), so it is an upstream Zig frontend bug,
 not the espressif fork. Rust, clang and gcc are correct on both architectures.
 Full teardown: [docs/05](docs/05-struct-abi-deep-dive.md),
-[docs/09](docs/09-riscv.md), [docs/10](docs/10-zig-rust-parity.md).
+[docs/09](docs/09-riscv.md), [docs/10](docs/10-cabi-completeness.md).
 
 ### 5.1 D/LDC: the same root cause, broader
 

@@ -1,4 +1,12 @@
-# 10 — Zig ⇔ Rust parity on ESP, and issue-tracker cross-checks
+# 10 — C-ABI completeness per frontend on Espressif targets
+
+The core thesis: a shared LLVM backend is *necessary but not sufficient* for
+cross-language FFI — each frontend has to implement the platform C ABI
+itself. Anchored on a Rust ↔ Zig comparison (both reach Espressif through
+the *same* espressif LLVM 21 backend) and broadened with cross-references
+to clang / gcc / D/LDC / TinyGo where the same finding applies. Also pins
+the relevant `esp-rs/rust` and `espressif/llvm-project` issue-tracker
+status as of writing.
 
 Both Rust and Zig reach the ESP architectures through the *same* espressif LLVM 21
 backend, both expose the C ABI (`#[no_mangle] extern "C"` / `export fn`), and both
