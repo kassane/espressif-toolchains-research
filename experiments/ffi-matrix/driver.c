@@ -1,9 +1,9 @@
 /*
  * driver.c - cross-language FFI driver. Always compiled as C.
  *
- * Calls every function from every backend language (c_/cpp_/rs_/zig_) with
+ * Calls every function from every backend language (c_/cpp_/rs_/zig_/d_) with
  * known inputs and checks the results. This single translation unit therefore
- * links against object files produced by four different compilers, proving the
+ * links against object files produced by five different compilers, proving the
  * C ABI is the shared contract.
  *
  * Two build modes (selected by the FFI_HOSTED macro):
@@ -64,6 +64,7 @@ int run_ffi_tests(void) {
     TEST_LANG(cpp);
     TEST_LANG(rs);
     TEST_LANG(zig);
+    TEST_LANG(d);
     LOG("total failures: %d\n", g_fail);
     return g_fail;
 }
@@ -71,7 +72,7 @@ int run_ffi_tests(void) {
 #ifdef FFI_HOSTED
 int main(void) {
     int f = run_ffi_tests();
-    LOG(f ? "\nRESULT: FAIL (%d failures)\n" : "\nRESULT: PASS (all 4 languages interop)\n", f);
+    LOG(f ? "\nRESULT: FAIL (%d failures)\n" : "\nRESULT: PASS (all 5 languages interop)\n", f);
     return f;
 }
 #endif

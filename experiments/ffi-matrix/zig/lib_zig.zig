@@ -60,3 +60,11 @@ export fn zig_blob_sum(b: Blob) u32 {
 export fn zig_apply(f: BinOp, a: i32, b: i32) i32 {
     return f(a, b);
 }
+
+export fn zig_blob_sum_ptr(b: *const Blob) u32 {
+    var s: u32 = 0;
+    for (b.data) |v| {
+        s +%= v;
+    }
+    return s;
+}

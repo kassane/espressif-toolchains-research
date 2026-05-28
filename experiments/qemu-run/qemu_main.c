@@ -46,20 +46,44 @@ int xmain(void) {
     check(" cpp", cpp_add_i32(3, 4), 7);
     check(" rs ", rs_add_i32(3, 4), 7);
     check(" zig", zig_add_i32(3, 4), 7);
+    check(" d  ", d_add_i32(3, 4), 7);
 
-    puts_("- point_dot: 8B align-4 struct by value ==11 [expect all ok]:\n");
+    puts_("- point_dot: 8B struct by value ==11 [xtensa: d FAIL; riscv: zig FAIL]:\n");
     Point pa = { 1, 2 }, pb = { 3, 4 };
     check(" c  ", c_point_dot(pa, pb), 11);
     check(" rs ", rs_point_dot(pa, pb), 11);
     check(" zig", zig_point_dot(pa, pb), 11);
+#ifdef __XTENSA__
+    /* D marks every by-value struct `byval` (indirect). On Xtensa the backend
+       passes it on the stack, but clang put it in regs a2..a5 -> wrong (stale)
+       data. So even the align-4 Point diverges (broader than Zig, which only
+       breaks align-1). On RISC-V the same `byval` becomes a REAL pointer arg,
+       so D would dereference clang's register *value* (1) as an address -> wild
+       load + hang; hence d_point_dot is xtensa-only here. See docs/19. */
+    check(" d  ", d_point_dot(pa, pb), 11);
+#else
+    puts_(" d    SKIP (byval->ptr deref faults on riscv small struct; docs/19)\n");
+#endif
 
-    puts_("- blob_sum: 24B align-1 struct by value ==300 [zig expected to FAIL]:\n");
+    puts_("- blob_sum: 24B struct by value ==300 [xtensa: zig+d FAIL; riscv: ok]:\n");
     Blob bl;
     for (int i = 0; i < 24; i++) bl.data[i] = (unsigned char)(i + 1); /* sum 1..24 = 300 */
     check(" c  ", (long)c_blob_sum(bl), 300);
     check(" cpp", (long)cpp_blob_sum(bl), 300);
     check(" rs ", (long)rs_blob_sum(bl), 300);
     check(" zig", (long)zig_blob_sum(bl), 300);
+    /* >16B: the RISC-V C ABI itself passes this by reference, so D's `byval`
+       (also a pointer) MATCHES clang there -> d ok on riscv. On Xtensa clang
+       packs it into a2..a7 while D reads the stack -> d FAIL. */
+    check(" d  ", (long)d_blob_sum(bl), 300);
+
+    /* Mitigation: pass the SAME struct by POINTER. D's `ref`/pointer params are
+       plain scalar pointers (a2..) -> all five agree. d_blob_sum_ptr proves the
+       by-value break above is purely the aggregate-passing convention. */
+    puts_("- blob_sum BY POINTER ==300 [expect all ok incl. d]:\n");
+    check(" c  ", (long)c_blob_sum_ptr(&bl), 300);
+    check(" zig", (long)zig_blob_sum_ptr(&bl), 300);
+    check(" d  ", (long)d_blob_sum_ptr(&bl), 300);
 
     puts_("total failures: "); putdec(fails); puts_("\n");
     sys_exit(fails);

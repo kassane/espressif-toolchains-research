@@ -6,9 +6,9 @@ output.
 
 ## Done
 
-- [x] Pinned + scripted setup of all four toolchains (`scripts/setup.sh`).
+- [x] Pinned + scripted setup of all **five** toolchains (`scripts/setup.sh`).
       Versions confirmed: clang/LLVM 21.1.3, rustc 1.95-nightly/LLVM 21.1.3,
-      zig 0.16.0/LLVM 21.1.0, gcc 15.2.0.
+      zig 0.16.0/LLVM 21.1.0, gcc 15.2.0, **LDC 1.42-git/LLVM 22.1.2** (D).
 - [x] Confirmed the shared backend: identical CPU feature sets and identical
       `target datalayout` across clang/rust/zig (docs 02, 04).
 - [x] FFI matrix (`experiments/ffi-matrix`): one C-ABI contract, 4 implementations,
@@ -47,6 +47,23 @@ output.
       interop** (`Option<&T>`/`Option<NonNull>`/`Option<fn>` ↔ `?*T`/`?*fn` =
       single `ptr`, FFI-safe, runtime-verified). **Atomics** match (native
       `s32c1i`). Object FFI links; **cross-language LTO fails** (21.1.3 vs 21.1.0).
+- [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D added
+      to the FFI matrix + qemu harness). LDC 1.42-git on **LLVM 22.1.2** (the only
+      LLVM-22 here; Xtensa is an *upstream*-LLVM experimental target — no espressif
+      fork). `-betterC` = freestanding. **Headline:** D marks **every** by-value
+      aggregate `byval`/`sret` (indirect) and defers to the backend, so it diverges
+      from the register-based Xtensa C ABI **more broadly than Zig** — runtime
+      `point_dot` (align-4) **and** `blob_sum` (align-1) both FAIL on Xtensa (Zig
+      fails only align-1); on RISC-V the small struct even *faults* while the large
+      one PASSES (the RISC-V ABI is itself by-ref there → D's `byval` matches). Fix:
+      **pass structs by pointer** (runtime-verified). Scalars at parity; links into
+      the one ELF with all four others (0 undef). Rich C/C++ FFI: byte-identical
+      Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref), `-HC` C++-header gen
+      with a verified C++→D round-trip, `--extern-std`/`--link-internally`/
+      `--help-hidden`. Cross-language **LTO with clang SUCCEEDS** (21.1.3 reader
+      accepts LDC's 22.1.2 bc + inlines) — unlike clang↔zig. Two real issues: a
+      **LDC-Xtensa literal-pool link bug** (re-assemble `-output-s` with esp clang;
+      ldc #5091 ICE EH+opt, #4919 cpu-feature defaults).
 - [x] **SIMD / vectorization** (docs/16, `experiments/simd/run.sh`): only ESP32-S3
       has a SIMD unit (`EE.*` PIE, q0–q7; rejected on esp32/s2). **No
       autovectorization** in any of the four — vectorizable loops stay scalar and

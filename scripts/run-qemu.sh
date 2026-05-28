@@ -23,7 +23,7 @@ if [ "$ARCH" = riscv ]; then
     "$CLANG" $CT -ffreestanding -Os -I"$B" -I"$INC" -c "$B/qm.c" -o "$B/qm.o"
     "$CLANG" $CT -ffreestanding -Os -c "$D/riscv/start.S" -o "$B/start.o"
     ld.lld -T "$D/riscv/virt.ld" -o "$B/ffi_rv_run.elf" "$B/start.o" "$B/qm.o" \
-        "$LIB/lib_c.o" "$LIB/lib_cpp.o" "$LIB/lib_zig.o" \
+        "$LIB/lib_c.o" "$LIB/lib_cpp.o" "$LIB/lib_zig.o" "$LIB/lib_d.o" \
         --start-group "$LIB/libffi_rs.a" "$RT" --end-group
     echo "===== FFI matrix on qemu-system-riscv32 (virt) ====="
     timeout 12 "$QEMU" -machine virt -bios "$B/ffi_rv_run.elf" -nographic -semihosting -monitor none || true
@@ -43,7 +43,7 @@ ld.lld -T "$D/sim.ld" -o "$B/hello.elf" "$B/start.o" "$B/hello.o"
 echo "===== hello (semihosting smoke test) ====="
 timeout 8 "$QEMU" -machine sim -semihosting -nographic -monitor none -kernel "$B/hello.elf" || true
 ld.lld -T "$D/sim.ld" -o "$B/ffi_run.elf" "$B/start.o" "$B/qemu_main.o" \
-    "$LIB/lib_c_clang.o" "$LIB/lib_cpp.o" "$LIB/lib_zig.o" \
+    "$LIB/lib_c_clang.o" "$LIB/lib_cpp.o" "$LIB/lib_zig.o" "$LIB/lib_d.o" \
     --start-group "$LIB/libffi_rs.a" "$RT" --end-group
 echo "===== FFI matrix on qemu-system-xtensa (sim/dc233c) ====="
 timeout 12 "$QEMU" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$B/ffi_run.elf" || true

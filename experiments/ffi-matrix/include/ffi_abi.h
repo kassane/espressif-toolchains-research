@@ -8,6 +8,7 @@
  *     cpp_*  implemented in C++      (lib_cpp.cpp, extern "C")
  *     rs_*   implemented in Rust     (lib_rs.rs, #[no_mangle] extern "C")
  *     zig_*  implemented in Zig      (lib_zig.zig, export fn)
+ *     d_*    implemented in D        (d/lib_d.d, extern(C), LDC -betterC)
  *
  * Because they all expose the platform C ABI, any language's driver can call
  * any other language's implementation. The function set is chosen to exercise
@@ -56,6 +57,15 @@ FFI_DECLARE(c)
 FFI_DECLARE(cpp)
 FFI_DECLARE(rs)
 FFI_DECLARE(zig)
+FFI_DECLARE(d)
+
+/* By-POINTER variant of blob_sum. A pointer is a plain scalar (a-reg a2), so it
+ * sidesteps the by-value aggregate-passing ABI entirely. Used by the qemu
+ * harness to show that the struct-by-value break (Zig align-1, D all structs;
+ * docs/19) is fixed by passing structs by pointer — there all languages agree. */
+uint32_t c_blob_sum_ptr(const Blob *b);
+uint32_t zig_blob_sum_ptr(const Blob *b);
+uint32_t d_blob_sum_ptr(const Blob *b);
 
 #ifdef __cplusplus
 }

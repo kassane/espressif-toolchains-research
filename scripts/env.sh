@@ -32,6 +32,13 @@ export GXX="$GCC_DIR/bin/xtensa-esp-elf-g++"
 export GCC_CFG_DIR="$GCC_DIR/lib"
 xtensa_cfg() { echo "$GCC_CFG_DIR/xtensa_${1}.so"; }  # xtensa_cfg esp32 -> .../xtensa_esp32.so
 
+# LDC 1.42.0-git (LLVM 22.1.2) - LLVM-based D compiler, ldc-developers/ldc CI
+# build. The ONLY toolchain here on LLVM 22 (clang/rust are 21.1.3, zig 21.1.0),
+# and it carries Xtensa as an experimental LLVM target. Bare-metal uses -betterC
+# (no druntime/Phobos), the D analogue of Rust no_std / Zig freestanding.
+export LDC_DIR="$TC/ldc2-c8305d0a-linux-x86_64"
+export LDC2="$LDC_DIR/bin/ldc2"
+
 # Keep cargo's caches local and offline-friendly.
 export CARGO_HOME="${CARGO_HOME:-$TC/.cargo-home}"
 

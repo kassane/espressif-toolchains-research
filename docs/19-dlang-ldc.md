@@ -1,0 +1,182 @@
+# 19 — D / LDC as a 5th LLVM frontend (deep dive)
+
+LDC (the LLVM D compiler) is a **third non-C LLVM frontend** for Xtensa,
+alongside Rust and Zig. How does D's C/C++ FFI and its ABI lowering compare on
+the espressif backend? Reproduce with `experiments/dlang/run.sh`; the runtime
+PASS/FAIL matrix (D added to all four other languages) is `scripts/run-qemu.sh`.
+
+## 1. Identity — the only LLVM-22 toolchain here
+
+| | value |
+|---|---|
+| compiler | **LDC 1.42.0-git-c8305d0** (DMD v2.112.1 frontend) |
+| backend | **LLVM 22.1.2** — *newer* than clang/rust (21.1.3) and zig (21.1.0) |
+| source | `ldc-developers/ldc` rolling **`CI`** pre-release (LLVM 21.1.8 stable 1.42 is too old) |
+| Xtensa | a **registered, experimental** LLVM target (`xtensa - Xtensa 32`); upstream LLVM, not an espressif fork — issue #4725 asks to bundle it in the standard distro |
+| bare-metal | **`-betterC`** (no druntime/Phobos/GC/ModuleInfo) — D's analogue of Rust `no_std` / Zig `freestanding` |
+| invocation | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC` |
+
+D is a *systems* language with first-class C and C++ interop, so the FFI surface
+is the richest of the five (see §5). It is the only frontend whose Xtensa support
+rides **upstream** LLVM (Rust/Zig/clang all need an espressif LLVM fork).
+
+## 2. The headline: D mis-lowers **every** by-value aggregate
+
+D's frontend marks **all** struct arguments `byval(ptr)` and **all** struct
+returns `sret` — i.e. *explicitly indirect* in the IR — then defers the actual
+ABI to the LLVM backend. The Xtensa (and RISC-V) backends lower `byval`/`sret`
+**by memory**, which does **not** match the platform C ABI's register passing.
+This is the same *root cause* as Zig (frontend defers to the backend instead of
+implementing the C ABI), but D's divergence is **broader** because it marks the
+aggregates indirect unconditionally.
+
+The three frontends emit three different IRs for the same `Point`/`Blob`:
+
+| fn | **clang** (C-ABI reference) | **Zig** | **D / LDC** |
+|----|------|-----|---|
+| `point_dot(Point,Point)` | `([2 x i32],[2 x i32])` → regs | `(%Point,%Point)` direct | `(ptr byval(%Point), ptr byval(%Point))` |
+| `make_point→Point` | `→[2 x i32]` regs | `→%Point` direct | `(ptr sret(%Point), …)` |
+| `blob_sum(Blob)` | `([6 x i32])` → a2..a7 | `(%Blob)` direct | `(ptr byval(%Blob))` |
+
+clang flattens in-frontend (`[N x i32]` → registers); Zig hands LLVM a *direct*
+aggregate value (the backend matches the C ABI for align-4, breaks align-1); D
+hands LLVM an *indirect* pointer, which the backend always passes in memory.
+
+**Machine ABI, Xtensa esp32 (disassembly).** clang's `c_point_dot` multiplies
+straight out of registers — `mull a8, a5, a3` (Point `b`=a4/a5, `a`=a2/a3). D's
+`d_point_dot` instead does `l32i.n a8, a1, 32` — it reads the arguments off the
+**incoming stack** (`a1`=SP), where nothing was placed. `d_make_point` treats
+`a2` as a hidden `sret` pointer and stores `x`/`y` through it, while clang
+returns the 8-byte Point in `a2:a3` (no pointer) — so a C caller's `x` value is
+misread as a destination address.
+
+### Runtime (qemu) — D added to the full matrix
+
+```
+Xtensa (sim/dc233c)                       RISC-V (esp32c3, virt)
+  scalar add      c cpp rs zig d   all ok   scalar add    all ok incl. d
+  point_dot       c rs zig ok; d FAIL(4548) point_dot     c rs ok; zig FAIL; d SKIP*
+  blob_sum        c cpp rs ok; zig FAIL;     blob_sum      c cpp rs zig ok; d OK(300)
+                  d FAIL(695)
+  blob_sum BY PTR c zig d  all ok            blob_sum BYPTR  all ok
+```
+
+- **Xtensa**: D fails **both** `point_dot` (align-4) *and* `blob_sum` (align-1) —
+  Zig fails only the align-1 one. D's break is alignment-*independent*.
+- **RISC-V** (`*` D's small-struct `byval` becomes a real pointer arg; it would
+  dereference clang's register *value* `1` as an address → wild load + fault, so
+  the harness gates `d_point_dot` to Xtensa). But D's **`blob_sum` PASSES** on
+  RISC-V: a >16-byte struct is passed **by reference in the RISC-V C ABI itself**,
+  so D's `byval` pointer *matches* clang there. The asymmetry is the proof: D is
+  correct exactly when the C ABI is *also* indirect (RISC-V large struct; Xtensa
+  >16-byte `sret` return), and wrong when the C ABI uses registers.
+
+**Mitigation (runtime-verified): pass structs by pointer.** A pointer is a plain
+scalar in `a2`, so `blob_sum_ptr(const Blob*)` returns `300` for C, Zig **and**
+D on both arches. Across any D↔{C,Rust,Zig} boundary, pass aggregates by pointer.
+
+## 3. A real LDC-on-Xtensa linker bug (and the workaround)
+
+A *direct* `ldc2 -c` Xtensa object **fails to link**:
+`ld.lld: … R_XTENSA_SLOT0_OP: … is not aligned to 4 bytes`. LDC's **LLVM-22
+integrated assembler** mis-lays the `l32r` literal pool under function-sections:
+the `__muldf3` address that `d_mul_f64` loads is emitted into the *preceding*
+function's `.text.d_mul_f32` section at an unaligned offset (`+0x11`), and `l32r`
+requires a 4-aligned target. clang/zig instead emit a separate, 4-aligned
+`.literal` section.
+
+**Workaround (used throughout the build):** emit textual asm (`ldc2 -output-s`),
+strip `.cfi_*` (the Xtensa assembler rejects CFI — *"CFI is not supported for
+this target"* — which LDC emits anyway), and re-assemble with **esp clang**
+(LLVM-21 MC, which uses separate aligned `.literal.*` sections). See
+`ldc_xtensa_obj` in `scripts/build-ffi.sh`. RISC-V has no literal pool
+(`auipc`/`jalr`), so a direct object links there.
+
+## 4. Scalars & linking — full parity
+
+For every scalar in the C contract (`i32`/`i64`/`f32`/`f64`/pointer/callback) D
+agrees at the machine level: host runs PASS and qemu scalars PASS for all five
+languages. `double` multiply is the soft-float `__muldf3` libcall on esp32 (HW
+float is single-precision only) — the same libcall clang/zig/rust emit, resolved
+from `libclang_rt.builtins.a`. The D object **links into the one Xtensa ELF with
+the other four** (clang/gcc/rust/zig) under `ld.lld`, GNU `ld`, and the mixed
+combos — **0 undefined symbols** across all three linker variants.
+
+## 5. C and C++ FFI — the richest surface of the five
+
+D selects linkage with `extern(...)`. Verified emitted/mangled symbols:
+
+| D declaration | symbol | demangled |
+|---|---|---|
+| `extern(C) d_c_add` | `d_c_add` | (C, unmangled) |
+| `extern(C++) cpp_add` | `_Z7cpp_addii` | `cpp_add(int, int)` |
+| `extern(C++, "espffi") ns_add` | `_ZN6espffi6ns_addEii` | `espffi::ns_add(int, int)` |
+| `extern(C++) vec_dot(ref const Vec2, …)` | `_Z7vec_dotRK4Vec2S1_` | `vec_dot(Vec2 const&, Vec2 const&)` |
+
+So D emits **byte-identical Itanium C++ mangling** (`_Z…`, namespaced `_ZN…`,
+`const&` refs with `S1_` substitution) — the same names C++ and the docs/12
+mangled-FFI work link against. Two D-specific rules:
+
+- A D **`struct` is a value type**, a D **`class` is a reference type** — matching
+  C++ `struct`/`class` value-vs-polymorphic semantics. For `extern(C++, class)`
+  vs `extern(C++, struct)` you pick the aggregate kind for mangling (use `class`
+  if the C++ type has virtual functions, `struct` if none).
+- `--extern-std=` (`c++98`…`c++23`, **default** `c++11`) sets the C++ standard for
+  mangling compatibility; basic signatures mangle identically across them
+  (`f(S)` → `_Z1f1S`), it matters for `std::` types.
+
+**`-HC`: D generates a C++ header from its `extern(C++)` decls** — `extern "C"`
+prototypes, `namespace espffi { … }`, and a real `struct Vec2 final { float x,
+y; Vec2(); … };` with constructors and `const Vec2&` refs. Round-trip verified:
+a C++ TU that `#include`s the generated header **calls back into D** and prints
+`cpp_add=42 espffi::ns_add=42 vec_dot=12.5`. (Templates differ syntactically —
+C++/Rust `<T,N>`, D `(T,N)` — but that's source, not ABI.)
+
+## 6. Cross-language LTO — D + clang **works** (the surprise)
+
+Unlike clang↔zig (blocked by a 21.1.0-vs-21.1.3 bitcode skew, docs/04/17),
+**clang(21.1.3) + D(LDC 22.1.2) LTO links and inlines across the boundary**: the
+`ld.lld` 21.1.3 LTO reader accepts LDC's LLVM-**22** bitcode and constant-folds a
+cross-module `d_lto`+`c_lto` to `addi.n a2, a2, 2` (`x+2`). So despite shipping
+the *newest* LLVM, D's bitcode is the one that interops with the espressif LTO
+reader here — the version-skew rule is not simply "must match" (forward-compat
+held for this module; a feature using a 22-only record could still be rejected).
+Object-level FFI, as always, has no version constraint.
+
+## 7. Tooling parity with clang
+
+- **`--help-hidden`** lists **2784** options — the full clang/LLVM-style hidden
+  help (the goal's note: "like clang has `--help-hidden`").
+- **`--link-internally`** links with LDC's **in-process LLD** (no external
+  linker): the `lld:` diagnostics confirm it runs (only host libs are missing in
+  this sandbox). LDC also forwards bare LLVM `cl::opt`s directly (no `-mllvm`).
+
+## 8. Known LDC-Xtensa issues (tracked upstream)
+
+- **ldc #5091 "ICE with xtensa backend"** (OPEN): the Xtensa
+  backend ICEs when optimization (`-O1`, needed for code size) is combined with
+  **exception handling** (`-mtriple=xtensa-none-elf -mattr=+density,+mul16,
+  +mul32,+div32,+windowed -O1`). Avoid by disabling EH (`-betterC` does) or opt.
+- **ldc #4919 "Missing default LLVM `cpu-features` in some targets"** (OPEN):
+  LDC doesn't set default CPU features for some targets (notably wasm32 →
+  empty feature set), where Rust/Zig do. **Reproduced here:** LDC's upstream
+  LLVM-22 only knows the `esp32` Xtensa CPU — `-mcpu=esp32s2`/`esp32s3` give
+  *"'esp32s2' is not a recognized processor for this target (ignoring
+  processor)"* and fall back to generic Xtensa (no `mul32`), so `a*b` becomes an
+  `__mulsi3` libcall the RT lib lacks → link error. Fix: pass features explicitly
+  (`-mattr=+windowed,+density,+mul32,+mul16,+div32`; `build-ffi.sh` does this for
+  s2/s3). esp clang, by contrast, recognizes all three cores.
+
+## Verdict
+
+D/LDC slots in as a **5th frontend on the shared backend** and is a strong C/C++
+FFI citizen: scalars at parity, object-level linking with all four others (0
+undef), **byte-identical Itanium mangling**, C++-header generation (`-HC`) with a
+verified C++→D round-trip, and — uniquely — **working cross-language LTO with
+clang** despite its newer LLVM 22.1.2. The caveats are (1) **by-value aggregates**
+— D marks *every* struct `byval`/`sret`, so it diverges from the register-based
+Xtensa C ABI more broadly than Zig (both `point_dot` and `blob_sum`; on RISC-V
+the small struct even faults). Pass structs **by pointer**. And (2) a real
+**LDC-Xtensa literal-pool link bug** — re-assemble LDC's `-output-s` with esp
+clang. Both are LLVM-backend / LDC-codegen issues on an experimental target, not
+D-language limitations (host D interops fully).

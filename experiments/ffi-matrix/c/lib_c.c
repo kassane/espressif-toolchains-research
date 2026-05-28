@@ -30,3 +30,9 @@ uint32_t c_blob_sum(Blob b) {
 int32_t c_apply(BinOp fn, int32_t a, int32_t b) {
     return fn(a, b);
 }
+
+uint32_t c_blob_sum_ptr(const Blob *b) {
+    uint32_t s = 0;
+    for (int i = 0; i < 24; ++i) s += b->data[i];
+    return s;
+}

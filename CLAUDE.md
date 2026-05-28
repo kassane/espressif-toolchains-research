@@ -1,14 +1,14 @@
 # CLAUDE.md — orientation for automated sessions
 
 This repo is a **research & test bed**, not a shipping product. Goal: study
-cross-language FFI (Zig / Rust / C / C++) on Xtensa (ESP32 / S2 / S3) over the
-shared `espressif/llvm-project` backend, compare features / LLVM IR / binaries,
-and document the findings. Read `Research.md` first, then `docs/`.
+cross-language FFI (Zig / Rust / D / C / C++) on Xtensa (ESP32 / S2 / S3) over the
+shared LLVM backend, compare features / LLVM IR / binaries, and document the
+findings. Read `Research.md` first, then `docs/`.
 
 ## Environment facts
 
 - Host: x86_64 Linux, 4 CPUs, ~15 GB RAM, ~31 GB free disk. Network: outbound OK
-  (the four toolchains download from GitHub release CDNs).
+  (the five toolchains download from GitHub release CDNs).
 - **GitHub API is rate-limited** on this shared IP (unauthenticated 60/hr). To
   discover release assets use the **download CDN** (`releases/download/...`,
   `releases/expanded_assets/<tag>`) or `WebFetch`, not `api.github.com`.
@@ -25,6 +25,7 @@ in `/home/user/dl`. **Never commit these** (`.gitignore` guards `toolchains/`,
 | `$CLANG`/`$CLANGXX` | esp clang 21.1.3 (cross-only: **no X86 target**) |
 | `$RUSTC`/`$CARGO` | merged rust-esp prefix (1.95-nightly, LLVM 21.1.3) |
 | `$GCC` | xtensa-esp-elf-gcc 15.2.0 |
+| `$LDC2` | LDC 1.42-git, LLVM **22.1.2** (D; `-betterC` for bare-metal). Xtensa is upstream-LLVM experimental — needs the `-output-s`+esp-clang re-assembly in build-ffi.sh (docs/19) |
 | `xtensa_cfg <cpu>` | path to `xtensa_<cpu>.so` for `XTENSA_GNU_CONFIG` |
 
 ## Build / analyze
@@ -48,19 +49,21 @@ windowed `entry` instruction decodes as garbage.
    the `rust-src` component symlinked into the sysroot (setup.sh does this).
    `--emit=...` must go after `--` in `cargo rustc`.
 3. **esp clang can't target the host** — use `zig cc` for host C/C++.
-4. **`llvm-link`/`opt` are not shipped** by esp clang; the host's are LLVM 18 and
-   reject LLVM-21 IR. Mix IR via cross-language **LTO** (`ld.lld`) instead, and
-   only between *same*-LLVM-version producers (clang↔rust=21.1.3 works; zig=21.1.0
-   fails with "Invalid record").
+4. **`llvm-link`/`opt`/`llvm-dis` are not shipped** by esp clang; the host's are
+   LLVM 18 and reject LLVM-21/22 IR. Mix IR via cross-language **LTO** (`ld.lld`,
+   the 21.1.3 reader) instead. clang↔rust (both 21.1.3) and — surprisingly —
+   clang↔D (LDC **22.1.2** bc) both link; zig (21.1.0) fails with "Invalid record"
+   (docs/19). Version skew is not a simple "must match" rule.
 
 ## Repo map
 
 ```
-experiments/ffi-matrix/   the contract (include/ffi_abi.h) + 4 impls + driver + xtensa.ld
+experiments/ffi-matrix/   the contract (include/ffi_abi.h) + 5 impls (c/cpp/rust/zig/d) + driver + xtensa.ld
 experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct ABI bug
 experiments/llvm-ir-mix/  mix*.c + mix_rs (crate) — cross-language LTO probes
-scripts/                  setup.sh env.sh build-ffi.sh analyze.sh
-docs/01..06               toolchains / abi / ffi-matrix / ir+mixing / struct-deep-dive / binaries
+experiments/dlang/        cppiface.d + run.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO)
+scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
+docs/00..19               support-matrix / toolchains / abi / … / rust-zig / addrspace / dlang-ldc
 Research.md HANDOFF.md     headline write-up / status
 ```
 
