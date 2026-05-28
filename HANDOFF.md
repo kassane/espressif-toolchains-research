@@ -173,7 +173,12 @@ output.
       exact esp32 core (sim can't, it resets to the unmapped 0x50000000).
 - [x] **Struct-ABI boundary sweep** — done (`experiments/abi-structs/sweep.sh`).
       Found the trigger is **alignment, not size**: align-1 structs mismatch at
-      every size, align-4 match at every size.
+      every size, align-4 match at every size. Extended with **C-style
+      bitfield** rows (D supports native `extern(C) struct{uint a:4;...}`):
+      clang flattens to scalar backing (i16/i32/[1 x i64]); Zig matches when
+      `packed struct(uN)` has explicit backing; D wraps every bitfield as
+      `byval(%s.T)` — universal-aggregate bug applies to bitfields too
+      (docs/05/19).
 - [x] **`-mlongcalls` / call0 ABI** variant (docs/02): default is windowed
       everywhere. call0 is reachable (gcc `-mabi=call0`; LLVM by dropping the
       `windowed` feature) but is a **different, incompatible ABI** — must be

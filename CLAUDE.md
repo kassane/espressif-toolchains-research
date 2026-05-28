@@ -73,7 +73,7 @@ windowed `entry` instruction decodes as garbage.
 
 ```
 experiments/ffi-matrix/   the contract (include/ffi_abi.h) + 5 impls (c/cpp/rust/zig/d) + driver + xtensa.ld
-experiments/abi-structs/  caller.c / caller.zig — isolates the large-struct ABI bug
+experiments/abi-structs/  sweep.sh — clang/zig/D caller sweep; isolates the by-value struct-arg bug; covers byte arrays, word arrays, AND C-style bitfields (D's native extern(C) bitfield ABI vs clang vs Zig packed struct(uN); docs/05)
 experiments/llvm-ir-mix/  mix*.c + mix_rs + run.sh — LTO probes & LLVM-22 llvm-link module-merge
 experiments/dlang/        cppiface.d + run.sh + safety.sh + tmpffi.sh — D/LDC deep-dive (ABI, extern(C++), -HC, LTO; @safe/@mustuse/@live/preview/edition vs Rust × C++26; embedded TMP-FFI matrix on Xtensa)
 experiments/ldc-fork-comparison/ run.sh — espressif-21 vs upstream-22 LDC side-by-side (docs/23). Requires LDC_UPSTREAM=1.
