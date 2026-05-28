@@ -1,7 +1,14 @@
-# 00 — Xtensa support matrix: Rust × Zig × D × esp-clang × GCC
+# 00 — Espressif support matrix: Rust × Zig × D × esp-clang × GCC × TinyGo
 
-At-a-glance comparison for ESP32-class **Xtensa** targets, distilled from the
-experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
+At-a-glance comparison for **Espressif Xtensa (ESP32 / S2 / S3)** and the
+RISC-V outlier **ESP32-C3**, distilled from the experiments in this repo.
+Legend: ✓ works / correct · ✗ broken · — n/a.
+
+> **LDC mirror outage (2026-05-28):** the canonical D toolchain's upstream
+> (`kassane/esp-idf-dlang`) returns HTTP 404. `scripts/setup.sh` auto-falls
+> back to the upstream LDC (LLVM 22.1.2) — re-enabling docs/23's workarounds
+> for fresh installs. See HANDOFF.md §"Known outages". The matrix below
+> describes the canonical-fork state; runtime reality may match the fallback.
 
 ## Identity & availability
 
@@ -53,6 +60,7 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 | int / i64 / f32 / f64 / pointer / callback C-ABI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓¹ |
 | small struct `{i32,i32}` by value | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ (flattens to scalars) |
 | **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | **✗** | **✗** | ✓ | ✓ | **✗** (byte-per-register, docs/24 §e) |
+| **C-style bitfield struct by value** (16/32/64-bit packed) | — (no syntax) | ✓ via `packed struct(uN)` (explicit backing) | **✗** `byval(%s.T)` for every width | ✓ flattens to scalar `i32`/`[1×i64]` | ✓ flattens | — (no syntax) |
 | small struct return (8-byte, in regs) | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ |
 | large struct return (`sret`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | links under `ld.lld` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓² |
@@ -96,12 +104,15 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 ## One-line verdict
 
 The shared LLVM backend gives a **shared, interoperable ABI** across the six
-toolchains on Xtensa for everything except **by-value aggregate lowering** in
-the three frontends that defer it (Zig, D, TinyGo for byte-arrays) or universally
-`byval`/`sret`-it (D). Use **by-pointer** structs across those boundaries. Rust
-matches clang/GCC
-bit-for-bit; GCC is the smallest, Zig the largest. Object files link across all
-five with `ld.lld` and GNU `ld` (D direct `-c` since docs/23). Cross-language
-LTO needs compatible LLVM bitcode — clang↔rust↔D (all 21.1.3) work, while
-clang↔zig (21.1.0 vs 21.1.3) does not. D has the richest C/C++ FFI surface
-(native Itanium mangling, `-HC` headers). Details: docs 01–23; `Research.md`.
+toolchains on Espressif Xtensa for everything except **by-value aggregate
+lowering** in three frontends: **Zig** (align-1 only), **D** (universal —
+every aggregate including bitfields, docs/05/19), and **TinyGo**
+(byte-array fields only, docs/24). Use **by-pointer** structs across those
+boundaries. Rust matches clang/GCC bit-for-bit. GCC is the smallest .text
+(201 B), Zig the largest (715 B), D in between (533 B), TinyGo whole-firmware.
+Object files link across all six with `ld.lld` and GNU `ld` (D direct `-c`
+since docs/23; TinyGo `.o` needs runtime undefs satisfied per docs/24 §d).
+Cross-language LTO needs compatible LLVM bitcode — clang↔rust↔D (all 21.1.3)
+work; zig (21.1.0) and TinyGo (LLVM 20.1.1) are skew outliers. D has the
+richest C/C++ FFI surface (native Itanium mangling, `-HC` headers). Details:
+docs 01–24; `Research.md`.
