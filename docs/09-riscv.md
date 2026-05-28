@@ -3,6 +3,8 @@
 The same `espressif/llvm-project` LLVM 21 also hosts **riscv32** (it is esp clang's
 *default* triple). ESP32-C3 = `rv32imc`. Repeating the matrix here was meant to
 check whether the Zig struct-argument divergence (docs/05) is Xtensa-specific.
+**TinyGo** also has an `esp32c3-generic` target (LLVM 20.1.1, docs/24) but is
+firmware-only so doesn't join the link matrix here.
 
 **It is not.** RISC-V has its *own*, different Zig struct-ABI bug — caught by the
 qemu runtime test (docs/08-style), which a static spot-check of only the large

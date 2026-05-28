@@ -44,7 +44,7 @@ Every other language references the symbol verbatim, no glue:
 |---|---|---|---|
 | provider | C++ | **esp-clang 21.1.3** | `template class Gpio<5>;` (explicit instantiation) |
 | provider (alt) | C++ | **gcc 15.2.0** | same source compiles to *byte-identical* Itanium symbols |
-| consumer | D | **LDC 1.42 (LLVM 22.1.2)** | `extern(C++,"shims") extern(C++,class) struct Gpio(int Pin)` |
+| consumer | D | **LDC 1.42-git (espressif LLVM 21.1.3; docs/23)** | `extern(C++,"shims") extern(C++,class) struct Gpio(int Pin)` |
 | consumer | Rust | **rustc 1.95-nightly (LLVM 21.1.3)** | `#[link_name="_ZN5shims4GpioILi5EE3setEv"] fn pin5_set();` |
 | consumer | Zig | **Zig 0.16 (LLVM 21.1.0)** | `extern fn @"_ZN5shims4GpioILi5EE3setEv"() callconv(.c) void;` |
 
@@ -105,8 +105,12 @@ The **`ldc-developers/llvm-project`** tarball (`llvm-22.1.2-linux-x86_64.tar.zst
 — **not** `ldc-developers/ldc`, which is the D compiler) ships LLVM 22.1.2 core
 binutils (`llvm-link`, `opt`, `llvm-dis`, `llc`) without a clang. esp-clang
 doesn't ship `llvm-link`, and the host's is LLVM 18 (rejects post-18 IR), so
-this is the practical way to *merge* IR across frontends today. From
-`tmpffi.sh §g`:
+this *was* the practical way to merge IR across frontends. With the
+espressif-fork LDC (docs/23) now on the same 21.1.3 as esp-clang/rust, the
+LLVM-22 binutils are only needed for the upstream-LDC comparison
+(`experiments/ldc-fork-comparison`); for canonical 5-frontend merges,
+esp-clang's own 21.1.x binutils suffice. The numbers below predate the swap
+and are kept for reproducibility. From `tmpffi.sh §g`:
 
 ```
 llvm-link (LLVM 22.1.2 binutils) rc=0 — merged defines: 11

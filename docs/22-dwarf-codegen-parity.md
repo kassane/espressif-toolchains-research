@@ -1,11 +1,14 @@
-# 22 — DWARF & codegen parity audit across all 5 toolchains (Xtensa)
+# 22 — DWARF & codegen parity audit across all 6 toolchains (Xtensa)
 
-A compiler-engineering / reverse-engineering audit of what each of the five
-toolchains in the matrix (gcc, esp-clang, zig, ldc2, rustc) actually emits for
-the **same trivial function** on the espressif Xtensa target. The bones of an
-embedded toolchain — DWARF version, debug-section sizes, frame info, and the
-shape of the disassembled code — are surprisingly different across them.
-Reproduce with `experiments/dwarf-parity/run.sh`. All output below is real.
+A compiler-engineering / reverse-engineering audit of what each of the six
+toolchains in the matrix (gcc, esp-clang, zig, ldc2, rustc, **TinyGo**)
+actually emits for the **same trivial function** on the espressif Xtensa
+target. The bones of an embedded toolchain — DWARF version, debug-section
+sizes, frame info, and the shape of the disassembled code — are surprisingly
+different across them. Reproduce with `experiments/dwarf-parity/run.sh`
+(TinyGo is reported in §g separately; its byte counts include the whole
+program because TinyGo doesn't emit relocatable `.o`, docs/24). All output
+below is real.
 
 The function under examination:
 
@@ -32,6 +35,10 @@ int add_i32(int a, int b) { return a + b; }
 espressif-fork LDC produces slightly tighter DWARF. See
 [docs/23](23-ldc-espressif-fork.md) §(f) for the side-by-side.)
 
+TinyGo is reported separately (§g) because its `.debug_*` sections cover the
+**full firmware** — Go runtime + standard library + the function — not the
+single-function `.o` of the other five rows.
+
 Two genuine surprises:
 
 - **Zig's `.debug_str` is 12 KB for a one-line function** — Zig embeds full
@@ -41,21 +48,25 @@ Two genuine surprises:
   consequence of `-C debuginfo=2` on the release profile. clang/gcc/zig at
   these opt levels store locations inline in `.debug_info` instead.
 
-## 2. DWARF version: a 4/5 split
+## 2. DWARF version: a 4/5 split (now 2-of-6 emit v5)
 
 ```
-clang  DWARFv5 (format = DWARF32)
-gcc    DWARFv5 (format = DWARF32)
-rust   DWARFv4 (format = DWARF32)
-zig    DWARFv4 (format = DWARF32)
-LDC    DWARFv4 (format = DWARF32)
+clang   DWARFv5 (format = DWARF32)
+gcc     DWARFv5 (format = DWARF32)
+rust    DWARFv4 (format = DWARF32)
+zig     DWARFv4 (format = DWARF32)
+LDC     DWARFv4 (format = DWARF32)
+TinyGo  DWARFv4 (format = DWARF32)
 ```
 
-clang and gcc default to **DWARFv5**; rust, zig, LDC still emit **DWARFv4**.
-DWARFv5 brings `.debug_addr` / `.debug_str_offsets` (smaller binaries, faster
-parse) and accelerator tables, so the v4 emitters carry slightly more weight.
-For a debugger this is invisible — every modern GDB/LLDB handles both — but for
-post-mortem tooling (DWARF parsers, BPF, perf) it matters.
+clang and gcc default to **DWARFv5**; rust, zig, LDC, TinyGo still emit
+**DWARFv4**. DWARFv5 brings `.debug_addr` / `.debug_str_offsets` (smaller
+binaries, faster parse) and accelerator tables, so the v4 emitters carry
+slightly more weight. For a debugger this is invisible — every modern GDB/LLDB
+handles both — but for post-mortem tooling (DWARF parsers, BPF, perf) it
+matters. TinyGo's producer DIE reads `clang version 20.1.1 (tinygo-org/llvm-project ...)`,
+pinning it to a third LLVM family on top of the 21.1.x trio and the LDC-fork's
+21.1.3.
 
 ## 3. Function DIE — pre-link string resolution differs
 
@@ -66,9 +77,10 @@ resolve `.debug_str` references**, so pre-link their `DW_AT_name` /
 compile unit:
 
 ```
-rust  DW_AT_name ("clang LLVM (rustc version 1.95.0-nightly …)")
-zig   DW_AT_name ("pre")
-LDC   DW_AT_name ("LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)")
+rust    DW_AT_name ("clang LLVM (rustc version 1.95.0-nightly …)")
+zig     DW_AT_name ("pre")
+LDC     DW_AT_name ("LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)")
+TinyGo  DW_AT_producer ("clang version 20.1.1 (tinygo-org/llvm-project 6707598…)")  [linked ELF]
 ```
 
 GCC's DWARFv5 is **fully self-contained** in the `.o` (`DW_AT_name ("add_i32")`,
@@ -85,15 +97,20 @@ from the three LLVM frontends. Always work from the linked image.
 The Itanium / C-ABI symbol the linker actually sees for `add_i32`:
 
 ```
-clang  add_i32
-gcc    add_i32
-rust   add_i32          (#[no_mangle] pub extern "C")
-zig    add_i32          (export fn ... callconv(.c))
-LDC    add_i32          (extern(C))
+clang   add_i32
+gcc     add_i32
+rust    add_i32          (#[no_mangle] pub extern "C")
+zig     add_i32          (export fn ... callconv(.c))
+LDC     add_i32          (extern(C))
+TinyGo  main.go_add_i32  (//go:noinline + //export — package-qualified by Go's mangling)
 ```
 
-All five expose the bare C name as expected — the cross-language FFI surface
-this repo measures everywhere.
+The first five expose the bare C name as expected — the cross-language FFI
+surface this repo measures everywhere. TinyGo mangles as `<package>.<func>`
+even when `//export` is present (the `//export` directive aliases a C-ABI
+name only when the function is actually referenced as cgo, which doesn't
+apply on baremetal Xtensa). For C-callable Go on baremetal you instead use
+`//go:linkname` or build with a host-side cgo shim.
 
 ## 5. Reverse-engineering the codegen
 
@@ -110,22 +127,25 @@ clang (-g -O0):                gcc (-g -O0):                  rust (release+debu
   l32i.n a9, a7, 0               l32i.n a8, a7, 4
   add.n  a2, a8, a9               add.n  a8, a9, a8
 
-zig (-O Debug):                LDC (-g):
-  entry  a1, 48                  entry  a1, 48
-  mov.n  a7, a1                  mov.n  a7, a1     ← byte-identical to clang
-  s32i.n a2, a7, 0               s32i.n a2, a7, 4
+zig (-O Debug):                LDC (-g):                      TinyGo (-opt=0, linked):
+  entry  a1, 48                  entry  a1, 48                  entry  a1, 32
+  mov.n  a7, a1                  mov.n  a7, a1     ← =clang     add.n  a2, a2, a3
+  s32i.n a2, a7, 0               s32i.n a2, a7, 4               retw.n
   s32i.n a3, a7, 4               s32i.n a3, a7, 0
   add.n  a2, a2, a3               l32i.n a8, a7, 4
   retw.n                          l32i.n a9, a7, 0
                                   add.n  a2, a8, a9
 ```
 
-Three observations a reverse-engineer cares about:
+Four observations a reverse-engineer cares about:
 
-1. **Rust (release) collapses to 6 bytes** — `entry a1,32; add.n a2,a3,a2;
-   retw.n`. By default `cargo build --release` (with `debug=full`) keeps the
-   debug info but optimizes — the others were `-O0`/Debug. Rust at `-Og`
-   equivalent is the smallest debug build.
+1. **Rust (release) AND TinyGo (-opt=0) both collapse to 7 bytes** — `entry
+   a1,32; add.n; retw.n`. Rust gets there because `cargo build --release` (with
+   `debug=full`) keeps the debug info but optimizes; TinyGo gets there because
+   even at `-opt=0` it always runs through `--lto-O2` (TinyGo's link mode), and
+   the LTO pipeline elides the prologue spill the others emit at `-O0`/Debug.
+   Net: at the lowest meaningful "debug build" of each toolchain, Rust and
+   TinyGo emit the tightest function.
 2. **LDC's codegen now matches clang's** — the espressif-fork LDC (LLVM 21.1.3)
    reaches for `mov.n`/`s32i.n`/`l32i.n` compact forms; the function is 17 B,
    byte-identical to clang. The upstream-LLVM-22 LDC used to emit non-compact
@@ -134,6 +154,13 @@ Three observations a reverse-engineer cares about:
 3. **gcc and clang differ only in commutative operand order** on the final
    `add.n` — `a8,a9,a8` vs `a8,a9` source operands switched — but otherwise
    step-for-step the same windowed save/restore pattern.
+4. **TinyGo's bitcode reveals the calling convention** — `define internal
+   fastcc i32 @main.go_add_i32(i32 %a, i32 %b)` — Go uses `fastcc` (the LLVM
+   private fast CC), NOT C-ABI. The Xtensa register assignment ends up the
+   same (a2/a3 inputs, a2 output) because `fastcc` defaults to the platform
+   ABI when nothing custom is specified for the target. This is why a TinyGo
+   function call FROM Go works on Xtensa but co-linking with C is non-trivial
+   (you'd need an explicit C-ABI wrapper).
 
 ## 6. Frame info: `.eh_frame` vs `.debug_frame`
 
@@ -144,6 +171,7 @@ Three observations a reverse-engineer cares about:
 | rust | — | 60 |
 | zig | **44** | — |
 | LDC | **44** | — |
+| TinyGo | (in linked ELF; see §g) | — |
 
 DWARF distinguishes **debugging CFI** (`.debug_frame`, optional and per-DIE) from
 **runtime unwind tables** (`.eh_frame`, used by libunwind/exception throwing).
@@ -151,7 +179,10 @@ clang/gcc/rust emit `.debug_frame` here; **Zig and LDC emit `.eh_frame`**, the
 exception-handling form. On bare-metal with no unwinder this is wasted bytes —
 Zig has a default `-fno-omit-frame-pointer`-style policy and LDC inherits LLVM's
 default. (Aside: zig's stray `.eh_frame` is exactly the source of the ~200 B
-over-count in docs/06 — see `llvm-size` Berkeley vs `-A`.)
+over-count in docs/06 — see `llvm-size` Berkeley vs `-A`.) TinyGo emits
+`.eh_frame` in the linked ELF too, alongside the conservative-GC stack-walk
+metadata its runtime needs; the byte count isn't comparable here because the
+section covers every function in the firmware.
 
 ## 7. Capability & known-vulnerability summary (the 5-toolchain rollup)
 
@@ -164,16 +195,19 @@ Distilling what the prior docs have established + this audit:
 | **rustc 1.95-nightly** (esp-rs fork) | C-ABI parity bit-for-bit with clang/gcc (docs/03), cross-language LTO with esp-clang ✓ (docs/04), v0 mangling for own symbols, atomics use s32c1i (docs/17) | esp-rs is a **fork** — upstream rustc has Tier-3 specs but no Xtensa codegen (docs/00); `_R…` v0 unstable hash discourages calling D/zig from rust by mangled name (docs/12) |
 | **Zig 0.16** (espressif bootstrap fork) | only host-capable C/C++ here (`zig cc`); native s32c1i atomics, smallest debug codegen, `EE.*` SIMD via struct-form clobbers (docs/16) | the experimental Xtensa ABI mis-lowers under-aligned (`align(1)`) by-value struct args on Xtensa AND `{i32,i32}` on RISC-V — the headline FFI hole (docs/05/09); 21.1.0 bitcode incompatible with esp 21.1.3 LTO reader (docs/04); huge `.debug_str` (§1); always emits `.eh_frame` (§6) |
 | **LDC 1.42-git** (LLVM 21.1.3, espressif fork — docs/23) | canonical 5th frontend now on the same espressif/llvm-project as clang/rust; Itanium-mangled `extern(C++[,"ns"])` for direct C++ template FFI (docs/21); compile-time reflection via `__traits`/`mixin`; `@safe`/`@live` static borrow analog (docs/20); cross-language LTO ✓ with clang (same 21.1.3); codegen now matches clang (§5); first-class esp32/s2/s3 `-mcpu`; direct `ldc2 -c` -> `ld.lld` (no re-assembly) | marks every by-value aggregate `byval`/`sret` (frontend bug, **unchanged** by the LLVM swap — docs/23 §(h)) → fails `point_dot` + `blob_sum` on Xtensa, faults on RISC-V small struct (docs/19); `cent`/`ucent` keywords formally obsoleted, no native 128-bit int in `-betterC` (docs/17 §g-D); `@live` silent without `-preview=dip1021` (docs/20); ICEs on Xtensa + EH + opt (ldc #5091) |
+| **TinyGo v0.41.1** (LLVM 20.1.1, bundled — docs/24) | bundled LLVM-20 is the only LLVM-20 in the matrix; targets esp32 + s3 + c3 (no s2); datalayout byte-identical to the 21.1.x trio; codegen at `-opt=0` collapses to clang/Rust-class 7-byte `add_i32`; `+atomctl/+memctl/+timerint` peripheral-control features not present in esp-clang's `-mcpu=esp32` set; pre-built `picolibc` + `compiler-rt-xtensa-esp32` shipped; conservative GC + cooperative scheduler in the runtime | **whole-program compiler** — no `-c` relocatable mode outside wasm, so the firmware is the unit (can't join the FFI matrix, docs/24); functions C-mangled as `<package>.<func>` (`main.go_add_i32`), not the bare C name; uses `fastcc` LLVM CC internally; `//export` doesn't make a function externally linkable on baremetal Xtensa; `-x` and stdout/stderr merge bug (`2>&1` truncates the log to "package command-line-arguments" and reports rc=1; split streams to work around it); files starting with `_` are silently ignored even when named on the command line |
 
 ## 8. Espressif baremetal advantages — the consolidated story
 
 What this whole repo has demonstrated about polyglot FFI on **ESP32-class
 hardware**:
 
-1. **The shared LLVM Xtensa backend is real and now spans all four frontends**
+1. **The shared LLVM Xtensa backend is real and now spans five LLVM frontends**
    — clang, rust, **D** (since docs/23) all on espressif LLVM **21.1.3**; zig on
-   a bootstrap 21.1.0. All four now emit the byte-identical Xtensa
-   `target datalayout` (docs/04). GCC sits outside as an independent control.
+   a bootstrap 21.1.0; **TinyGo** (docs/24) on its own bundled LLVM **20.1.1**.
+   All five emit the byte-identical Xtensa `target datalayout`
+   (`e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32`, docs/04 + docs/24 §c). GCC
+   sits outside as a non-LLVM independent control.
 2. **The Itanium C++ ABI is the cross-language bridge** — any C++ template
    instantiation can be called from D (`extern(C++,class) struct T(int Slot)`),
    Rust (`#[link_name="_ZN…"]`), or Zig (`extern fn @"_ZN…"`). Five toolchains
@@ -197,7 +231,37 @@ hardware**:
    ABI exports; clang for C++ template *providers* (consumed by everyone);
    LDC for compile-time reflection-heavy or borrow-checker-needing components
    (direct `-c` since docs/23, codegen matches clang); Zig for the host runner
-   harness (`zig cc`/`zig c++` is the only host-capable C/C++ in the set).
+   harness (`zig cc`/`zig c++` is the only host-capable C/C++ in the set);
+   **TinyGo for standalone Go firmware** on esp32/s3/c3 (whole-program — not
+   co-linkable with the others, but tightest debug codegen at -opt=0, docs/24).
+
+## §g — TinyGo addendum (the 6th toolchain, with caveats)
+
+TinyGo can't join §1's section-bytes table at apples-to-apples scale because
+its linked ELF is the *whole firmware*: a single `int32` add accumulates
+60 KB `.debug_info`, 46 KB `.debug_str`, 32 KB `.debug_loc`, 18 KB
+`.debug_pubnames`, etc. — covering the Go runtime + standard library + scheduler
++ GC, plus the function itself. So §1 reports five rows; §g reports TinyGo's
+function-level evidence in the same RE form:
+
+```
+TinyGo  DWARFv4   producer: "clang version 20.1.1 (tinygo-org/llvm-project 6707598…)"
+TinyGo  go_add_i32 (-opt=0, linked ELF, main.go_add_i32):
+        entry  a1, 32
+        add.n  a2, a2, a3
+        retw.n
+TinyGo  bitcode IR signature: define internal fastcc i32 @main.go_add_i32(i32 %a, i32 %b)
+TinyGo  symbol mangling: main.go_add_i32  (package-qualified Go scheme, not C)
+```
+
+The function lands at 7 bytes — tied with Rust release for tightest debug
+codegen — using the exact same Xtensa `entry/add.n/retw.n` sequence. `fastcc`
+in the IR confirms TinyGo doesn't enter `add_i32` via the C calling convention;
+nothing about Xtensa's a2..a7 register window changes, but a C caller wanting
+to invoke `main.go_add_i32` would need an explicit wrapper. The
+`experiments/dwarf-parity/run.sh §g` block preserves TinyGo's `-work` work
+dir and inspects the intermediate `main` ELF (the relocatable `main.o` is
+LLVM bitcode, not yet an ELF, also re-runnable).
 
 ## Repro
 

@@ -5,17 +5,20 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 
 ## Identity & availability
 
-| | **Rust** (esp-rs) | **Zig** (esp bootstrap) | **D** (LDC) | **esp-clang** | **GCC** (crosstool-NG) |
-|---|---|---|---|---|---|
-| version | 1.95.0-nightly | 0.16.0 | LDC 1.42-git | 21.1.3 | 15.2.0 |
-| backend | LLVM **21.1.3** | LLVM **21.1.0** | LLVM **21.1.3** (espressif fork) | LLVM **21.1.3** | GCC (own) |
-| Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** | **`kassane/esp-idf-dlang` fork** (LDC + `espressif/llvm-project`; docs/23) | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` |
-| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | partial — Zig 0.16 has no esp32; 0.17.0-dev (Codeberg) adds `esp32` only (no s2/s3); **fork** has all three | partial — `$LDC2_UPSTREAM` (LLVM 22.1.2) works for `esp32` only (no s2/s3; ldc #4919) and needs the `-output-s` re-assembly workaround; docs/23 | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial (esp32/esp8266 only) | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif |
-| esp32 / s2 / s3 | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ (via `-mcpu`) | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ |
-| `core`/libc model | no prebuilt core → `-Zbuild-std=core` + rust-src | freestanding (no std) | `-betterC` (no druntime/Phobos) | freestanding | newlib + libgcc |
+| | **Rust** (esp-rs) | **Zig** (esp bootstrap) | **D** (LDC) | **esp-clang** | **GCC** (crosstool-NG) | **TinyGo** (docs/24) |
+|---|---|---|---|---|---|---|
+| version | 1.95.0-nightly | 0.16.0 | LDC 1.42-git | 21.1.3 | 15.2.0 | v0.41.1 |
+| backend | LLVM **21.1.3** | LLVM **21.1.0** | LLVM **21.1.3** (espressif fork) | LLVM **21.1.3** | GCC (own) | LLVM **20.1.1** (TinyGo-bundled) |
+| Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** | **`kassane/esp-idf-dlang` fork** (LDC + `espressif/llvm-project`; docs/23) | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` | **`tinygo-org/llvm-project` fork** (bundled in the tarball; see docs/24) |
+| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | partial — Zig 0.16 has no esp32; 0.17.0-dev (Codeberg) adds `esp32` only (no s2/s3); **fork** has all three | partial — `$LDC2_UPSTREAM` (LLVM 22.1.2) works for `esp32` only (no s2/s3; ldc #4919) and needs the `-output-s` re-assembly workaround; docs/23 | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial (esp32/esp8266 only) | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif | n/a — TinyGo bundles its own LLVM and runtime |
+| esp32 / s2 / s3 | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ (via `-mcpu`) | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / **✗** / ✓ (no esp32-s2 target) |
+| `core`/libc model | no prebuilt core → `-Zbuild-std=core` + rust-src | freestanding (no std) | `-betterC` (no druntime/Phobos) | freestanding | newlib + libgcc | Go runtime + picolibc (bundled) |
+| co-linkable `.o` for FFI matrix? | ✓ | ✓ | ✓ | ✓ | ✓ | **✗** — whole-program (firmware-only output; docs/24 §d) |
 
-> **All four LLVM toolchains now require an Espressif *fork* for usable
-> ESP/Xtensa support.** `esp-rs/rust` is a fork of rustc (built against
+> **All five LLVM frontends here ride a custom LLVM fork** for Xtensa support
+> — four against `espressif/llvm-project` and TinyGo against its own
+> `tinygo-org/llvm-project` (LLVM 20.1.1, bundled inside the TinyGo tarball;
+> docs/24). Stock upstream LLVM's Xtensa is still experimental (esp32/8266 only). `esp-rs/rust` is a fork of rustc (built against
 > espressif's LLVM) — *upstream* `rustc` cannot build for Xtensa even though it
 > carries Tier-3 target specs. Likewise **`espressif/llvm-project` ≠ upstream
 > LLVM**: the espressif fork has the complete esp32/s2/s3 backend; upstream
@@ -40,6 +43,7 @@ experiments in this repo. Legend: ✓ works / correct · ✗ broken · — n/a.
 | D (LDC) | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -c` *(direct -c on the espressif-fork LDC; the upstream-22 LDC needs `-output-s` re-assembly — docs/23)* |
 | esp-clang | `clang --target=xtensa-esp-elf -mcpu=esp32` |
 | GCC | `XTENSA_GNU_CONFIG=…/xtensa_esp32.so xtensa-esp-elf-gcc` *(mandatory: default core is big-endian)* |
+| TinyGo | `tinygo build -target=esp32-coreboard-v2 -o app.bin app.go` *(whole-program; emits a flash image, not a `.o` — docs/24)* |
 
 ## ABI & FFI correctness (the core result — docs 03/05)
 

@@ -158,3 +158,43 @@ work, not a dependency of the experiments.
   — bare-metal Zig on ESP32 (Xtensa) without ESP-IDF; closest prior art for the
   pure-Zig Xtensa path exercised here, and a good base for a runtime qemu harness
   (docs/08).
+
+## D / LDC on Xtensa (the espressif-fork build — docs/23)
+
+- **kassane/esp-idf-dlang** — <https://github.com/kassane/esp-idf-dlang> — the
+  canonical LDC 1.42-git build against `espressif/llvm-project` LLVM 21.1.3
+  (`xtensa-toolchain` release pinned in `scripts/setup.sh`). Drops every D-side
+  workaround documented in the pre-fork docs/19.
+- **kassane/dlang-mos-hello-world#1** —
+  <https://github.com/kassane/dlang-mos-hello-world/issues/1> — wontfix prior
+  art for the *frontend-side* D ABI bug pattern: LDC frontend treats `size_t`/
+  `ptrdiff_t` as 32-bit on a 16-bit MOS 6502 even though the datalayout says
+  16-bit pointers. Same family as our Xtensa `byval(%Point)` bug — fix has to
+  land in LDC's DMD ABI, not in any downstream LLVM fork.
+- **ldc-developers/ldc #4919** —
+  <https://github.com/ldc-developers/ldc/issues/4919> — "Missing default LLVM
+  `cpu-features` in some targets". Fixed for esp32-s2/s3 on the espressif-fork
+  LDC; still open upstream.
+- **ldc-developers/ldc #5091** —
+  <https://github.com/ldc-developers/ldc/issues/5091> — Xtensa ICE on EH+opt;
+  still open. `-betterC` avoids it.
+
+## TinyGo on Xtensa (docs/24)
+
+- **tinygo-org/tinygo** — <https://github.com/tinygo-org/tinygo> — Go-to-LLVM
+  compiler. v0.41.1 (current pin) bundles its own LLVM 20.1.1 — a third LLVM
+  family in this matrix on top of 21.1.x and 22.1.2. Whole-program compiler;
+  doesn't co-link with the other five.
+- **tinygo `v0.41.1` release** —
+  <https://github.com/tinygo-org/tinygo/releases/tag/v0.41.1> — asset
+  `tinygo0.41.1.linux-amd64.tar.gz`. Release notes mention esp32-c3 / esp32-s3
+  fixes.
+- **tinygo target list (Xtensa subset)** —
+  `tinygo targets | grep -E '(esp32|xiao-esp)'` →
+  `adafruit-esp32-feather-v2 esp-c3-32s-kit esp32-coreboard-v2 esp32-generic
+  esp32-mini32 esp32c3-12f esp32c3-generic esp32c3-supermini esp32s3-generic
+  esp32s3-supermini …`. **No `esp32s2`** target ships in v0.41.1.
+- **tinygo-org/llvm-project** —
+  <https://github.com/tinygo-org/llvm-project> — the LLVM fork TinyGo bundles
+  (LLVM 20.1.1 + Xtensa). Producer DIE on a TinyGo-built esp32 ELF reads
+  `clang version 20.1.1 (https://github.com/tinygo-org/llvm-project 670759811adc85df52f410d7306788fabfc6242d)`.
