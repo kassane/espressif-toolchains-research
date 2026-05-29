@@ -8,23 +8,25 @@ Berkeley `llvm-size` "text" column, which folds in zig's default `.eh_frame`:
 | toolchain | `.text` (bytes) | notes |
 |-----------|:--------------:|-------|
 | gcc 15.2 (C) | **201** | smallest; mature Xtensa codegen, uses zero-overhead `loop` |
-| rust 1.95 | ~179 | matches gcc/clang closely (per-function sections) |
-| clang 21 (C) | 223 | (`+ mov.n a7,a1` frame setup at `-Os`) |
-| clang 21 (C++) | 212 | templates fully inlined; C-ABI exports only |
-| D 1.42 (LDC esp-fork, `-betterC`) | 533 | between clang and zig; verbose byte loops in `make_blob`/`blob_sum` (docs/19, /23) |
-| zig 0.16 (Zig) | **715** | ~3× — non-C-ABI large-struct marshalling (doc 05) |
+| rust 1.95 | 171 | matches gcc/clang closely (per-function sections) |
+| clang 21 (C) | 219 | (`+ mov.n a7,a1` frame setup at `-Os`) |
+| clang 21 (C++) | 204 | templates fully inlined; C-ABI exports only |
+| **zig 0.17** (LLVM 22.1.4, `$ZIG` canonical) | **375** | ~1.8× clang — frontend now flattens aggregates to `[N x i32]` (docs/05 §"Zig 0.17 status"), so `blob_sum`/`make_blob` no longer shuffle bytes through the stack; the residual gap is from the `.eh_frame` Zig still emits by default (220 B, see docs/15) plus a more verbose per-function prologue |
+| zig 0.16 (`$ZIG_016` legacy) | 715 | ~3× — old non-C-ABI large-struct marshalling (doc 05); kept here for the comparison |
+| D 1.42 (LDC esp-fork, `-betterC`) | 489 | per-function sections sum; verbose byte loops in `make_blob`/`blob_sum` (the residual D `byval` gap, docs/19, /23) |
 | TinyGo v0.41.1 | *whole firmware ~140 KB ELF (docs/24)* | not directly comparable: TinyGo emits a flash image (header `e9 02 02 1f`), not a per-function `.o`; the included Go runtime + std lib dominate. At -opt=0 the single-function disasm matches Rust release in 7 bytes (docs/22 §g). |
 
 Re-derive with `./scripts/analyze.sh esp32` (writes
-`build/analysis/sizes-esp32.txt`). The Zig outlier is entirely
-`blob_sum`/`make_blob`: the byte-by-byte stack shuffling for the large by-value
-struct. On scalar/callback/small-struct functions Zig matches the others
-closely. D sits in between — its `make_blob`/`blob_sum` byte loops inflate it
-much like zig's, the rest is tight. The D figure is for the canonical
-espressif-fork LDC; the upstream-LLVM-22 LDC produces a *smaller* `.text`
-(~366 B) but with non-compact codegen (docs/22) — the fork now uses the same
-`.n` compact forms as clang, so its individual functions are tighter even
-though the total grew slightly from a different byte-loop shape.
+`build/analysis/sizes-esp32.txt`). The 0.16 → 0.17 Zig flip cuts `.text` from
+715 to 375 bytes on the same source — the savings are concentrated in
+`blob_sum` / `make_blob`, where 0.16 had per-byte stack marshalling and 0.17
+loads/stores six full words. **D now leads the residual outlier list** — its
+`make_blob`/`blob_sum` byte loops inflate it (489 B sum), the rest is tight.
+The D figure is for the canonical espressif-fork LDC; the upstream-LLVM-22
+LDC produces a *smaller* `.text` (~366 B) but with non-compact codegen
+(docs/22) — the fork uses the same `.n` compact forms as clang, so its
+individual functions are tighter even though the total grew slightly from a
+different byte-loop shape.
 
 ## Endianness & machine
 

@@ -8,7 +8,9 @@ output.
 
 - [x] Pinned + scripted setup of all **five** toolchains (`scripts/setup.sh`).
       Versions confirmed: clang/LLVM 21.1.3, rustc 1.95-nightly/LLVM 21.1.3,
-      zig 0.16.0/LLVM 21.1.0, gcc 15.2.0, **LDC 1.42-git on espressif LLVM
+      **zig 0.17.0-xtensa / bundled clang/LLVM 22.1.4** (canonical `$ZIG`; the
+      legacy 0.16.0/LLVM 21.1.0 lane `$ZIG_016` is kept for the docs/05
+      struct-bug reproducer), gcc 15.2.0, **LDC 1.42-git on espressif LLVM
       21.1.3** (D; canonical fork build, swapped in — docs/23). The upstream
       LLVM-22 LDC remains as `$LDC2_UPSTREAM` for the side-by-side comparison.
 - [x] Confirmed the shared backend: identical CPU feature sets and identical
@@ -28,9 +30,11 @@ output.
       RISC-V (small `{i32,i32}` → `[2 x i64]`) — see the corrected entry below;
       not Xtensa-only. (doc 05/09, `experiments/abi-structs/sweep.sh`).
 - [x] IR mixing: `llc` consumes all frontends; clang↔rust cross-language **LTO**
-      links; clang↔zig LTO blocked by 21.1.0 vs 21.1.3 bitcode skew (doc 04).
-- [x] Binary/size/mangling comparison (doc 06): real `.text` rust 179 ≈ gcc 201
-      < clang 223 (C) / 212 (C++) < D 533 < zig 715 for the 9-fn lib (numbers
+      links; clang↔zig LTO blocked by the LLVM-21 vs LLVM-22 cluster split
+      (zig 0.17 = 22.1.4 bitcode rejected by esp-clang's 21.1.3 `ld.lld`; doc 04).
+- [x] Binary/size/mangling comparison (doc 06): real `.text` rust 171 ≈ gcc 201
+      < clang 219 (C) / 204 (C++) < zig 375 (down from 715 on 0.16) < D 489
+      for the 9-fn lib (numbers
       shifted after the docs/23 LDC swap brought back clang-class compact
       forms in the LDC arm; `llvm-size -A`, current as of doc 06).
 
@@ -46,22 +50,20 @@ output.
 - [x] **Rust ⇄ Zig frontend interop** (docs/17, `experiments/rust-zig/run.sh`):
       the two non-C LLVM frontends agree on **every scalar ABI incl. C-inexpressible
       `u128`/`f128`/`f16`** (Rust uses byval for the 2nd 16-byte arg, Zig direct —
-      backend reconciles; runtime-verified Rust→Zig u128 carry on qemu). The only
-      clash was **by-value struct arguments** (Zig's bug — pass by pointer; an
-      *upstream* Zig gap per #5467 — **CLOSED 2026-05-06, landed in 0.17.0**).
-      **Verified at the shell on the kassane/zig-espressif-bootstrap
-      `zig-0.17.0-relsafe-x86_64-linux-musl-baseline` tarball** (clang/LLVM
-      **22.1.4**, exposed as `$ZIG_017`): qemu `zig_blob_sum` flips from
-      `FAIL (got=409 want=300)` to `ok (300)` on xtensa, and qemu
-      `zig_point_dot` flips from `FAIL` to `ok (11)` on riscv. The
-      `abi-structs` sweep on every Xtensa core now shows REGISTERS in every
-      Zig row (was STACK on align-1 byte arrays). `$ZIG` default stays on
-      0.16 for snapshot stability — `ZIG=$ZIG_017 ./scripts/build-ffi.sh
-      esp32` flips every consumer. See docs/05 §"Zig 0.17 status".
+      backend reconciles; runtime-verified Rust→Zig u128 carry on qemu). The
+      historical clash was **by-value struct arguments** on Zig 0.16 (an
+      *upstream* Zig gap per #5467 — **CLOSED 2026-05-06, landed in 0.17.0**),
+      now closed on the canonical `$ZIG` (0.17, LLVM 22.1.4). qemu `zig_blob_sum`
+      reads `ok (300)` on xtensa and qemu `zig_point_dot` reads `ok (11)` on
+      riscv; the `abi-structs` sweep on every Xtensa core shows REGISTERS in
+      every Zig row (was STACK on align-1 byte arrays). `ZIG=$ZIG_016
+      ./scripts/build-ffi.sh esp32` reproduces the historical break. See
+      docs/05 §"Zig 0.17 status".
       **Nullable pointers interop** (`Option<&T>`/`Option<NonNull>`/`Option<fn>`
       ↔ `?*T`/`?*fn` = single `ptr`, FFI-safe, runtime-verified). **Atomics**
-      match (native `s32c1i`). Object FFI links; **cross-language LTO fails**
-      (21.1.3 vs 21.1.0).
+      match (native `s32c1i`). Object FFI links; **cross-language LTO** fails
+      across the LLVM-21/LLVM-22 cluster split (21.1.3 rust vs 22.1.4 zig
+      bitcode; docs/04 §"Two LLVM clusters").
 - [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D added
       to the FFI matrix + qemu harness). The canonical LDC is now LDC 1.42-git on
       **espressif/llvm-project LLVM 21.1.3** (kassane/esp-idf-dlang, docs/23) —
@@ -221,10 +223,11 @@ output.
       stack args — fixed; all toolchains agree on 4-byte slots), esp-rs/rust
       #278/#18, and closed miscompiles (#38/#41/#33 stay fixed on clang 21.1.3).
 - [x] **Upstream Zig comparison** (`pip install ziglang`, docs/10): upstream Zig
-      **0.16.0** has no esp32/esp32c3 CPUs (bootstrap required). Zig **0.17.0-dev**
-      (Codeberg) adds an `esp32` CPU via upstream LLVM, but still not s2/s3 — only
-      the fork has all Xtensa targets, like the Rust fork. The RISC-V `[2 x i64]`
-      struct bug reproduces on upstream Zig → an upstream Zig frontend bug.
+      **0.17.0** adds an `esp32` CPU via upstream LLVM (per #5467) but still
+      not s2/s3 — only the bootstrap fork has all Xtensa targets, like the Rust
+      fork. The historical `$ZIG_016` lane (upstream 0.16.0) had no esp32 CPU
+      upstream at all. The RISC-V `[2 x i64]` struct-arg bug reproduced on
+      upstream Zig 0.16 → an upstream Zig frontend bug, fixed in 0.17.
 - [x] **Cross-language LTO** (docs/04): C↔Zig LTO inlines + constant-folds across
       the boundary on riscv when one LLVM version is used (upstream zig cc -flto).
 - [x] **Bare-metal Rust+Zig mixin use-case** (docs/11,

@@ -12,8 +12,8 @@ the comparison.
 
 | # | Component | Repo / tag | Asset | Size |
 |---|-----------|-----------|-------|------|
-| 1 | Zig | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa` | `zig-relsafe-x86_64-linux-musl-baseline.tar.xz` | 75 MB |
-| 1b | Zig 0.17 (fix lane) | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa-dev` | `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` | 76 MB |
+| 1 | Zig (canonical) | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa-dev` | `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` | 76 MB |
+| 1b | Zig 0.16 (legacy, `$ZIG_016`) | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa` | `zig-relsafe-x86_64-linux-musl-baseline.tar.xz` | 75 MB |
 | 2 | clang/LLVM | `espressif/llvm-project` @ `esp-21.1.3_20260408` | `clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz` | 398 MB |
 | 3 | Rust | `esp-rs/rust-build` @ `v1.95.0.0` | `rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz` (+ `rust-src-1.95.0.0.tar.xz`) | 168 MB |
 | 4 | GCC | `espressif/crosstool-NG` @ `esp-15.2.0_20251204` | `xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz` | 173 MB |
@@ -27,15 +27,16 @@ and lays out 1–5 under `$TC` (`/home/user/toolchains`). Components 5b
 (comparison-only upstream LDC) and 6 (the matching LLVM-22 `llvm-link`/`opt`/
 `llvm-dis`, a `.tar.zst` needing `zstd`) are opt-in via
 `LDC_UPSTREAM=1`/`LLVM22=1`; needed only to run `experiments/ldc-fork-comparison`
-(docs/23). The canonical 5th frontend (asset 5) version-matches esp-clang's
-21.1.x binutils, so cross-frontend IR work doesn't require asset 6.
+(docs/23) and to LTO across the new LLVM-22 cluster (`$ZIG` 0.17 + upstream
+LDC). The canonical 5th frontend (asset 5) version-matches esp-clang's
+21.1.x binutils, so the LLVM-21 cluster (clang/rust/D-canonical) does cross-
+frontend IR work without asset 6.
 
 ## Reported versions
 
 ```
-zig                : 0.16.0
-zig (fix lane)     : 0.17.0-xtensa                       →  bundled clang 22.1.4 / LLVM 22.1.4
-zig cc (bundled)   : clang version 21.1.0  (kassane/zig-espressif-bootstrap)
+zig                : 0.17.0-xtensa                       →  bundled clang 22.1.4 / LLVM 22.1.4 (`$ZIG` canonical)
+zig (legacy)       : 0.16.0                              →  bundled clang 21.1.0 (`$ZIG_016`)
 esp clang          : Espressif clang version 21.1.3 (esp-21.1.3_20260408)   [LLVM 21.1.3]
 rustc              : 1.95.0-nightly (95e5bda86 2026-04-15)  →  LLVM version: 21.1.3
 xtensa-esp-elf-gcc : 15.2.0 (crosstool-NG esp-15.2.0_20251204)
@@ -44,13 +45,21 @@ ldc2 (upstream,opt): 1.42.0-git-c8305d0 (DMD v2.112.1)  →  LLVM version: 22.1.
 tinygo             : 0.41.1 (Go 1.24.7)                 →  LLVM version: 20.1.1 (tinygo-org fork; bundled)
 ```
 
-**Backend alignment:** clang, rust **and the canonical D/LDC** are now *the
-same* LLVM point release (21.1.3, espressif fork); Zig is one patch behind
-(21.1.0); the optional upstream LDC is on LLVM 22.1.2 for the comparison. The
-21.1.0 vs 21.1.3 gap is invisible for object-level FFI but blocks cross-language
-**LTO** with Zig; clang↔rust↔D LTO all share 21.1.3 so they link without
-skew (see [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
-[23-ldc-espressif-fork.md](23-ldc-espressif-fork.md)).
+**Backend alignment.** Two LLVM clusters in the matrix now:
+
+- **LLVM-21 cluster** (esp-clang 21.1.3, rustc 21.1.3, LDC canonical 21.1.3) —
+  the three share an LLVM point release exactly, so cross-language LTO via
+  esp-clang's bundled `ld.lld` works without skew.
+- **LLVM-22 cluster** (Zig 0.17 / LLVM 22.1.4, LDC upstream / LLVM 22.1.2,
+  `$LDC_LLVM_DIR` binutils 22.1.2). With `LLVM22=1` installed, the optional
+  binutils can `llvm-link` cross-cluster (22 reads 21.1.3 bitcode fine) but
+  the 21.1.3 LTO reader rejects post-21 bitcode (`Invalid record`), so the
+  full LTO pipeline only works within a cluster. **TinyGo** (LLVM 20.1.1)
+  sits outside both. All three datalayouts are byte-identical, so
+  *object-level* FFI works across the whole matrix regardless.
+
+See [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
+[23-ldc-espressif-fork.md](23-ldc-espressif-fork.md).
 
 ## Per-toolchain notes / gotchas
 
@@ -128,7 +137,8 @@ skew (see [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
 
 ### TinyGo (tinygo-org/tinygo)
 - `v0.41.1` ships **its own LLVM 20.1.1 bundle** (the only LLVM-20 in the
-  matrix; clang/rust/D-fork are 21.1.3, zig 21.1.0, upstream-LDC 22.1.2).
+  matrix; clang/rust/D-fork are 21.1.3, zig 0.17 bundles LLVM 22.1.4,
+  upstream-LDC 22.1.2).
 - Targets `esp32 + esp32s3 + esp32c3` (per-board variants too); **no `esp32s2`** —
   TinyGo upstream doesn't ship that target.
 - Build with `tinygo build -target=esp32-coreboard-v2 -o app.bin app.go`.

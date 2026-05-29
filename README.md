@@ -33,14 +33,16 @@ the detailed evidence.
 |------|-----------|---------|---------|
 | C/C++ (clang) | [espressif/llvm-project](https://github.com/espressif/llvm-project) `esp-21.1.3_20260408` | clang/LLVM **21.1.3** | LLVM Xtensa |
 | Rust | [esp-rs/rust-build](https://github.com/esp-rs/rust-build) `v1.95.0.0` | rustc 1.95.0-nightly, LLVM **21.1.3** | LLVM Xtensa |
-| Zig | [kassane/zig-espressif-bootstrap](https://github.com/kassane/zig-espressif-bootstrap) `0.16.0-xtensa` | Zig 0.16.0, clang/LLVM **21.1.0** | LLVM Xtensa |
+| Zig | [kassane/zig-espressif-bootstrap](https://github.com/kassane/zig-espressif-bootstrap) `0.16.0-xtensa-dev` (canonical; the `0.16.0-xtensa` tag is the `$ZIG_016` legacy lane) | **Zig 0.17.0-xtensa**, bundled clang/LLVM **22.1.4** | LLVM Xtensa |
 | D | [kassane/esp-idf-dlang](https://github.com/kassane/esp-idf-dlang/releases/tag/xtensa-toolchain) `xtensa-toolchain` (`-betterC`) | LDC 1.42-git, espressif/llvm-project **LLVM 21.1.3** | LLVM Xtensa (espressif fork) |
 | Go | [tinygo-org/tinygo](https://github.com/tinygo-org/tinygo/releases/tag/v0.41.1) `v0.41.1` | TinyGo 0.41.1, bundled **LLVM 20.1.1** | LLVM Xtensa (tinygo-org fork; esp32/s3/c3 — no s2) |
 | C/C++ (gcc) | [espressif/crosstool-NG](https://github.com/espressif/crosstool-NG) `esp-15.2.0_20251204` | gcc **15.2.0** | GCC Xtensa (control) |
 
 The LLVM-frontend toolchains ride a fork of LLVM-Xtensa — clang, rustc, and the
-canonical LDC on `espressif/llvm-project` 21.1.3, zig 0.16 on bundled 21.1.0,
-and TinyGo on its own bundled `tinygo-org/llvm-project` 20.1.1. GCC is the
+canonical LDC on `espressif/llvm-project` 21.1.3 (the **LLVM-21 cluster**);
+zig 0.17 on bundled 22.1.4 (joining the **LLVM-22 cluster** with upstream LDC
+22.1.2); the legacy `$ZIG_016` lane uses bundled 21.1.0; TinyGo on its own
+bundled `tinygo-org/llvm-project` 20.1.1. GCC is the
 non-LLVM control. TinyGo's output
 defaults to a full ESP32 flash image but `-o foo.o` does produce a real
 relocatable Xtensa ELF (with ~196 KB of Go runtime + scheduler undefs — see
@@ -107,9 +109,11 @@ CLAUDE.md          orientation for future automated sessions
   Xtensa `target datalayout` (clang/rust/zig/D/TinyGo — docs/04). The espressif-fork
   LDC matches the trio; the upstream-22 LDC used to differ (docs/23); TinyGo
   on LLVM-20 still matches byte-for-byte (docs/24 §c). Same-version (21.1.3)
-  bitcode is LTO-mergeable (clang↔rust↔D); zig 21.1.0 and TinyGo 20.1.1 are
-  version-skew outliers. With the LLVM-22 binutils, `llvm-link` merges all
-  espressif-fork frontends' IR into one module (docs/04).
+  bitcode is LTO-mergeable across the **LLVM-21 cluster** (clang↔rust↔D);
+  zig 0.17's 22.1.4 sits in a **second LLVM-22 cluster** with the optional
+  upstream LDC + `$LDC_LLVM_DIR` binutils. TinyGo (20.1.1) is outside both.
+  The LLVM-22 `llvm-link` reads esp-clang 21.1.3 bitcode fine, so cross-
+  cluster IR merging works (docs/04).
 - **Three frontends mis-handle by-value struct *arguments*** (Rust/clang/gcc are
   correct): **Zig** stack-spills under-aligned (`align(1)`) structs on Xtensa and
   mis-lowers a small `{i32,i32}` to `[2 x i64]` on RISC-V (reproduces on upstream

@@ -151,7 +151,7 @@ echo "  C++ static: NONE (no borrow analog; runtime via -fsanitize=address)."
 echo "  => D @live catches UAF + double-free + dangling + LEAK; Rust catches first 3"
 echo "     but allows leaks (mem::forget safe); C++ has no static borrow equivalent."
 
-echo "== (h) C++26 via zig c++ (clang 21.1.0 + libc++; -fexperimental-library) =="
+echo "== (h) C++26 via zig c++ (canonical \$ZIG = 0.17 → clang 22.1.4 + libc++ 22; -fexperimental-library) =="
 "$ZIG" c++ --version 2>/dev/null | head -1 | sed 's/^/  /'
 hprobe(){ printf '#include %s\nint main(){return 0;}\n' "$2" > "$B/p.cpp"; \
   o=$("$ZIG" c++ -std=c++26 -fexperimental-library -c "$B/p.cpp" -o /dev/null 2>&1 || true); \
@@ -169,14 +169,16 @@ hprobe "<hive> (C++26)"     "<hive>"
 printf 'int f(int b) pre(b!=0) { return b; }\n' > "$B/ctr.cpp"
 o=$("$ZIG" c++ -std=c++26 -fexperimental-library -c "$B/ctr.cpp" -o /dev/null 2>&1 || true)
 printf "  contracts syntax (P2900): %s\n" "$(printf '%s' "$o" | grep -oE 'expected function body.*' | head -1 || echo IMPLEMENTED)"
-echo "  => -fexperimental-library is a no-op on this libc++ 21 (C++26 <simd>/<linalg>/"
-echo "     <contracts>/<hive> all unimplemented); only [[nodiscard]] (must-use) carries."
+echo "  => -fexperimental-library is a no-op on libc++ 22 too (C++26 <simd>/"
+echo "     <linalg>/<contracts>/<hive> all unimplemented); only [[nodiscard]]"
+echo "     (must-use) carries. Set ZIG=\$ZIG_016 to probe the legacy libc++ 21"
+echo "     row; the only feature delta is P2686R5 (constexpr [a,b])."
 
 echo "== (i) C++26 via esp-g++ 15.2.0 / libstdc++ 15 (xtensa-esp-elf, -ffreestanding) =="
 # The matrix has TWO C++ producers: esp-clang 21.1.3 (probed in §h via zig c++)
 # and esp-g++ 15.2.0. Probe the GCC arm with the canonical embedded compile
 # mode (-ffreestanding + XTENSA_GNU_CONFIG) to record the libstdc++ 15 status
-# alongside the libc++ 21 row. Three buckets: (1) freestanding-subset headers
+# alongside the libc++ row. Three buckets: (1) freestanding-subset headers
 # (parse under -ffreestanding), (2) hosted-only C++23 headers (gated by
 # bits/requires_hosted.h), (3) frontier C++26 headers libstdc++ 15 hasn't
 # implemented at all. Then the four frontier *features* (P2686/P2900/P2996/P2688).

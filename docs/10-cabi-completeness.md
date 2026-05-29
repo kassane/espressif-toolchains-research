@@ -55,11 +55,14 @@ ABI correctness; the fix for the struct gaps has to come from Zig's codegen.
 ### Cross-language LTO works when one LLVM version is used (docs/04)
 
 C↔Zig cross-language LTO **does** work on RISC-V when the whole pipeline is one
-LLVM version: compile C with upstream `zig cc -flto` and Zig with `zig
--femit-llvm-bc`, link with `zig cc -flto`. The Zig `zigsq` is inlined into the C
-caller and constant-folded (the linked `_start` just stores `385`). It fails only
-when mixing zig's LLVM 21.1.0 bitcode with the esp 21.1.3 LTO reader
-("Invalid record") — a version-skew constraint, not a language one.
+LLVM version: compile C with `zig cc -flto` and Zig with `zig -femit-llvm-bc`,
+link with `zig cc -flto`. The Zig `zigsq` is inlined into the C caller and
+constant-folded (the linked `_start` just stores `385`). It fails when mixing
+zig 0.17's LLVM **22.1.4** bitcode with the esp-clang **21.1.3** LTO reader
+("Invalid record") — a version-skew constraint, not a language one. The
+optional `$LDC_LLVM_DIR`'s LLVM-22 `llvm-link` reads esp-clang 21.1.3 bitcode
+fine, so cross-cluster IR analysis is reachable (docs/04 §"Two LLVM
+clusters").
 
 > These specific Zig cases do not appear in the issue trackers (below); they look
 > unreported. A minimal repro lives in `experiments/abi-structs` + the qemu
@@ -68,8 +71,9 @@ when mixing zig's LLVM 21.1.0 bitcode with the esp 21.1.3 LTO reader
 ## Issue-tracker cross-checks (tested on this exact toolchain)
 
 Reproduced/checked selected issues from `espressif/llvm-project` and `esp-rs/rust`
-against clang 21.1.3 / rustc 1.95-nightly(LLVM 21.1.3) / zig 0.16(LLVM 21.1.0) /
-gcc 15.2:
+against clang 21.1.3 / rustc 1.95-nightly(LLVM 21.1.3) / zig 0.17(LLVM 22.1.4) /
+gcc 15.2 (the `$ZIG_016` legacy lane gives the same answers for everything
+that isn't the by-value struct-arg case, which docs/05 covers):
 
 - **llvm-project #66** — "calling convention for stack args narrower than 32 bits
   is incorrect" (CLOSED). **Fixed here.** With 6 int + several `u8`/`u16` stack
@@ -96,43 +100,44 @@ ABI" framing.
 
 ## Upstream Zig (`pip install ziglang`) vs the espressif bootstrap
 
-Comparing stock upstream **Zig 0.16.0** (built against upstream LLVM) with
-`kassane/zig-espressif-bootstrap` 0.16.0 (built against espressif LLVM 21.1.0):
+Comparing stock upstream **Zig 0.17.0** (built against upstream LLVM) with
+`kassane/zig-espressif-bootstrap` 0.17.0 (canonical `$ZIG`, built against
+espressif LLVM 22.1.4):
 
-- **Upstream Zig 0.16.0 cannot target ESP.** `zig targets` lists only `generic`
-  for the `xtensa` arch (`error: unknown CPU: 'esp32'`), and has no `esp32c3`
-  riscv CPU. **But this is version-dependent:** ziglang/zig **#5467 "Xtensa
-  Support" CLOSED 2026-05-06**, milestone **0.17.0** (companion #23088 for
-  `xtensa(eb)-linux` tier landed the same day). The Zig repo now lives at
-  `codeberg.org/ziglang/zig`; the github.com mirror's latest tag is 0.15.2 at
-  time of writing, with 0.17.0 not yet shipped — so the upstream `esp32` CPU
-  model is on the 0.17.0-dev branch but not in any tagged release. Even when
-  0.17.0 ships, **upstream LLVM only carries esp32/esp8266** (esp32-s2/s3 are
-  fork-side, docs/07), so upstream Zig will get `esp32` but **not the full
-  esp32/s2/s3 set** — **only the espressif bootstrap fork has all Xtensa
-  targets**, exactly mirroring Rust (stock rustc has Tier-3 specs / partial
-  upstream; the esp-rs *fork* has the complete, working set). So the espressif
-  bootstrap remains **required** for s2/s3 (and for the production backend).
-- **The RISC-V `{i32,i32}` → `[2 x i64]` bug is upstream, not the fork.** Built
-  with a generic `riscv32 -mcpu=generic_rv32+m+c`, **both** upstream Zig and the
-  bootstrap emit `i32 @zig_point_dot([2 x i64], [2 x i64])`. So the small-struct
-  RISC-V C-ABI mis-lowering is an upstream **Zig frontend** bug, reproducible with
-  stock `pip install ziglang` on any RISC-V target — independent of the espressif
-  LLVM fork. (The Xtensa `[24]u8` bug is exercised via the bootstrap here, since
-  upstream Zig 0.16.0 has no esp32 target; 0.17.0 adds `esp32` per #5467 but still
-  not s2/s3 — fork-only.) **Answer to the previous open question** (was: "did
-  #5467's landing rewrite the C-ABI lowering for Xtensa, or only enable
-  codegen?"): **YES, it rewrote the lowering**. Re-running
-  `experiments/abi-structs/sweep.sh` against `$ZIG_017`
+- **Upstream Zig 0.17.0 partially targets ESP.** Upstream LLVM only carries
+  esp32/esp8266 (esp32-s2/s3 are fork-side, docs/07), so upstream Zig 0.17
+  gets `esp32` but **not the full esp32/s2/s3 set** — **only the espressif
+  bootstrap fork has all Xtensa targets**, exactly mirroring Rust (stock
+  rustc has Tier-3 specs / partial upstream; the esp-rs *fork* has the
+  complete, working set). So the espressif bootstrap remains **required**
+  for s2/s3 (and for the production backend). The history: ziglang/zig
+  **#5467 "Xtensa Support" CLOSED 2026-05-06**, milestone **0.17.0**
+  (companion #23088 for `xtensa(eb)-linux` tier landed the same day) added
+  the upstream `esp32` model. The legacy `$ZIG_016` lane has no upstream
+  esp32 (`error: unknown CPU: 'esp32'` on stock `pip install ziglang`
+  0.16.0); the bootstrap fork carried it.
+- **The RISC-V `{i32,i32}` → `[2 x i64]` bug WAS upstream, not the fork** —
+  and it's gone in 0.17. Built with a generic `riscv32
+  -mcpu=generic_rv32+m+c`, the legacy 0.16 emitted `i32
+  @zig_point_dot([2 x i64], [2 x i64])` on BOTH upstream and the bootstrap.
+  So the small-struct RISC-V C-ABI mis-lowering was an upstream **Zig
+  frontend** bug, reproducible with stock `pip install ziglang` 0.16.0 on
+  any RISC-V target — independent of the espressif LLVM fork. (The Xtensa
+  `[24]u8` bug was exercised via the bootstrap, since upstream Zig 0.16.0
+  had no esp32 target.) **Answer to the previous open question** (was:
+  "did #5467's landing rewrite the C-ABI lowering for Xtensa, or only
+  enable codegen?"): **YES, it rewrote the lowering**. Re-running
+  `experiments/abi-structs/sweep.sh` against the canonical `$ZIG`
   (`kassane/zig-espressif-bootstrap` `zig-0.17.0-relsafe-…-baseline`,
   bundled LLVM 22.1.4) on every Xtensa core shows REGISTERS in every Zig row
   (was STACK for align-1 byte arrays on 0.16). The qemu harness on both
   xtensa and riscv flips Zig from FAIL to ok for the affected cases. Full
-  account in docs/05 §"Zig 0.17 status". The repo default `$ZIG` stays on
-  0.16 for snapshot continuity; the 0.17 fix lane is opt-in.
+  account in docs/05 §"Zig 0.17 status". The legacy `$ZIG_016` lane
+  reproduces the historical break.
 
-Net parity: Rust's ESP story (esp-rs/rust) is a complete C-ABI implementation;
-Zig's is experimental, with a frontend struct-ABI gap that is in part *upstream*
-(RISC-V) and in part *fork-path* (Xtensa). The shared LLVM backend is necessary
-but not sufficient for FFI — each frontend must implement the platform C ABI, and
-only Rust (here) fully does.
+Net parity (canonical lane): Rust's ESP story (esp-rs/rust) is a complete C-ABI
+implementation; Zig 0.17 now also passes the by-value struct-arg cases that
+0.16 missed. The legacy struct-ABI gap was in part *upstream*
+(RISC-V) and in part *fork-path* (Xtensa); 0.17 closed both. The shared LLVM
+backend is necessary but not sufficient for FFI — each frontend must implement
+the platform C ABI, and Rust + Zig 0.17 now both do.

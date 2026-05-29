@@ -2,12 +2,20 @@
  * qemu_main.c - run the cross-language FFI checks on an emulated Xtensa core
  * (qemu-system-xtensa `sim` machine) and report via semihosting.
  *
- * This turns the static ABI analysis into a runtime result. Expectation:
+ * This turns the static ABI analysis into a runtime result. Expectation on
+ * the *canonical* lane (esp-clang 21.1.3 + rustc 21.1.3 + LDC canonical 21.1.3
+ * + Zig 0.17.0-xtensa / LLVM 22.1.4):
  *   - scalars + struct returns pass for ALL five languages (c/cpp/rs/zig/d);
- *   - by-value struct ARGS diverge on the two experimental frontends: Zig spills
- *     the align-1 `blob_sum` (docs/05), and D marks every aggregate byval/sret so
- *     it also misses the align-4 `point_dot` AND `blob_sum` on Xtensa (docs/19);
+ *   - by-value struct ARGS pass for c/cpp/rs/zig — Zig 0.17 closed the docs/05
+ *     align-1 gap by lowering aggregate args as `[N x i32]` (matches clang);
+ *   - D still marks every aggregate byval/sret so D MISSES the align-4 `point_dot`
+ *     AND the align-1 `blob_sum` on Xtensa (docs/19; LDC-frontend bug);
  *   - passing the same struct BY POINTER works for all (the documented fix).
+ *
+ * Legacy lane (`ZIG=$ZIG_016 ...`): Zig 0.16 / LLVM 21.1.0 mis-lowers the
+ * align-1 `blob_sum` to a movsp stack spill, so the Zig row joins D on the
+ * by-value Blob — that's the original docs/05 + docs/09 break, reproducible by
+ * flipping $ZIG.
  */
 #include "ffi_abi.h"
 #include "semihost.h"
@@ -49,7 +57,7 @@ int xmain(void) {
     check(" zig", zig_add_i32(3, 4), 7);
     check(" d  ", d_add_i32(3, 4), 7);
 
-    puts_("- point_dot: 8B struct by value ==11 [xtensa: d FAIL; riscv: zig FAIL]:\n");
+    puts_("- point_dot: 8B struct by value ==11 [xtensa: d FAIL; riscv 0.16: zig FAIL, 0.17: ok]:\n");
     Point pa = { 1, 2 }, pb = { 3, 4 };
     check(" c  ", c_point_dot(pa, pb), 11);
     check(" rs ", rs_point_dot(pa, pb), 11);
@@ -66,7 +74,7 @@ int xmain(void) {
     puts_(" d    SKIP (byval->ptr deref faults on riscv small struct; docs/19)\n");
 #endif
 
-    puts_("- blob_sum: 24B struct by value ==300 [xtensa: zig+d FAIL; riscv: ok]:\n");
+    puts_("- blob_sum: 24B struct by value ==300 [xtensa 0.17: d FAIL (zig ok); 0.16: zig+d FAIL]:\n");
     Blob bl;
     for (int i = 0; i < 24; i++) bl.data[i] = (unsigned char)(i + 1); /* sum 1..24 = 300 */
     check(" c  ", (long)c_blob_sum(bl), 300);

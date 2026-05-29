@@ -7,26 +7,28 @@
 
 export TC="${TC:-/home/user/toolchains}"
 
-# Zig 0.16.0 (kassane/zig-espressif-bootstrap, built against espressif LLVM 21).
-# Default for backwards-compatibility with existing snapshots — `ZIG=$ZIG_017
-# source scripts/env.sh` swaps to 0.17 (LLVM 22.1.4) which closes the docs/05
-# struct-by-value bug. See HANDOFF / docs/05 §"Zig 0.17 status".
-export ZIG="${ZIG:-$TC/zig-relsafe-x86_64-linux-musl-baseline/zig}"
+# Zig 0.17.0-xtensa (kassane/zig-espressif-bootstrap, bundled clang/LLVM
+# 22.1.4). Canonical default — closes the under-aligned struct-by-value bug
+# (docs/05) and the riscv `point_dot` bug (docs/09) by lowering aggregate
+# args as `[N x i32]` instead of forwarding the raw struct type to LLVM's
+# default CC. `zig c++` is now clang 22.1.4 / libc++ 22, so the C++26
+# host-side probes (docs/16 §6, docs/20 §9, docs/21 §5) now use this
+# binary directly (P2686R5 constexpr structured bindings compiles cleanly).
+export ZIG="${ZIG:-$TC/zig-0.17-espressif/zig}"
 
-# Zig 0.17.0-xtensa (kassane/zig-espressif-bootstrap, bundled clang 22.1.4 /
-# LLVM 22.1.4). The fix lane: closes the under-aligned struct-by-value bug
-# (docs/05) and the riscv `point_dot` bug (docs/09) by lowering aggregate args
-# as `[N x i32]` instead of forwarding the raw struct type to LLVM's default
-# CC. C++26 P2686R5 (constexpr structured bindings) now also compiles via
-# `$ZIG_017 c++`. Opt-in by `export ZIG=$ZIG_017` BEFORE sourcing env.sh, or
-# by setting ZIG in the calling shell — env.sh honors a pre-set value.
-export ZIG_017="$TC/zig-0.17-espressif/zig"
+# Zig 0.16.0 (kassane/zig-espressif-bootstrap, LLVM 21.1.0). Legacy/comparison
+# lane — `experiments/abi-structs/sweep.sh` and `scripts/run-qemu.sh` show the
+# struct-by-value gap reproducing on this build. `ZIG=$ZIG_016
+# ./scripts/build-ffi.sh esp32` recreates the pre-0.17 baseline.
+export ZIG_016="$TC/zig-relsafe-x86_64-linux-musl-baseline/zig"
 
 # Zig v0.17.0-dev (kassane/zig-mos-bootstrap, bundled clang 22.0.0git / libc++ 22).
-# Optional: only used for the C++26 host-side re-probes (docs/20 §9, docs/21 §5,
-# experiments/simd/run.sh §6). Download from
-# https://github.com/kassane/zig-mos-bootstrap/releases/tag/0.17.0-dev and extract
-# to $TC/zig-mos.
+# Comparison-only: a different upstream build, same LLVM-22 family as the
+# canonical $ZIG. Used by `experiments/simd/run.sh` §6 only to cross-check that
+# upstream mainline clang and the espressif bootstrap agree on the C++26
+# surface. Optional download from
+# https://github.com/kassane/zig-mos-bootstrap/releases/tag/0.17.0-dev,
+# extracted to $TC/zig-mos.
 export ZIG_MOS="$TC/zig-mos/zig"
 
 # Espressif clang/LLVM 21.1.3 (espressif/llvm-project esp-21.1.3_20260408)

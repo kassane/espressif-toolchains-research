@@ -203,11 +203,19 @@ remains the C++ tool.
 C++26 was feature-frozen at **Sofia, June 2025** with Contracts (P2900),
 Reflection (P2996), and the static-reflection family adopted; pattern matching
 (P2688R5) was deferred to C++29; safety Profiles (P3081) went to a whitepaper
-track. **Implementations lag.** What the `zig c++` (Zig 0.16's bundled
-**Clang 21.1.0** + **libc++ 21**) actually delivers on `-std=c++26
--fexperimental-library` (`safety.sh` §h):
+track. **Implementations lag.** Probed at the shell against three rows:
 
-| feature | status on clang 21 / libc++ 21 |
+- `$ZIG c++` (canonical Zig 0.17 bundle, **clang 22.1.4 / libc++ 22**) — the
+  current default in this matrix.
+- `$ZIG_016 c++` (legacy Zig 0.16 bundle, **clang 21.1.0 / libc++ 21**) — the
+  historical clang-21 row, kept here so the 21→22 deltas are explicit.
+- `$ZIG_MOS c++` (`kassane/zig-mos-bootstrap` v0.17.0-dev, **clang 22.0.0git /
+  libc++ 22**) — confirms upstream mainline matches the espressif bootstrap on
+  the C++26 surface.
+
+What each delivers on `-std=c++26 -fexperimental-library` (`safety.sh` §h):
+
+| feature | status on clang 21 / libc++ 21 (`$ZIG_016`) |
 |---|---|
 | `[[nodiscard("reason")]]` | ✓ (unchanged from C++17/20) — the only safety carry-through |
 | Contracts (`pre`/`post`/`contract_assert`, P2900) | ✗ *"expected function body after function declarator"* — not in clang 21 (or 22) |
@@ -218,10 +226,11 @@ track. **Implementations lag.** What the `zig c++` (Zig 0.16's bundled
 | `<expected>` / `<print>` / `<flat_map>` / `<execution>` / `<ranges>` / `<format>` | ✓ (available without `-fexperimental-library`) |
 | `<simd>` (P1928) / `<linalg>` (P1673) / `<hive>` (P0447) / `<contracts>` / `<generator>` | ✗ MISSING (libc++ 21 hasn't implemented them) |
 
-**Re-probed against `kassane/zig-mos-bootstrap` v0.17.0-dev** (`zig version`
-reports `0.17.0-mos-dev`; bundled `clang version 22.0.0git`,
-LLVM 22 mainline). Only one delta moves: **P2686R5 (constexpr
-decomposition declarations) now compiles cleanly** on clang 22 — the
+**Re-probed against the canonical `$ZIG c++` (Zig 0.17, clang 22.1.4,
+libc++ 22) and `$ZIG_MOS c++` (v0.17.0-dev, clang 22.0.0git, libc++ 22).**
+Both LLVM-22 bundles deliver the same C++26 surface. Only one delta moves
+relative to the 0.16/clang-21 column: **P2686R5 (constexpr decomposition
+declarations) now compiles cleanly** on clang 22 — the
 `constexpr auto [a,b] = P{1,2};` and `pre/post`/`[[pre:]]` contracts repros
 from `safety.sh` §h flip from `"cannot be declared 'constexpr'"` to rc=0.
 The libc++ 22 ships `<ranges>`/`<format>` cleanly but `<simd>`/`<linalg>`/
@@ -231,7 +240,8 @@ Reflection P2996 (`^^S`/`std::meta::…`) still rejected
 (`error: Unknown Clang option: '-freflection'`). So the C++26 frontier
 (Contracts/Reflection/Pattern Matching/Profiles) **is still not in clang
 22 mainline** — only Bloomberg's `clang-p2996` fork carries P2996. The
-v0.17.0-dev bump is a single-feature step (P2686), not a frontier shift.
+0.16 → 0.17 / clang-21 → clang-22 bump is a single-feature step (P2686),
+not a frontier shift.
 
 ### esp-g++ 15.2.0 (libstdc++ 15) — the GCC side of the matrix
 
