@@ -78,16 +78,16 @@ echo "== (g-D) D probes via LDC (espressif 21.1.3, -betterC, -mcpu=esp32) =="
 
 # (D-1) cent/ucent reserved keyword probe: should be a hard compile error.
 # Capture the exact LDC diagnostic verbatim.
-centerr=$("$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os -c \
+centerr=$("$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) $LDC_PE -betterC -Os -c \
     -of="$B/_cent.o" "$D/d/cent_probe.d" 2>&1 || true)
 echo "  cent/ucent: $(printf '%s' "$centerr" | grep -oE '(Error:.*obsolete[^|]*|use .core\.int128\.Cent.[^|]*)' | head -1)"
 
 # Compile iface.d to IR + object on esp32.
 # shellcheck disable=SC2046
-"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os \
+"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) $LDC_PE -betterC -Os \
     -output-ll -of="$B/d_iface.ll" -c "$D/d/iface.d" >/dev/null 2>&1
 # shellcheck disable=SC2046
-"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os \
+"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) $LDC_PE -betterC -Os \
     -c -of="$B/d_iface.o" "$D/d/iface.d" >/dev/null 2>&1
 
 # Re-use the §(a) `sig` helper on the D IR (must be in scope -- it is).

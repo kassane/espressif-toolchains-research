@@ -69,7 +69,7 @@ echo "===== D (1/4): C calls D's NATIVE mangled symbol (_D...) ====="
 # LDC mangles it as `_D5d_lib8d_secretFiZi` — a string of [A-Za-z0-9_] starting
 # with `_`, i.e. a legal C identifier. So a C extern declaration with that exact
 # spelling resolves to the D-defined symbol. nm extracts the actual symbol name.
-"$LDC2" -c -betterC d_lib.d -of="$B/d_lib.o"
+"$LDC2" -c $LDC_PE -betterC d_lib.d -of="$B/d_lib.o"
 DSYM=$(llvm-nm "$B/d_lib.o" | grep -E ' T _D[0-9]' | awk '{print $3}' | head -1)
 echo "  extracted D-native symbol: $DSYM"
 sed "s/%DSYM%/$DSYM/g" dmain_native.c.tpl > "$B/dmain_native.c"
@@ -91,7 +91,7 @@ echo "===== D (3/4): D calls Rust's v0-mangled rust_triple via pragma(mangle, \"
 # because Rust's `pub extern "C" fn` uses the C ABI even though its name is v0.
 # (Module-name with `.` is not a valid D module identifier, so we write to *_gen.d.)
 sed "s|%V0%|$V0|g" d_calls_rust.d > "$B/d_calls_rust_gen.d"
-"$LDC2" -c -betterC "$B/d_calls_rust_gen.d" -of="$B/d_calls_rust.o"
+"$LDC2" -c $LDC_PE -betterC "$B/d_calls_rust_gen.d" -of="$B/d_calls_rust.o"
 "$ZIG" cc -target "$HT" dmain_rust.c "$B/d_calls_rust.o" "$RO" -o "$B/dtest_rust"
 "$B/dtest_rust"
 
@@ -101,7 +101,7 @@ echo "===== D (4/4): D consumes Zig's _ZN2ns2fnEv via extern(C++, \"ns\") int fn
 # that into `_ZN2ns2fnEv`, so it links against the Zig-supplied definition.
 # Symmetric to D-defined / Zig-consumed (the d_lib.o + zig_caller-style pairing).
 "$ZIG" build-obj -target "$HT" -O ReleaseSmall -femit-bin="$B/zig_ns_export.o" zig_ns_export.zig
-"$LDC2" -c -betterC d_consumes_zig.d -of="$B/d_consumes_zig.o"
+"$LDC2" -c $LDC_PE -betterC d_consumes_zig.d -of="$B/d_consumes_zig.o"
 "$ZIG" cc -target "$HT" dmain_zig.c "$B/d_consumes_zig.o" "$B/zig_ns_export.o" -o "$B/dtest_zig"
 "$B/dtest_zig"
 

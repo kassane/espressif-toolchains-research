@@ -34,7 +34,7 @@ import ldc.attributes;
 extern(C) @assumeUsed int marker_d() { return 0xCAFE; }
 extern(C) int regular_d() { return 0xBEEF; }
 EOF
-"$LDC2" $LT -betterC -O2 -output-ll -of="$B/au_d.ll" "$B/au.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/au_d.ll" "$B/au.d" 2>/dev/null
 
 # Clang (used)
 cat > "$B/au.c" <<'EOF'
@@ -105,7 +105,7 @@ extern(C) immutable(char)[] payload_d() {
     return p;
 }
 EOF
-"$LDC2" $LT -betterC -O2 -J="$B" -c "$B/imp.d" -of="$B/imp_d.o" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -J="$B" -c "$B/imp.d" -of="$B/imp_d.o" 2>/dev/null
 
 # Zig: @embedFile
 cat > "$B/imp.zig" <<'EOF'
@@ -202,7 +202,7 @@ int sum_no_alias(@restrict int* a, @restrict int* b, int n) {
     int s = 0; foreach (i; 0 .. n) s += a[i] + b[i]; return s;
 }
 EOF
-"$LDC2" $LT -betterC -O2 -output-ll -of="$B/full.ll" "$B/full.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/full.ll" "$B/full.d" 2>/dev/null
 ll=$B/full.ll
 checkir() {
     local lbl="$1" pat="$2" hit=0
@@ -234,7 +234,7 @@ uint use_bswap(uint x) { return llvm_bswap(x); }
 pragma(LDC_extern_weak) extern int optional_hook();
 int call_hook() { return (&optional_hook is null) ? 0 : optional_hook(); }
 EOF
-"$LDC2" $LT -betterC -O2 -output-ll -of="$B/prag.ll" "$B/prag.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/prag.ll" "$B/prag.d" 2>/dev/null
 ll=$B/prag.ll
 checkir "pragma(mangle) -> renamed symbol"      '@weird_c_name'
 checkir "pragma(LDC_intrinsic, llvm.bswap.i32)" 'llvm\.bswap\.i32'
@@ -256,7 +256,7 @@ uint  ctlz_u32(uint x)   { return llvm_ctlz(x, false); } // llvm.ctlz.i32
 uint  cttz_u32(uint x)   { return llvm_cttz(x, false); } // llvm.cttz.i32
 uint  popcnt_u32(uint x) { return llvm_ctpop(x); }       // llvm.ctpop.i32
 EOF
-"$LDC2" $LT -betterC -O2 -output-ll -of="$B/intr.ll" "$B/intr.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/intr.ll" "$B/intr.d" 2>/dev/null
 echo "  LLVM intrinsics resolved from ldc.intrinsics (count in IR):"
 for fn in bswap.i32 bswap.i64 ctlz.i32 cttz.i32 ctpop.i32; do
     n=$(grep -c "llvm\.$fn" "$B/intr.ll" 2>/dev/null)
@@ -280,7 +280,7 @@ extern unsigned MARKER_RS;
 void _start(void) { }   /* references nothing */
 EOF
 "$CLANG" $CT -ffreestanding -O2 -c "$B/entry.c" -o "$B/entry.o"
-"$LDC2"  $LT -betterC -O2 -c "$B/au.d"        -of="$B/au_d.o" 2>/dev/null
+"$LDC2"  $LT $LDC_PE -betterC -O2 -c "$B/au.d"        -of="$B/au_d.o" 2>/dev/null
 "$CLANG" $CT -ffreestanding -O2 -c "$B/au.c"            -o "$B/au_c.o"
 "$CLANG" $CT -ffreestanding -O2 -std=c23 -c "$B/au_retain.c" -o "$B/au_cr.o" 2>/dev/null
 RS_O=$(find "$B/rs/target" -name 'au_rs-*.o' | head -1)

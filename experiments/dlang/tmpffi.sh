@@ -98,7 +98,7 @@ extern(C) int d_callsite() @nogc nothrow
     // expect 1*100 + 1*10 + 1 = 111
 }
 D
-"$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -Os -output-s -of="$B/d_caller.s" "$B/d_caller.d"
+"$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -Os -output-s -of="$B/d_caller.s" "$B/d_caller.d"
 sed -E -i '/^[[:space:]]*\.cfi_/d' "$B/d_caller.s"
 "$CLANG" $CT -c "$B/d_caller.s" -o "$B/d_caller.o"
 echo "  D imports (LDC mangled byte-identically):"
@@ -189,12 +189,12 @@ extern(C) int main() @nogc nothrow {
     return 0;
 }
 D
-"$LDC2" -betterC -O2 "$B/refl.d" -of="$B/refl" 2>&1 | head -2
+"$LDC2" $LDC_PE -betterC -O2 "$B/refl.d" -of="$B/refl" 2>&1 | head -2
 "./$B/refl"
 
 echo "== (g) LLVM-22 (ldc-developers/llvm) llvm-link: clang+D+Rust IR -> 1 module =="
 "$CLANG" $CT -ffreestanding -Os -emit-llvm -S "$B/shims.cpp" -o "$B/shims.ll" 2>/dev/null
-"$LDC2"  -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -Os -output-ll -of="$B/d_caller.ll" "$B/d_caller.d"
+"$LDC2"  -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -Os -output-ll -of="$B/d_caller.ll" "$B/d_caller.d"
 ( cd "$B/rs" && RUSTC="$RUSTC" "$CARGO" rustc --release -Z build-std=core --target xtensa-esp32-none-elf -- --emit=llvm-ir >/dev/null 2>&1 )
 cp "$(find "$B/rs/target/xtensa-esp32-none-elf/release" -name 'tmpffi_rs*.ll' | head -1)" "$B/rust.ll"
 LLD22=$LDC_LLVM_DIR/bin

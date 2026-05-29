@@ -22,7 +22,7 @@ INC="$PWD/$SRC/include"
 ldc_xtensa_obj() { # mcpu out src
     local cpu=$1 out=$2 src=$3
     # shellcheck disable=SC2046  -- intentional word-splitting on the helper's output
-    "$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags "$cpu") -betterC -Os -c -of="$out" "$src"
+    "$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags "$cpu") $LDC_PE -betterC -Os -c -of="$out" "$src"
 }
 
 build_host() {
@@ -32,7 +32,7 @@ build_host() {
     "$ZIG" cc  -O2 -I"$INC"               -c "$SRC/c/lib_c.c"    -o "$B/lib_c.o"
     "$ZIG" c++ -O2 -I"$INC"               -c "$SRC/cpp/lib_cpp.cpp" -o "$B/lib_cpp.o"
     "$ZIG" build-obj -target x86_64-linux-gnu -O ReleaseSmall -femit-bin="$B/lib_zig.o" "$SRC/zig/lib_zig.zig"
-    "$LDC2" -betterC -O2 -c -of="$B/lib_d.o" "$SRC/d/lib_d.d"
+    "$LDC2" $LDC_PE -betterC -O2 -c -of="$B/lib_d.o" "$SRC/d/lib_d.d"
     ( cd "$SRC/rust" && RUSTC="$RUSTC" "$CARGO" build --release >/dev/null 2>&1 )
     cp "$SRC/rust/target/release/libffi_rs.a" "$B/"
     "$ZIG" cc "$B"/driver.o "$B"/lib_c.o "$B"/lib_cpp.o "$B"/lib_zig.o "$B"/lib_d.o "$B"/libffi_rs.a -o "$B/ffi_host"
@@ -91,7 +91,7 @@ build_riscv() {
     # D via LDC. esp32c3 = rv32imc; no fork-specific RISC-V CPU name, so use
     # generic rv32 + explicit +m,+c features (same on both LDCs). RISC-V uses
     # auipc/jalr, not Xtensa's l32r, so no literal-pool quirk regardless.
-    "$LDC2" -mtriple=riscv32-unknown-none-elf -mattr=+m,+c -betterC -Os -c -of="$B/lib_d.o" "$SRC/d/lib_d.d"
+    "$LDC2" -mtriple=riscv32-unknown-none-elf -mattr=+m,+c $LDC_PE -betterC -Os -c -of="$B/lib_d.o" "$SRC/d/lib_d.d"
     ( cd "$SRC/rust" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target riscv32imc-unknown-none-elf >/dev/null 2>&1 )
     cp "$SRC/rust/target/riscv32imc-unknown-none-elf/release/libffi_rs.a" "$B/"
     ld.lld -e _start --section-start=.text=0x40380000 -o "$B/ffi_rv.elf" \

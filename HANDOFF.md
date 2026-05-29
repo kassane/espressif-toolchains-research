@@ -108,7 +108,19 @@ output.
       axes: `-preview=<name>` (à la carte; `=all`; safety ones dip1000/safer/
       systemVariables/nosharedaccess) and **`--edition=` (DIP1052, valid 2023–2025,
       per-module) — exactly Rust's edition model**; editions don't flip default
-      `@safe` here, `-preview=safer` does. **`@safe` ⇄ Rust battery** (real errors
+      `@safe` here, `-preview=safer` does. **Default bundle now applied
+      repo-wide**: `$LDC_PE = "-preview=all --edition=2025"` is exported by
+      `env.sh` and threaded through every non-probe `$LDC2` invocation
+      (build-ffi.sh / analyze.sh / abi-structs/sweep.sh / addrspace /
+      atomics-orders / call0-abi / dlang/{ldc-attrs,run,tmpffi,safety §e} /
+      dwarf-parity / esp-rs-issues / ldc-fork-comparison / llvm-ir-mix /
+      mangled-ffi / rust-zig / simd). The one source-level change needed was
+      `@system` on raw-pointer-indexing kernels (`experiments/simd/vadd.d`),
+      which is the honest C-ABI annotation anyway; everything else compiles
+      and runs identically (xtensa qemu still 2 failures = D only; riscv
+      0 failures; abi-structs/atomics/simd/dwarf/llvm-ir-mix/mangled-ffi all
+      unchanged). docs/20 §2.0 documents the bundle. **`@safe` ⇄ Rust battery**
+      (real errors
       both sides): D `@safe` rejects 7/8 unsafe ops; the one gap is same-size
       pointer reinterpret (Rust needs `unsafe`). DIP1000 escape ≈ but ⊂ Rust's
       borrow checker (escape only, no aliasing; `@trusted` is whole-function;

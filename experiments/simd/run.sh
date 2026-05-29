@@ -48,9 +48,9 @@ fi
 echo "== 5. D parity: autovec / __vector / inline asm =="
 # LDC ($LDC2 = espressif/llvm-project 21.1.3 build) speaks -mcpu=esp32s3 natively.
 # -betterC drops druntime so the object links with -nostdlib like clang/zig output.
-"$LDC2" $S3L -betterC -O3 -c "$D/vadd.d" -of="$B/vadd_d.o"
-"$LDC2" $S3L -betterC -O3 -c "$D/vec.d"  -of="$B/vec_d.o"
-"$LDC2" $S3L -betterC -O2 -c "$D/ee.d"   -of="$B/ee_d.o"
+"$LDC2" $S3L $LDC_PE -betterC -O3 -c "$D/vadd.d" -of="$B/vadd_d.o"
+"$LDC2" $S3L $LDC_PE -betterC -O3 -c "$D/vec.d"  -of="$B/vec_d.o"
+"$LDC2" $S3L $LDC_PE -betterC -O2 -c "$D/ee.d"   -of="$B/ee_d.o"
 echo "  autovec (vadd.d, 4 loops)         EE.*=$(ee "$B/vadd_d.o")  -> scalar, matches clang/gcc"
 echo "  __vector(byte[16]) (vec.d)        EE.*=$(ee "$B/vec_d.o")  -> scalarized, matches clang vector_size / zig @Vector"
 echo "  LDC __asm (ldc.llvmasm, ee.d)     EE.*=$(ee "$B/ee_d.o")  -> emits ee.vld/vadds/vst, full parity with clang/gcc/zig asm path"

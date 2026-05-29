@@ -76,7 +76,7 @@ extern(C) int  dl_acquire(shared int* p)   { return llvm_atomic_load!int(p, Atom
 extern(C) int  dl_seq_cst(shared int* p)   { return llvm_atomic_load!int(p, AtomicOrdering.SequentiallyConsistent); }
 EOF
 # shellcheck disable=SC2046
-"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os -c -of="$B/a_d.o" "$B/a_d.d" 2>/dev/null
+"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) $LDC_PE -betterC -Os -c -of="$B/a_d.o" "$B/a_d.d" 2>/dev/null
 
 # ---------- Rust ----------
 mkdir -p "$B/a_rs/src"

@@ -28,7 +28,7 @@ cp "$(find "$SRC/rust/target/xtensa-$CPU-none-elf/release" -name 'ffi_rs*.ll' | 
 # a whitespace-separated pair; let the shell word-split it. Shared with
 # build-ffi.sh so the dumped IR matches the linked object.
 # shellcheck disable=SC2046
-"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags "$CPU") -betterC -Os -output-ll -of="$IR/lib_d.ll" "$SRC/d/lib_d.d"
+"$LDC2" -mtriple=xtensa-esp-elf $(ldc_xtensa_flags "$CPU") $LDC_PE -betterC -Os -output-ll -of="$IR/lib_d.ll" "$SRC/d/lib_d.d"
 for fn in add_i32 mul_f64 make_point point_dot make_blob blob_sum apply; do
   echo "== $fn =="; for l in c rs zig d; do printf "  %-4s " "$l"; grep -E "define.*$fn" "$IR/lib_$l.ll" | head -1; done
 done | tee -a "$OUT/ir-signatures-$CPU.txt"

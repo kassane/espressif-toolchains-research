@@ -21,7 +21,7 @@ CT="--target=xtensa-esp-elf -mcpu=esp32"; LT="-mtriple=xtensa-esp-elf -mcpu=esp3
 
 # LDC -> Xtensa object. Direct -c on the fork LDC produces a properly aligned
 # literal pool, so no re-assembly is needed. See section (d) and docs/23.
-ldc_xt(){ "$LDC2" $LT -betterC -Os -c -of="$1" "$2"; }
+ldc_xt(){ "$LDC2" $LT $LDC_PE -betterC -Os -c -of="$1" "$2"; }
 sig(){ grep -hE "define .*@$1\b" "$2" 2>/dev/null | head -1 | grep -oE '\([^{]*' \
   | sed -E 's/ ?(noalias|writeonly|readonly|captures\([^)]*\)|initializes\([^)]*\)|range\([^)]*\)|noundef|zeroext|dead_on_unwind|writable|local_unnamed_addr|align [0-9]+)//g; s/  */ /g'; }
 
@@ -30,7 +30,7 @@ echo "== (a) toolchain =="
 printf "  Xtensa registered target: %s\n" "$("$LDC2" -version 2>/dev/null | grep -c 'xtensa ')"
 
 echo "== (b) struct ABI in the IR: clang flattens, zig=direct, D=byval/sret =="
-"$LDC2" $LT -betterC -Os -output-ll -of="$B/d.ll" "$M/d/lib_d.d"
+"$LDC2" $LT $LDC_PE -betterC -Os -output-ll -of="$B/d.ll" "$M/d/lib_d.d"
 "$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -fno-emit-bin -femit-llvm-ir="$B/z.ll" "$M/zig/lib_zig.zig"
 "$CLANG" $CT -ffreestanding -Os -S -emit-llvm -I"$M/include" -o "$B/c.ll" "$M/c/lib_c.c" 2>/dev/null
 for fn in point_dot make_point blob_sum; do
@@ -46,7 +46,7 @@ printf "  clang c_point_dot multiplies:  %s   (operands a2..a5 = registers)\n" "
 printf "  D     d_point_dot first load:   %s   (a1=SP => reads the STACK)\n" "$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=d_point_dot "$B/lib_d.o" 2>/dev/null | grep -oE 'l32i(\.n)?[[:space:]]+a[0-9]+, a1, [0-9]+' | head -1)"
 
 echo "== (d) literal-pool: direct ldc2 -c -> ld.lld with the FFI linker script =="
-"$LDC2" $LT -betterC -Os -c -of="$B/direct.o" "$M/d/lib_d.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -Os -c -of="$B/direct.o" "$M/d/lib_d.d" 2>/dev/null
 RT_E32="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/libclang_rt.builtins.a"
 if ld.lld -T "$M/xtensa.ld" -o "$B/direct.elf" \
     build/xtensa-esp32/driver.o build/xtensa-esp32/entry.o \
@@ -61,12 +61,12 @@ else
 fi
 
 echo "== (e) C/C++ FFI mangling (extern(C)/(C++)/(C++,\"ns\")/ref) =="
-"$LDC2" -betterC -c -of="$B/cppiface.o" "$D/cppiface.d"
+"$LDC2" $LDC_PE -betterC -c -of="$B/cppiface.o" "$D/cppiface.d"
 llvm-nm "$B/cppiface.o" 2>/dev/null | grep ' T ' | awk '{print $3}' | while read -r s; do
   printf "  %-26s %s\n" "$s" "$(echo "$s" | c++filt 2>/dev/null || echo "$s")"; done
 
 echo "== (f) -HC: D emits a C++ header; C++ then calls back INTO D (host) =="
-"$LDC2" -betterC -HC=silent --HCf="$B/cppiface.h" -c -of="$B/cppiface_host.o" "$D/cppiface.d"
+"$LDC2" $LDC_PE -betterC -HC=silent --HCf="$B/cppiface.h" -c -of="$B/cppiface_host.o" "$D/cppiface.d"
 grep -E 'extern|namespace|struct Vec2' "$B/cppiface.h" | head -5 | sed 's/^/  hdr: /'
 cat > "$B/use.cpp" <<EOF
 #include "cppiface.h"
@@ -81,7 +81,7 @@ EOF
 echo "== (g) --extern-std / --link-internally / --help-hidden =="
 printf 'extern(C++) struct S{int a;}\nextern(C++) void f(S){}\n' > "$B/es.d"
 printf "  --extern-std f(S):"; for std in c++98 c++11 c++23; do
-  "$LDC2" -betterC --extern-std=$std -c -of="$B/es.o" "$B/es.d" 2>/dev/null
+  "$LDC2" $LDC_PE -betterC --extern-std=$std -c -of="$B/es.o" "$B/es.d" 2>/dev/null
   printf " %s=%s" "$std" "$(llvm-nm "$B/es.o" 2>/dev/null | grep ' T ' | awk '{print $3}')"; done; echo " (default c++11)"
 printf 'extern(C) int f(){return 0;}\n' > "$B/li.d"
 if "$LDC2" --link-internally -shared -of="$B/li.so" "$B/li.d" 2>"$B/li.err"; then li="yes (linked $(basename "$B/li.so"))"
@@ -93,7 +93,7 @@ printf "  --help-hidden options: %s (clang/LLVM-style full help)\n" "$("$LDC2" -
 echo "== (h) cross-language LTO: D + clang bitcode (both LLVM 21.1.3 — no skew) =="
 printf 'extern(C) int d_lto(int x){return x+1;}\n' > "$B/l.d"
 printf 'extern int d_lto(int);\nint c_lto(int x){return d_lto(x)+1;}\n' > "$B/l.c"
-"$LDC2" $LT -betterC -Os -output-bc -of="$B/d.bc" "$B/l.d"
+"$LDC2" $LT $LDC_PE -betterC -Os -output-bc -of="$B/d.bc" "$B/l.d"
 "$CLANG" $CT -ffreestanding -Os -emit-llvm -c "$B/l.c" -o "$B/c.bc"
 if ld.lld --lto-O2 -e c_lto -u d_lto "$B/c.bc" "$B/d.bc" -o "$B/lto.elf" 2>"$B/lto.err"; then
   echo "  LTO linked + inlined across the boundary: c_lto = $(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=c_lto "$B/lto.elf" 2>/dev/null | grep -oE 'addi\.n[[:space:]]+a[0-9]+, a[0-9]+, [0-9]+' | head -1) (x+2)"

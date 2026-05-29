@@ -30,6 +30,7 @@ in `/home/user/dl`. **Never commit these** (`.gitignore` guards `toolchains/`,
 | `$GCC` | xtensa-esp-elf-gcc 15.2.0 |
 | `$LDC2` | LDC 1.42-git, espressif/llvm-project **LLVM 21.1.3** (kassane/esp-idf-dlang xtensa-toolchain). D; `-betterC` for bare-metal. esp32/s2/s3 are first-class `-mcpu`; direct `ldc2 -c` -> `ld.lld` works, no re-assembly (docs/19, docs/23) |
 | `$LDC2_UPSTREAM` | LDC 1.42-git, **upstream LLVM 22.1.2** (`ldc-developers/ldc CI`). Comparison-only — used by `experiments/ldc-fork-comparison`. Opt-in: `LDC_UPSTREAM=1 ./scripts/setup.sh` |
+| `$LDC_PE` | `-preview=all --edition=2025` — the canonical flag bundle every non-probe `$LDC2` invocation includes. 2026 is rejected by LDC 1.42 (`safety.sh` §b). `-preview=all` includes `dip1000`/`safer`/etc.; raw-pointer kernels must be `@system` (the honest annotation for a C-ABI buffer consumer). Docs/20 §2.0. |
 | `$LDC_LLVM_DIR` | **LLVM 22.1.2** binutils (llvm-link/opt/llvm-dis/llvm-as). Only useful with `$LDC2_UPSTREAM` — esp-clang's 21.1.3 binutils version-match the canonical `$LDC2` now. Opt-in (`LLVM22=1`; `.tar.zst`, needs `zstd`); NOT on PATH (would shadow esp-clang's tools); call `$LDC_LLVM_DIR/bin/<tool>` (docs/04) |
 | `xtensa_cfg <cpu>` | path to `xtensa_<cpu>.so` for `XTENSA_GNU_CONFIG` |
 | `ldc_xtensa_flags <cpu>` | `-mcpu=<cpu> -mattr=<features>` string; word-splits in build-ffi.sh/analyze.sh. Mirrors esp-clang's implicit feature set; intersection of both LDC versions' feature lists so the comparison can drive both arms with one string |

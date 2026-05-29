@@ -49,7 +49,7 @@ printf 'extern(C) void empty(){}\n' > "$B/empty.d"
 for cpu in esp32 esp32s2 esp32s3; do
     for tag in fork upstream; do
         [ "$tag" = fork ] && BIN=$LDC2 || BIN=$LDC2_UPSTREAM
-        line=$("$BIN" -betterC -o- -c $LT -mcpu=$cpu -vv "$B/empty.d" 2>&1 | grep -E "(Targeting|not a recognized)" | head -2 | tr '\n' '|')
+        line=$("$BIN" $LDC_PE -betterC -o- -c $LT -mcpu=$cpu -vv "$B/empty.d" 2>&1 | grep -E "(Targeting|not a recognized)" | head -2 | tr '\n' '|')
         printf "  %-8s -mcpu=%-8s %s\n" "$tag" "$cpu" "$line"
     done
 done
@@ -58,7 +58,7 @@ echo "== (c) direct ldc2 -c -> ld.lld with the FFI linker script =="
 for tag in fork upstream; do
     [ "$tag" = fork ] && BIN=$LDC2 || BIN=$LDC2_UPSTREAM
     out=$B/lib_d_$tag.o; err=$B/lib_d_$tag.err
-    if ! "$BIN" $LT -mcpu=esp32 -betterC -Os -c -of="$out" "$M/d/lib_d.d" 2>"$err"; then
+    if ! "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -Os -c -of="$out" "$M/d/lib_d.d" 2>"$err"; then
         printf "  %-8s direct -c   FAILED (%s)\n" "$tag" "$(head -1 "$err")"
         continue
     fi
@@ -79,7 +79,7 @@ echo "== (d) -mcpu=esp32s2/s3 recognition (upstream: ldc #4919) =="
 for cpu in esp32s2 esp32s3; do
     for tag in fork upstream; do
         [ "$tag" = fork ] && BIN=$LDC2 || BIN=$LDC2_UPSTREAM
-        line=$("$BIN" $LT -mcpu=$cpu -betterC -o- -c "$B/empty.d" 2>&1 | grep -E "not a recognized" | head -1)
+        line=$("$BIN" $LT -mcpu=$cpu $LDC_PE -betterC -o- -c "$B/empty.d" 2>&1 | grep -E "not a recognized" | head -1)
         if [ -n "$line" ]; then printf "  %-8s -mcpu=%-8s REJECTED ('not a recognized processor')\n" "$tag" "$cpu"
         else printf "  %-8s -mcpu=%-8s accepted\n" "$tag" "$cpu"; fi
     done
@@ -90,7 +90,7 @@ echo "== (e) datalayout string parity =="
 cdl=$(grep -oE 'target datalayout = "[^"]*"' "$B/lib_c.ll" | head -1 | sed -E 's/target datalayout = "([^"]*)"/\1/')
 for tag in fork upstream; do
     [ "$tag" = fork ] && BIN=$LDC2 || BIN=$LDC2_UPSTREAM
-    "$BIN" $LT -mcpu=esp32 -betterC -Os -output-ll -of="$B/d_$tag.ll" "$M/d/lib_d.d" 2>/dev/null
+    "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -Os -output-ll -of="$B/d_$tag.ll" "$M/d/lib_d.d" 2>/dev/null
     ddl=$(grep -oE 'target datalayout = "[^"]*"' "$B/d_$tag.ll" | head -1 | sed -E 's/target datalayout = "([^"]*)"/\1/')
     [ "$ddl" = "$cdl" ] && verdict="MATCHES clang" || verdict="DIFFERS"
     printf "  %-8s %s   [%s]\n" "$tag" "$ddl" "$verdict"
@@ -103,10 +103,10 @@ for tag in fork upstream; do
     # The upstream LDC produces post-18 IR that the host's LLVM-18 dwarfdump rejects;
     # use esp-clang's 21.1.3 binutils for both (it reads 21.x natively, and 22.x too).
     if [ "$tag" = fork ]; then
-        "$BIN" $LT -mcpu=esp32 -betterC -g -Os -c -of="$B/dbg_$tag.o" "$M/d/lib_d.d" 2>/dev/null
+        "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -g -Os -c -of="$B/dbg_$tag.o" "$M/d/lib_d.d" 2>/dev/null
     else
         # Upstream LDC needs the re-assembly workaround for object emission.
-        "$BIN" $LT -mcpu=esp32 -betterC -g -Os -output-s -of="$B/dbg_$tag.s" "$M/d/lib_d.d" 2>/dev/null
+        "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -g -Os -output-s -of="$B/dbg_$tag.s" "$M/d/lib_d.d" 2>/dev/null
         sed -E -i '/^[[:space:]]*\.cfi_/d' "$B/dbg_$tag.s"
         "$CLANG" --target=xtensa-esp-elf -mcpu=esp32 -c "$B/dbg_$tag.s" -o "$B/dbg_$tag.o" 2>/dev/null
     fi
@@ -121,9 +121,9 @@ echo "== (g) add_i32 codegen (Os, esp32) =="
 for tag in fork upstream; do
     [ "$tag" = fork ] && BIN=$LDC2 || BIN=$LDC2_UPSTREAM
     if [ "$tag" = fork ]; then
-        "$BIN" $LT -mcpu=esp32 -betterC -Os -c -of="$B/asm_$tag.o" "$M/d/lib_d.d" 2>/dev/null
+        "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -Os -c -of="$B/asm_$tag.o" "$M/d/lib_d.d" 2>/dev/null
     else
-        "$BIN" $LT -mcpu=esp32 -betterC -Os -output-s -of="$B/asm_$tag.s" "$M/d/lib_d.d" 2>/dev/null
+        "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -Os -output-s -of="$B/asm_$tag.s" "$M/d/lib_d.d" 2>/dev/null
         sed -E -i '/^[[:space:]]*\.cfi_/d' "$B/asm_$tag.s"
         "$CLANG" --target=xtensa-esp-elf -mcpu=esp32 -c "$B/asm_$tag.s" -o "$B/asm_$tag.o" 2>/dev/null
     fi
@@ -135,7 +135,7 @@ done
 echo "== (h) IR struct ABI (frontend behavior — backend-independent) =="
 for tag in fork upstream; do
     [ "$tag" = fork ] && BIN=$LDC2 || BIN=$LDC2_UPSTREAM
-    "$BIN" $LT -mcpu=esp32 -betterC -Os -output-ll -of="$B/abi_$tag.ll" "$M/d/lib_d.d" 2>/dev/null
+    "$BIN" $LT -mcpu=esp32 $LDC_PE -betterC -Os -output-ll -of="$B/abi_$tag.ll" "$M/d/lib_d.d" 2>/dev/null
     pd=$(grep -E 'define.*@d_point_dot\(' "$B/abi_$tag.ll" | grep -oE '\(.*\)' | head -1 \
         | sed -E 's/(noalias|writeonly|readonly|captures\([^)]*\)|initializes\([^)]*\)|align [0-9]+) //g; s/  +/ /g')
     bs=$(grep -E 'define.*@d_blob_sum\(' "$B/abi_$tag.ll" | grep -oE 'byval\([^)]*\)' | head -1)

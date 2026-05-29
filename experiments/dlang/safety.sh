@@ -92,8 +92,8 @@ extern(C) int add_ir(int a, int b) @trusted {
                 ret i32 %r`, int)(a, b);                        // inline LLVM IR
 }
 EOF
-"$LDC2" $LT -betterC -O2 -output-ll -of="$B/ldcx.ll" "$B/ldcx.d" 2>/dev/null
-"$LDC2" $LT -betterC -O2 -c "$B/ldcx.d" -of="$B/ldcx.o"
+"$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/ldcx.ll" "$B/ldcx.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -c "$B/ldcx.d" -of="$B/ldcx.o"
 printf "  @fastmath -> %s   @section -> %s   @weak -> %s\n" \
   "$(grep -oE 'f(mul|add) (fast|reassoc)[a-z ]*' "$B/ldcx.ll" | head -1)" \
   "$(llvm-readobj --sections "$B/ldcx.o" 2>/dev/null | grep -oE '\.iram1[a-z0-9._]*' | head -1)" \
