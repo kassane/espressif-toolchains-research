@@ -45,7 +45,7 @@ the source of truth for everything below.
 | direct `ldc2 -c` -> `ld.lld -T xtensa.ld` | FAIL (`not aligned to 4 bytes` on `__muldf3` literal) | OK (274 084 B `.elf`, 0 undef) |
 | datalayout | `e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-n32` | `e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32` (== clang/rust/zig) |
 | `add_i32` codegen (-Os) | 7 lines, no `.n` compact forms (35 % bigger; docs/22 §5) | byte-identical to clang (`mov.n`/`s32i.n`/`l32i.n`/`add.n`) |
-| `.text` per `lib_d.o` (esp32) | ~366 B (docs/06) | 533 B¹ |
+| `.text` per `lib_d.o` (esp32) | ~366 B (docs/06) | **489 B**¹ (measured under `$LDC_PE = -preview=all --edition=2025` on the canonical fork; was 533 B on an earlier flag set) |
 | llvm-link datalayout warning | yes | gone |
 
 ¹ The total grew slightly even though `add_i32` shrank: the espressif-21 backend

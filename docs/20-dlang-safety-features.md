@@ -22,7 +22,7 @@ LDC 1.42 (`ldc/attributes.di`, `ldc/llvmasm.di`, `ldc/intrinsics.di`):
 | **inline LLVM IR** | `pragma(LDC_inline_ir)` → `__ir!(code,R,P...)` / `__irEx` | embed raw LLVM IR as a function body |
 | LLVM intrinsics | `pragma(LDC_intrinsic,"llvm.…")` (`ldc.intrinsics`) | bind any LLVM intrinsic directly |
 | atomics/fences | `LDC_atomic_load/store/rmw/cmp_xchg`, `LDC_fence` | low-level atomic ops |
-| sanitizers | `--fsanitize=address\|thread\|memory\|leak\|fuzzer` | (host; `undefined` rejected on the LLVM-22 upstream build per docs/23 — re-verify on the canonical 21.1.3 fork) |
+| sanitizers | `--fsanitize=address\|thread\|memory\|leak\|fuzzer` | (host only; on the canonical 21.1.3 fork `--fsanitize=undefined` is also REJECTED — `Error: Unrecognized -fsanitize value 'undefined'`, same gap docs/23 recorded for the LLVM-22 upstream build, so it's an LDC frontend gap, not LLVM-version-dependent) |
 | cross-compile | `-mtriple=` / `-mcpu=` / `-mattr=` | the mechanism used for Xtensa throughout this repo |
 
 **Xtensa-verified** (esp32, `safety.sh` §e): `@fastmath` → `fmul fast double` in
@@ -88,7 +88,7 @@ the shell against an esp32 build (`ldc-attrs.sh §b`):
 | **Zig** | `const p = @embedFile("payload.bin");` | `.rodata.str1.1` (string pool) |
 | **Rust** | `pub static P: &[u8] = include_bytes!("payload.bin");` | `.rodata..Lanon.<hash>.0` (anonymous static) |
 | **clang (C23)** | `const unsigned char p[] = { #embed "payload.bin" };` | `.rodata` |
-| **TinyGo** | `//go:embed payload.bin\nvar p string` | `.rodata` of the linked ELF, **but only if the variable is referenced from a non-DCE-d path** — TinyGo's whole-program LTO drops unreferenced embed bytes silently (docs/24 §"//go:embed") |
+| **TinyGo** | `//go:embed payload.bin\nvar p string` | `.rodata` of the linked ELF, **but only if the variable is referenced from a non-DCE-d path** — TinyGo's whole-program LTO drops unreferenced embed bytes silently (`experiments/dlang/ldc-attrs.sh` §b records this empirically) |
 
 The mechanism is identical at the bitcode level (a constant byte-array
 global); the only ergonomic difference is *what unit you embed at*: LDC and

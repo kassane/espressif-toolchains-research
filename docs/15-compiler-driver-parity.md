@@ -26,11 +26,15 @@ For the related LLVM-driver peers in the 6-toolchain matrix not covered here:
 - **ABI: identical.** All three use the Xtensa windowed C ABI — `c_point_dot`
   takes the two `Point`s in `a2/a3` and `a4/a5`, returns in `a2`. Verified across
   the whole FFI matrix (docs/03).
-- **Codegen: `zig cc` ≈ `esp-clang`** (same clang/LLVM 21 + espressif backend).
+- **Codegen: `zig cc` ≈ `esp-clang`** despite the LLVM-version gap (canonical
+  `$ZIG` is clang/LLVM 22.1.4, `esp-clang` is 21.1.3 — the espressif Xtensa
+  backend is the same code on both; legacy `$ZIG_016` is clang 21.1.0).
   Per-function code is near-identical; the only systematic difference is that
   **esp-clang keeps a frame pointer** (`mov.n a7,a1`) by default while **zig cc
-  omits it**, so zig cc is marginally *smaller*. GCC agrees on the ABI but uses
-  its own register allocation / frame size (`entry a1,48` vs `a1,32`).
+  omits it**, so zig cc is marginally *smaller* — on bare-metal where
+  backtrace tooling expects a frame pointer that's a real trade-off, not a
+  pure win. GCC agrees on the ABI but uses its own register allocation /
+  frame size (`entry a1,48` vs `a1,32`).
 - **Real code size** (`llvm-size -A` `.text`, 9-fn lib, `-Os`):
   `esp-gcc 174 · zig cc 178 · esp-clang 192` — all within ~10%.
 
@@ -57,16 +61,21 @@ For the related LLVM-driver peers in the 6-toolchain matrix not covered here:
 
 > This is also why the FFI-matrix size table is measured with `llvm-size -A`
 > (real `.text`), not the Berkeley `llvm-size` "text" column — the latter folds in
-> zig's default `.eh_frame` and overstated the zig-*language* lib as 647 B when
-> its actual code is **715 B** today (still the largest, from the struct-marshalling
-> of docs/05 — but a fair comparison vs clang's 223 B, not an unwind-inflated 647).
+> zig's default `.eh_frame` and overstated the zig-*language* lib as 647 B on
+> the 0.16 lane when its real `.text` was 715 B (the struct-marshalling of
+> docs/05). On the canonical 0.17 lane (`$ZIG`, LLVM 22.1.4) zig drops to
+> **375 B** real `.text` because the frontend now flattens aggregates to
+> `[N x i32]` like clang — D's 489 B byval/sret marshalling is the residual
+> outlier (docs/06).
 
 ## Verdict
 
-- **`zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler** (the same
-  espressif clang/LLVM 21 backend); differences are driver *defaults*
-  (eh_frame/ubsan/libc++), trivially flag-controlled. Either produces
-  ABI-compatible, near-identical Xtensa code.
+- **`zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler at the
+  Xtensa-backend level** (the espressif fork of LLVM/Xtensa is the same
+  code on both; the canonical zig 0.17 bundles LLVM 22.1.4 vs esp-clang's
+  21.1.3, but the Xtensa codegen is unchanged between those releases).
+  Differences are driver *defaults* (eh_frame/ubsan/libc++), trivially
+  flag-controlled. Either produces ABI-compatible, near-identical Xtensa code.
 - **clang-family ⇄ gcc**: full ABI parity (windowed C ABI; identical Itanium C++
   mangling & vtables), different code generation; gcc is slightly smaller. Objects
   from all three interlink (docs/03).
