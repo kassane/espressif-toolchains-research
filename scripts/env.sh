@@ -7,8 +7,20 @@
 
 export TC="${TC:-/home/user/toolchains}"
 
-# Zig 0.16.0 (kassane/zig-espressif-bootstrap, built against espressif LLVM 21)
-export ZIG="$TC/zig-relsafe-x86_64-linux-musl-baseline/zig"
+# Zig 0.16.0 (kassane/zig-espressif-bootstrap, built against espressif LLVM 21).
+# Default for backwards-compatibility with existing snapshots — `ZIG=$ZIG_017
+# source scripts/env.sh` swaps to 0.17 (LLVM 22.1.4) which closes the docs/05
+# struct-by-value bug. See HANDOFF / docs/05 §"Zig 0.17 status".
+export ZIG="${ZIG:-$TC/zig-relsafe-x86_64-linux-musl-baseline/zig}"
+
+# Zig 0.17.0-xtensa (kassane/zig-espressif-bootstrap, bundled clang 22.1.4 /
+# LLVM 22.1.4). The fix lane: closes the under-aligned struct-by-value bug
+# (docs/05) and the riscv `point_dot` bug (docs/09) by lowering aggregate args
+# as `[N x i32]` instead of forwarding the raw struct type to LLVM's default
+# CC. C++26 P2686R5 (constexpr structured bindings) now also compiles via
+# `$ZIG_017 c++`. Opt-in by `export ZIG=$ZIG_017` BEFORE sourcing env.sh, or
+# by setting ZIG in the calling shell — env.sh honors a pre-set value.
+export ZIG_017="$TC/zig-0.17-espressif/zig"
 
 # Zig v0.17.0-dev (kassane/zig-mos-bootstrap, bundled clang 22.0.0git / libc++ 22).
 # Optional: only used for the C++26 host-side re-probes (docs/20 §9, docs/21 §5,

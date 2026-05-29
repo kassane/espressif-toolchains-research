@@ -23,7 +23,8 @@ in `/home/user/dl`. **Never commit these** (`.gitignore` guards `toolchains/`,
 
 | var | points at |
 |-----|-----------|
-| `$ZIG` | zig 0.16.0 (also `zig cc`/`zig c++`, the only host-capable C/C++ here) |
+| `$ZIG` | zig 0.16.0 (also `zig cc`/`zig c++`, the only host-capable C/C++ here) — default for snapshot stability |
+| `$ZIG_017` | zig 0.17.0-xtensa (LLVM/clang 22.1.4) — **fixes the docs/05 struct-by-value bug + the riscv `zig_point_dot` bug**. Opt-in by `ZIG=$ZIG_017 ./scripts/build-ffi.sh ...` (env.sh honors a pre-set ZIG) |
 | `$CLANG`/`$CLANGXX` | esp clang 21.1.3 (cross-only: **no X86 target**) |
 | `$RUSTC`/`$CARGO` | merged rust-esp prefix (1.95-nightly, LLVM 21.1.3) |
 | `$GCC` | xtensa-esp-elf-gcc 15.2.0 |
@@ -65,9 +66,14 @@ windowed `entry` instruction decodes as garbage.
 5. **D's by-value struct ABI is a frontend bug, not a backend one.** Both LDC
    variants emit `byval`/`sret` for every aggregate; the espressif-21 fork
    doesn't change that, so `point_dot`/`blob_sum` still FAIL at runtime on
-   Xtensa. Pass structs by pointer across a D (or Zig) boundary. Same family as
+   Xtensa. Pass structs by pointer across a D boundary. Same family as
    [kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
-   (wontfix) — docs/23.
+   (wontfix) — docs/23. **Zig had the same family of bug on 0.16
+   (LLVM 21.1.0) but the 0.17 baseline (LLVM 22.1.4, `$ZIG_017`) fixes it —
+   flatten now matches clang's `[N x i32]` lowering, qemu `zig_blob_sum`
+   passes on xtensa AND `zig_point_dot` passes on riscv (docs/05 §"Zig 0.17
+   status"). The repo default `$ZIG` stays on 0.16 for snapshot stability;
+   switch with `ZIG=$ZIG_017 ./scripts/build-ffi.sh esp32`.**
 
 ## Repo map
 
@@ -79,6 +85,7 @@ experiments/dlang/        cppiface.d + run.sh + safety.sh + tmpffi.sh — D/LDC 
 experiments/ldc-fork-comparison/ run.sh — espressif-21 vs upstream-22 LDC side-by-side (docs/23). Requires LDC_UPSTREAM=1.
 experiments/atomics-orders/ run.sh — 4-frontend × stores/loads × N orderings, esp32 (atomics gap closed beyond docs/17's single-order probe)
 experiments/tinygo/       run.sh — TinyGo v0.41.1 / LLVM 20.1.1 probe; whole-program compiler, outside the FFI matrix (docs/24)
+experiments/call0-abi/    run.sh — windowed vs CALL0 ABI (-mcpu=<core>-windowed) across 5 frontends × 3 cores (docs/02 §CALL0)
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
 docs/00..24               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork / tinygo
 experiments/dwarf-parity/ run.sh — DWARF & disassembly audit across all 5 toolchains on Xtensa (docs/22)

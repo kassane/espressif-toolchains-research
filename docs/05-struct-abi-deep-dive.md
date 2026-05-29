@@ -171,3 +171,42 @@ finalized upstream under `ziglang/zig` #5467 (**CLOSED 2026-05-06**, milestone 0
   common case — any struct with an `int`/pointer member already is); or pass
   byte-array/packed/`align(1)` structs **by pointer**; or avoid by-value
   aggregates on Zig boundaries entirely. Returns need no mitigation (sret).
+
+## Zig 0.17 status — the bug is fixed in the next baseline
+
+The `kassane/zig-espressif-bootstrap` 0.17 release (**`zig-0.17.0-relsafe-
+x86_64-linux-musl-baseline.tar.xz`** under the `0.16.0-xtensa-dev` tag,
+bundled clang/LLVM **22.1.4**) closes both struct-arg gaps:
+
+- **Xtensa `zig_blob_sum`** (24-byte `[u8;24]`, align-1): qemu went from
+  `FAIL (got=409 want=300)` on 0.16 to `ok (300)` on 0.17.
+- **RISC-V `zig_point_dot`** (8-byte `{i32,i32}`): qemu went from `FAIL` on
+  0.16 to `ok (11)` on 0.17.
+- **`experiments/abi-structs/sweep.sh`** on every Xtensa core: every Zig row
+  (`[8]u8` / `[16]u8` / `[24]u8` / `{2xu32}` / `{6xu32}`) now classifies
+  **REGISTERS**, matching clang/gcc/rust/D/TinyGo.
+
+The IR diff at `zig_blob_sum` shows the frontend change:
+
+```
+0.16 (LLVM 21.1.0):  i32 @lib_zig.zig_blob_sum(%lib_zig.Blob %0) … alloca [24 x i8], align 1
+0.17 (LLVM 22.1.4):  i32 @lib_zig.zig_blob_sum([6 x i32]      %0) … alloca [24 x i8], align 4
+```
+
+Zig 0.17 now emits the same `[N x i32]` aggregate-flattening clang has been
+emitting all along — passing the 6 words in `a2..a7` (after the windowed
+rotation from caller's `a10..a15`) instead of growing the stack with
+`movsp`. The 0.17 binary lives at `$ZIG_017`
+(`/home/user/toolchains/zig-0.17-espressif/zig`); the rest of the env-and-
+script chain keeps `$ZIG` pointing at 0.16 for snapshot-comparison
+stability, but `ZIG=$ZIG_017 ./scripts/build-ffi.sh esp32` and
+`ZIG=$ZIG_017 ./scripts/run-qemu.sh xtensa` flip every consumer.
+
+**This narrows the cumulative score**: at align-1 on Xtensa, the diverging
+frontends are now just **D/LDC** and **TinyGo (byte-array case)** — Zig has
+left the list. The original "Zig defers aggregate ABI to LLVM default"
+diagnosis from `ziglang/zig` #5467 (closed 0.17 milestone, 2026-05-06)
+shipped, so the upstream lane caught up with what clang+rust+gcc do.
+D/LDC's `byval`/`sret` universalism (docs/19/23) is unaffected and TinyGo's
+`[N x i8]` shape (docs/24) is unaffected — those bugs are in different
+frontends.

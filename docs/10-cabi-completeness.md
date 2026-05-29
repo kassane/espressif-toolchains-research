@@ -120,9 +120,16 @@ Comparing stock upstream **Zig 0.16.0** (built against upstream LLVM) with
   stock `pip install ziglang` on any RISC-V target — independent of the espressif
   LLVM fork. (The Xtensa `[24]u8` bug is exercised via the bootstrap here, since
   upstream Zig 0.16.0 has no esp32 target; 0.17.0 adds `esp32` per #5467 but still
-  not s2/s3 — fork-only.) **Open question for 0.17.0 ship**: did #5467's landing
-  rewrite the C-ABI lowering for Xtensa, or only enable codegen? Re-run
-  `experiments/abi-structs/sweep.sh` against 0.17.0 when it ships to find out.
+  not s2/s3 — fork-only.) **Answer to the previous open question** (was: "did
+  #5467's landing rewrite the C-ABI lowering for Xtensa, or only enable
+  codegen?"): **YES, it rewrote the lowering**. Re-running
+  `experiments/abi-structs/sweep.sh` against `$ZIG_017`
+  (`kassane/zig-espressif-bootstrap` `zig-0.17.0-relsafe-…-baseline`,
+  bundled LLVM 22.1.4) on every Xtensa core shows REGISTERS in every Zig row
+  (was STACK for align-1 byte arrays on 0.16). The qemu harness on both
+  xtensa and riscv flips Zig from FAIL to ok for the affected cases. Full
+  account in docs/05 §"Zig 0.17 status". The repo default `$ZIG` stays on
+  0.16 for snapshot continuity; the 0.17 fix lane is opt-in.
 
 Net parity: Rust's ESP story (esp-rs/rust) is a complete C-ABI implementation;
 Zig's is experimental, with a frontend struct-ABI gap that is in part *upstream*
