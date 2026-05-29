@@ -203,7 +203,15 @@ downstream LLVM fork. The historical literal-pool link bug is **gone** on the
 fork — direct `ldc2 -c` works (§3).
 
 **See also [docs/20](20-dlang-safety-features.md)** for LDC's exclusive features
-(`@fastmath`/`@section`/`@weak`/inline LLVM IR), the `-preview=`/`--edition=`
-evolution axes (the latter mirrors Rust editions), and a head-to-head `@safe` ⇄
-Rust memory-safety comparison (incl. why DIP1028 keeps `@safe` off-by-default at
-the FFI boundary).
+(`@fastmath`/`@section`/`@weak`/`@assumeUsed`/`@cold`/`@optStrategy`/`@naked`/
+`@restrict`/`@llvmAttr`/inline LLVM IR, plus the `pragma(mangle)`/`pragma(inline,…)`/
+`pragma(LDC_intrinsic)`/`pragma(LDC_extern_weak)` family — IR-verified across
+the matrix in [`experiments/dlang/ldc-attrs.sh`](../experiments/dlang/ldc-attrs.sh)),
+the `-preview=`/`--edition=` evolution axes (the latter mirrors Rust editions),
+the cross-language **`@assumeUsed` parity** (LDC + Rust emit the strong
+`@llvm.used` marker; clang's classic `__attribute__((used))` emits the *weak*
+`@llvm.compiler.used` form — C23's `[[gnu::retain]]` is the spelling that
+yields the strong form on clang 13+), the **`import("file")` compile-time
+file-embed matrix** (D/Zig/Rust/clang C23 #embed/TinyGo //go:embed), and a
+head-to-head `@safe` ⇄ Rust memory-safety comparison (incl. why DIP1028
+keeps `@safe` off-by-default at the FFI boundary).

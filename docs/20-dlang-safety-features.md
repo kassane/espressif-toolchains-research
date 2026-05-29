@@ -31,6 +31,72 @@ the IR; `@section(".iram1.text")` → an `.iram1.text` section; `@weak` → a `W
 Xtensa `add`. None of these have a DMD/GDC equivalent — they're why an
 LLVM-backed D compiler is interesting for an LLVM-backend FFI study.
 
+**Broader LDC attribute/pragma probe** (`experiments/dlang/ldc-attrs.sh` §c/d/e,
+all IR-verified at the shell against the canonical 21.1.3 fork):
+
+| LDC form | IR effect | parity analog |
+|---|---|---|
+| `@cold` | `cold` function attribute | clang/gcc `__attribute__((cold))`; Rust `#[cold]` |
+| `@optStrategy("none")` | `noinline optnone` | clang `__attribute__((optnone))`; Rust `#[optimize(none)]` (nightly) |
+| `@optStrategy("optsize")` | `optsize` | clang `__attribute__((minsize))` is "minsize"; "optsize" is the `-Os`-level default |
+| `@optStrategy("minsize")` | `minsize` | clang `__attribute__((minsize))`; Rust `#[optimize(size)]` |
+| `@naked` | `naked` function attribute | clang/gcc `__attribute__((naked))`; Rust `#[naked]` |
+| `@llvmAttr("k","v")` | raw `"k"="v"` LLVM attribute | (no first-class parity — clang attrs are spelled, not raw) |
+| `@restrict` on params | `ptr noalias` parameter | C99 `restrict`; clang `__restrict__`; Rust `&mut` (uniqueness) |
+| `pragma(mangle, "name")` | symbol renamed to literal | Rust `#[link_name="…"]`; Zig `extern fn @"…"`; clang `asm("…")` |
+| `pragma(inline, false)` | `noinline` function attribute | `__attribute__((noinline))`; `#[inline(never)]`; Zig `inline never` (no Zig builtin — workaround) |
+| `pragma(inline, true)` | `alwaysinline` function attribute | `__attribute__((always_inline))`; `#[inline(always)]`; Zig `inline fn` |
+| `pragma(LDC_intrinsic, "llvm.bswap.i32")` | direct call to `@llvm.bswap.i32` | clang `__builtin_bswap32`; Rust `u32::swap_bytes`; Zig `@byteSwap` (all compile to the same intrinsic) |
+| `pragma(LDC_extern_weak)` | `declare extern_weak …` | clang `__attribute__((weak))` + extern; Rust `extern { #[linkage="extern_weak"] }` (nightly) |
+
+The IR effect column is from `ldc-attrs.sh §(c)/(d)`. `@hidden`, `@noplt`, and
+`@allocSize` are present in `ldc.attributes` but their IR effect is hard to
+read at `-O2` (DCE removes never-called declarations); they're listed in the
+catalog above by code, just not in this verification table.
+
+### 1.1 `@assumeUsed` parity — `@llvm.used` (strong) vs `@llvm.compiler.used` (weak)
+
+`@assumeUsed` (the D analog of Rust's `#[used]` and clang's
+`__attribute__((used))`) pins a symbol against linker DCE. The non-obvious
+finding from `ldc-attrs.sh §a`: LDC and Rust emit the **strong** form;
+clang's classic `__attribute__((used))` emits the **weak** form. The strong
+form survives `--gc-sections`; the weak form only stops the LLVM optimizer
+from dropping the function, but the linker can still GC it.
+
+| frontend | source | IR marker emitted |
+|---|---|---|
+| **LDC** | `@(ldc.attributes.assumeUsed) extern(C) int marker() {…}` | `@llvm.used = appending global [1 x ptr] [ptr @marker]` — **STRONG** |
+| **Rust** | `#[used] #[no_mangle] pub static MARKER: u32 = 0xCAFE;` | `@llvm.used = appending global [1 x ptr] [ptr @MARKER]` — **STRONG** |
+| **clang** | `__attribute__((used)) int marker() {…}` | `@llvm.compiler.used = appending global [1 x ptr] [ptr @marker]` — **WEAK** |
+| **clang C23** | `[[gnu::retain]] int marker() {…}` | `@llvm.used = appending global [1 x ptr] [ptr @marker]` — **STRONG** (the spelling that yields the strong form on clang 13+) |
+| **Zig** | `export const MARKER: u32 = 0xCAFE;` | (no `@llvm.used` marker — relies on `export` external visibility; safe on bare-metal links without `--gc-sections`) |
+
+**Practical implication**: when you want a symbol kept across `--gc-sections`
+(common for static dispatch tables, ISR vector entries, link-stamped data),
+LDC's `@assumeUsed` and Rust's `#[used]` give you that directly. For clang
+you need C23's `[[gnu::retain]]` — the legacy `((used))` is not enough.
+
+### 1.2 Compile-time file embed — `import("file")` parity matrix
+
+D's `import("file.bin")` is a *string import* — the file content is read at
+compile time and substituted as a literal. Cross-language analogs verified at
+the shell against an esp32 build (`ldc-attrs.sh §b`):
+
+| frontend | spelling | section the bytes land in (xtensa-esp-elf, `-O2`) |
+|---|---|---|
+| **LDC** | `static immutable string p = import("payload.bin");` (`-J <path>`) | `.rodata._D<mangled>.<sym>` (per-symbol) |
+| **Zig** | `const p = @embedFile("payload.bin");` | `.rodata.str1.1` (string pool) |
+| **Rust** | `pub static P: &[u8] = include_bytes!("payload.bin");` | `.rodata..Lanon.<hash>.0` (anonymous static) |
+| **clang (C23)** | `const unsigned char p[] = { #embed "payload.bin" };` | `.rodata` |
+| **TinyGo** | `//go:embed payload.bin\nvar p string` | `.rodata` of the linked ELF, **but only if the variable is referenced from a non-DCE-d path** — TinyGo's whole-program LTO drops unreferenced embed bytes silently (docs/24 §"//go:embed") |
+
+The mechanism is identical at the bitcode level (a constant byte-array
+global); the only ergonomic difference is *what unit you embed at*: LDC and
+clang see a string, Rust + Zig + Go give you a slice/array with a known
+length. For the embedded-firmware case (assets, certificates, fonts, signed
+blobs, baked-in config), all five give you the same thing — a `const`
+`.rodata` blob with no run-time allocation.
+
 ## 2. Two evolution axes: `-preview` (à la carte) vs `--edition` (bundled)
 
 D evolves breaking changes on two orthogonal axes — and the second is *exactly*
