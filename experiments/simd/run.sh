@@ -73,8 +73,15 @@ EOF
     else printf "  %-30s <%s>  MISSING\n" "$label" "$hdr"
     fi
 }
-probe_cpp26_simd "$ZIG" "zig 0.16 / libc++ 21" "simd"
-probe_cpp26_simd "$ZIG" "zig 0.16 / libc++ 21" "experimental/simd"
+# $ZIG is now zig 0.17 (clang 22.1.4 / libc++ 22) — same libc++ family as
+# $ZIG_MOS, kept side-by-side as the bootstrap-vs-mainline sanity check.
+# The legacy 0.16/libc++ 21 row uses $ZIG_016 if installed.
+probe_cpp26_simd "$ZIG" "zig 0.17 / libc++ 22 (canonical)" "simd"
+probe_cpp26_simd "$ZIG" "zig 0.17 / libc++ 22 (canonical)" "experimental/simd"
+if [ -x "${ZIG_016:-}" ]; then
+    probe_cpp26_simd "$ZIG_016" "zig 0.16 / libc++ 21 (legacy)" "simd"
+    probe_cpp26_simd "$ZIG_016" "zig 0.16 / libc++ 21 (legacy)" "experimental/simd"
+fi
 if [ -x "$ZIG_MOS" ]; then
     probe_cpp26_simd "$ZIG_MOS" "v0.17.0-dev / libc++ 22" "simd"
     probe_cpp26_simd "$ZIG_MOS" "v0.17.0-dev / libc++ 22" "experimental/simd"

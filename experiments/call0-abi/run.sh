@@ -19,9 +19,10 @@
 #   TinyGo no flag                                     (whole-program, fixed ABI)
 #
 # Verifies the same source produces CALL0 codegen (no `entry`, `ret.n` instead
-# of `retw.n`) in every frontend. Probes both `add_i32(a,b)` and the 24-byte
-# Blob struct that exposes docs/05 and the zig 0.16 byval bug (now fixed in
-# zig 0.17).
+# of `retw.n`) in every frontend. Probes `add_i32(a,b)`; the canonical $ZIG
+# (0.17) lane has the docs/05 by-value struct ABI fixed already, so this
+# experiment is purely about the windowed/CALL0 selector parity — set
+# ZIG=$ZIG_016 to layer the legacy struct break on top if you want.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/env.sh

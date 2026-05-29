@@ -7,7 +7,7 @@ docs/19/23 and docs/24 §b; this doc keeps its narrow C/C++ scope.)
 
 | | `zig cc` / `zig c++` | `esp-clang` / `esp-clang++` | `esp-gcc` / `esp-g++` |
 |---|---|---|---|
-| engine | clang/LLVM **21.1.0** (espressif fork, bundled in Zig) | clang/LLVM **21.1.3** (espressif fork) | GCC **15.2** |
+| engine | clang/LLVM **22.1.4** (bundled in Zig 0.17 canonical; the legacy `$ZIG_016` bundle is LLVM **21.1.0**) | clang/LLVM **21.1.3** (espressif fork) | GCC **15.2** |
 | C target flag | `-target xtensa-freestanding-none -mcpu=esp32` | `--target=xtensa-esp-elf -mcpu=esp32` | `XTENSA_GNU_CONFIG=…esp32.so` |
 | C ABI (windowed) | ✓ | ✓ | ✓ |
 | C++ ABI (Itanium) | ✓ | ✓ | ✓ |

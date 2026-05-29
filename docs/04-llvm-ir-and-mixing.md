@@ -102,25 +102,38 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
 
 - **clang ↔ rust** (both 21.1.3): **links (rc=0)** — a single image where C calls
   Rust, IR merged at link time. (`experiments/llvm-ir-mix/mix2.c` + `mix_rs`.)
-- **clang ↔ zig** (esp 21.1.3 LTO reader vs zig 21.1.0 bitcode): **fails** —
-  `ld.lld: error: …/mix_zig.bc: Invalid record`. Both the espressif-bootstrap and
-  *upstream* (`pip install ziglang`) Zig 0.16.0 ship LLVM 21.1.0, so neither mixes
-  with the esp 21.1.3 tools.
-- **C ↔ zig, all on upstream Zig 21.1.0** (riscv32, `build/lto-rv`): **works** —
+- **clang ↔ zig** (esp 21.1.3 LTO reader vs zig 0.17 / LLVM 22.1.4 bitcode):
+  **fails** — `ld.lld: error: …/mix_zig.bc: Invalid record`. The skew got
+  *bigger* with the 0.16 → 0.17 flip (was patch-level 21.1.0 vs 21.1.3, now
+  major-level 22 vs 21), and `ld.lld` 21.1.3's bitcode reader still rejects
+  post-21 modules. The legacy `$ZIG_016` lane has the same failure for the
+  patch-level reason. Both upstream Zig 0.16.0 (`pip install ziglang`) and the
+  0.16 bootstrap ship LLVM 21.1.0; 0.17.0-xtensa bundles LLVM 22.1.4.
+- **C ↔ zig, both via `zig cc -flto`** (riscv32, `build/lto-rv`): **works** —
   compile C with `zig cc -flto` and Zig with `zig … -femit-llvm-bc`, then link
-  with `zig cc -flto` (one consistent LLVM). LTO not only merged the modules but
-  **inlined the Zig `zigsq` into the C `sum_sq`** and constant-folded the result:
-  the linked `_start` just stores `0x181` (= 385 = Σ1..10²) — zero residual calls.
+  with `zig cc -flto` (one consistent LLVM — Zig's bundled lld matches its
+  bundled clang). LTO not only merged the modules but **inlined the Zig
+  `zigsq` into the C `sum_sq`** and constant-folded the result: the linked
+  `_start` just stores `0x181` (= 385 = Σ1..10²) — zero residual calls.
   Cross-language inlining across a C↔Zig boundary is the strongest proof of
   IR-level mixing.
+- **clang ↔ zig via `$LDC_LLVM_DIR`'s LLVM-22 `llvm-link`** (opt-in,
+  `LLVM22=1`): **merges (rc=0)**. The forward-compatible LLVM-22 binutils read
+  esp-clang 21.1.3 bitcode AND zig 0.17 22.1.4 bitcode and emit one combined
+  module (verified at the shell against
+  `experiments/llvm-ir-mix/build/zig17-parity/`). This is module-merge only;
+  the matching LLVM-22 `ld.lld` still rejects the post-21 modules from a
+  21.1.3 input. So cross-cluster IR analysis works, full LTO doesn't.
 
-> Takeaway: IR portability is real (shared backend; identical datalayout across
-> every LLVM frontend in this matrix since docs/23/24), and both merge paths work —
-> `llvm-link` (LLVM-22 binutils for the upstream-LDC comparison; esp-clang's
-> own 21.1.3 binutils for the canonical fork-LDC) merges across frontends, and
-> `ld.lld` LTO merges + inlines. The LTO reader (esp 21.1.3 `ld.lld`) accepts
-> clang/rust/**D** (all 21.1.3) — no skew. Zig (21.1.0) and TinyGo (20.1.1) are
-> the version-skew outliers; "same LLVM point release" remains the LTO rule of
-> thumb. Object-level FFI (docs 03/05) has no such constraint and is the robust
-> default for any toolchain that produces a relocatable `.o`; TinyGo (docs/24)
-> stays standalone because its `.o` carries the Go runtime.
+> **Two LLVM clusters now**: the **21.1.3 cluster** (esp-clang + rust +
+> canonical LDC) where `ld.lld` LTO works without skew, and the **22.x
+> cluster** (zig 0.17 / 22.1.4 + upstream LDC 22.1.2 + the optional
+> `$LDC_LLVM_DIR` binutils) where bitcode merges across via `llvm-link` but
+> only `zig cc`'s own bundled `lld` can take the bitcode all the way through
+> LTO inlining. TinyGo (LLVM 20.1.1) sits outside both clusters. IR
+> portability is real (shared backend; identical datalayout across every LLVM
+> frontend in this matrix since docs/23/24); the rule of thumb stays
+> "same LLVM point release for `ld.lld` LTO." Object-level FFI (docs 03/05)
+> has no such constraint and is the robust default for any toolchain that
+> produces a relocatable `.o`; TinyGo (docs/24) stays standalone because its
+> `.o` carries the Go runtime.

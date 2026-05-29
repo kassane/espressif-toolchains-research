@@ -155,10 +155,14 @@ done
 
 echo
 echo "Summary:"
-echo "  byte-array rows: zig stack-spills the align-1 by-value (the classic"
-echo "    docs/05 hole); D's IR is byval but the espressif Xtensa backend"
-echo "    lowers it without movsp, so the heuristic puts it in REGISTERS."
-echo "    rust + gcc + TinyGo all agree with clang (REGISTERS)."
+echo "  byte-array rows: every toolchain agrees REGISTERS on the canonical lane"
+echo "    (\$ZIG = zig 0.17 / LLVM 22.1.4 — frontend now flattens to [N x i32]"
+echo "    like clang; docs/05 §\"Zig 0.17 status\"). Switch to \$ZIG_016 to"
+echo "    reproduce the historical break: zig stack-spills the align-1 by-value"
+echo "    on 0.16 (movsp grows the stack frame at the call site). D's IR is"
+echo "    byval but the espressif Xtensa backend lowers it without movsp, so"
+echo "    the heuristic puts it in REGISTERS even though the *machine* ABI is"
+echo "    still indirect — see docs/19/23. rust + gcc + TinyGo agree with clang."
 echo "  word-array rows: every toolchain agrees (REGISTERS), trivial."
 echo "  bitfield rows: clang/gcc flatten to scalar backing; zig with explicit"
 echo "    packed-struct backing matches; D emits byval(struct) IR for every"

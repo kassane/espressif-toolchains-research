@@ -10,11 +10,12 @@ DL="${DL:-/home/user/dl}"
 mkdir -p "$TC" "$DL"
 
 # Pinned releases (see docs/01-toolchains.md).
-ZIG_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa/zig-relsafe-x86_64-linux-musl-baseline.tar.xz"
-# Zig 0.17 (clang/LLVM 22.1.4) — fix lane for the under-aligned struct-by-value
-# ABI bug (docs/05 + docs/09). Same release repo, 0.16.0-xtensa-dev tag has the
-# 0.17 baseline asset. See env.sh + HANDOFF "Zig 0.17 status".
-ZIG_017_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa-dev/zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz"
+# Canonical Zig: 0.17.0-xtensa (clang/LLVM 22.1.4) — closes the under-aligned
+# struct-by-value ABI bug (docs/05 + docs/09) that 0.16 carried. The 0.16
+# baseline is still downloaded so experiments/abi-structs/sweep.sh + run-qemu
+# can demonstrate the gap reproducing on the older LLVM line.
+ZIG_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa-dev/zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz"
+ZIG_016_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa/zig-relsafe-x86_64-linux-musl-baseline.tar.xz"
 CLANG_URL="https://github.com/espressif/llvm-project/releases/download/esp-21.1.3_20260408/clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz"
 RUST_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz"
 RUST_SRC_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-src-1.95.0.0.tar.xz"
@@ -55,8 +56,8 @@ fetch() { # url outfile
     esac
 }
 
-fetch "$ZIG_URL"      "$DL/zig-xtensa.tar.xz"
-fetch "$ZIG_017_URL"  "$DL/zig-0.17-espressif.tar.xz"
+fetch "$ZIG_URL"      "$DL/zig-0.17-espressif.tar.xz"
+fetch "$ZIG_016_URL"  "$DL/zig-016-xtensa.tar.xz"
 fetch "$CLANG_URL"    "$DL/clang-xtensa.tar.xz"
 fetch "$RUST_URL"     "$DL/rust-xtensa.tar.xz"
 fetch "$RUST_SRC_URL" "$DL/rust-src.tar.xz"
@@ -88,15 +89,15 @@ extract() { # tarball marker_dir
     echo "extracting $(basename "$1")"
     tar xf "$1" -C "$TC"
 }
-extract "$DL/zig-xtensa.tar.xz"   "zig-relsafe-x86_64-linux-musl-baseline"
-# Zig 0.17 has a different top-level dir name; tarball must extract into
-# $TC/zig-0.17-espressif (see env.sh ZIG_017). The release ships top-level
-# files (zig + lib/) so strip-components=1 into a target dir.
+# Canonical 0.17 ships top-level files (zig + lib/) so strip-components=1 into a
+# target dir. The legacy 0.16 tarball uses its own top-level dir, so a plain
+# extract picks it up.
 if [ ! -x "$TC/zig-0.17-espressif/zig" ]; then
     echo "extracting zig-0.17-espressif.tar.xz"
     mkdir -p "$TC/zig-0.17-espressif"
     tar xf "$DL/zig-0.17-espressif.tar.xz" -C "$TC/zig-0.17-espressif" --strip-components=1
 fi
+extract "$DL/zig-016-xtensa.tar.xz" "zig-relsafe-x86_64-linux-musl-baseline"
 extract "$DL/clang-xtensa.tar.xz" "esp-clang"
 extract "$DL/gcc-xtensa.tar.xz"   "xtensa-esp-elf"
 [ -f "$DL/ldc-esp.tar.xz" ] && extract "$DL/ldc-esp.tar.xz" "ldc-xtensa"

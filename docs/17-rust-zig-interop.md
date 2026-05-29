@@ -65,29 +65,29 @@ So a Rust↔Zig call passing such a struct **by value** corrupts data. Struct
 *returns* (sret) are fine. **Mitigation:** pass structs **by pointer** across any
 Rust↔Zig boundary — then everything (incl. u128/f128) interoperates.
 
-**Provenance — it's upstream Zig, not the espressif fork.** The
+**Provenance — it was upstream Zig, not the espressif fork.** The
 `kassane/zig-espressif-bootstrap` README enumerates its 7 patches and **every one
 targets LLVM/LLD/Clang/zlib build plumbing — none touch Zig's `src/`**. The fork
-builds an upstream Zig 0.16.0-era commit (which already carries the `esp32`/s2/s3
-CPU *models* — present in its `lib/std/Target/xtensa.zig`, absent from the tagged
-0.16.0) against espressif LLVM 21.1.0. So the by-value aggregate mis-lowering is
-in **upstream Zig's frontend C-ABI handling** (it defers to LLVM's default instead
-of coercing per the platform C ABI), not a fork regression — consistent with the
-RISC-V case reproducing on stock upstream Zig (docs/10). It's tracked upstream by
+builds an upstream Zig commit against espressif LLVM (22.1.4 in the canonical
+0.17 tarball; 21.1.0 in the legacy 0.16 tarball). So the by-value aggregate
+mis-lowering was in **upstream Zig's frontend C-ABI handling** (0.16 deferred
+to LLVM's default instead of coercing per the platform C ABI), not a fork
+regression — consistent with the RISC-V case reproducing on stock upstream
+Zig 0.16 (docs/10). It's tracked upstream by
 **ziglang/zig #5467 "Xtensa Support" CLOSED 2026-05-06 (milestone 0.17.0)** —
 the umbrella issue is now done; Xtensa support landed in 0.17.0 (along with
 #23088 for `xtensa(eb)-linux` tier). **The by-value aggregate mis-lowering DID
-get fixed in that landing — verified at the shell against
-`kassane/zig-espressif-bootstrap` `zig-0.17.0-relsafe-x86_64-linux-musl-baseline`
-(bundled clang/LLVM 22.1.4, exposed as `$ZIG_017`).** The 0.17 zig frontend
-now emits `i32 @lib_zig.zig_blob_sum([6 x i32] %0)` instead of
+get fixed in that landing — verified at the shell against the canonical `$ZIG`
+(`kassane/zig-espressif-bootstrap` `zig-0.17.0-relsafe-x86_64-linux-musl-baseline`,
+bundled clang/LLVM 22.1.4).** The 0.17 zig frontend now emits
+`i32 @lib_zig.zig_blob_sum([6 x i32] %0)` instead of
 `i32 @lib_zig.zig_blob_sum(%lib_zig.Blob %0)` — same `[N x i32]` shape clang
 has emitted all along. qemu xtensa `zig_blob_sum` flips from `FAIL (got=409)`
 to `ok (300)`, qemu riscv `zig_point_dot` flips from `FAIL` to `ok (11)`,
 and the abi-structs sweep shows REGISTERS in every Zig row on every Xtensa
-core. The repo default `$ZIG` stays on 0.16 for snapshot continuity; switch
-with `ZIG=$ZIG_017 ...`. Full account in docs/05 §"Zig 0.17 status".
-(Cf. the *data-layout* gap upstream #16616 / PR #16632, already fixed.)
+core. The legacy `$ZIG_016` lane regenerates the historical break. Full
+account in docs/05 §"Zig 0.17 status". (Cf. the *data-layout* gap upstream
+#16616 / PR #16632, already fixed long before 0.17.)
 
 ## 3. Linking & LTO
 
@@ -95,10 +95,13 @@ with `ZIG=$ZIG_017 ...`. Full account in docs/05 §"Zig 0.17 status".
   `ld.lld` (and GNU `ld`); the u128 runtime above is a Rust↔Zig link. Symbols,
   the windowed ABI, and runtime builtins all resolve.
 - **Cross-language LTO / IR-merge: fails** — `ld.lld: error: …rt.bc: Invalid
-  record`. Rust's bitcode is LLVM **21.1.3**, Zig's is **21.1.0**; the LTO reader
-  rejects the mismatched module. (Same skew that blocks clang↔zig LTO, docs/04;
-  clang↔rust LTO works because both are 21.1.3.) To LTO across Rust↔Zig you'd need
-  both on one LLVM point release.
+  record`. Rust's bitcode is LLVM **21.1.3**, Zig 0.17's is **22.1.4** (the
+  legacy `$ZIG_016` is **21.1.0**); the LTO reader rejects the mismatched
+  module either way. (Same skew that blocks clang↔zig LTO, docs/04;
+  clang↔rust LTO works because both are 21.1.3.) The optional `$LDC_LLVM_DIR`
+  LLVM-22 `llvm-link` can merge the modules across the version gap (because
+  22's bitcode reader is backward-compatible to 21.1.3), so cross-cluster IR
+  analysis is reachable; full LTO inlining needs one LLVM cluster end-to-end.
 
 ## 4. Atomics — native and compatible
 
@@ -149,6 +152,9 @@ Rust ⇄ Zig FFI on Xtensa is **as strong as Rust ⇄ C, and in one way stronger
 the two frontends agree on every scalar ABI, *including* `u128`/`f128`/`f16` that
 C can't even express on Xtensa, and **nullable pointers** (`Option<&T>` ↔ `?*T`)
 interop directly (object-linked and runtime-verified). The only
-caveats are (1) **by-value struct arguments** — Zig's experimental ESP ABI bug,
-so pass structs by pointer — and (2) **no cross-language LTO** until Zig's LLVM
-(21.1.0) matches Rust's (21.1.3); object-level FFI has no such constraint.
+caveats are (1) **by-value struct arguments on the legacy `$ZIG_016` lane** —
+Zig 0.16's experimental ESP ABI bug, closed in 0.17 (canonical `$ZIG`);
+pass structs by pointer if you need to keep `$ZIG_016` compatibility — and
+(2) **no cross-language LTO** until Zig's LLVM (22.1.4) matches Rust's (21.1.3),
+or until you stage through the LLVM-22 `llvm-link` binutils; object-level FFI
+has no such constraint.

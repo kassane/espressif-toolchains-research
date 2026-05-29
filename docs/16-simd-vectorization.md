@@ -74,7 +74,8 @@ asm volatile (
     : .{ .memory = true, .q0 = true, .q1 = true, .q2 = true });
 ```
 
-Verified on Zig 0.16 (espressif bootstrap): assembles the same 4 `EE.*`
+Verified on the canonical Zig 0.17 (espressif bootstrap, LLVM 22.1.4) and
+the legacy `$ZIG_016` (LLVM 21.1.0): both assemble the same 4 `EE.*`
 instructions, operands routed to `a2/a3/a4`, with q-register clobbers accepted.
 (Old `: "memory"` string form is gone in 0.15+.)
 
@@ -106,15 +107,20 @@ The natural seventh row in the parity table would be C++26's
 of `std::experimental::simd` (TS). It's the C++-language analog of Rust's
 `core::simd` / Zig's `@Vector` / D's `__vector(byte[16])` — a portable
 fixed-width vector type with abi tags (`std::simd_abi::native_abi<T>`).
-Status as of writing, probed at the shell against both clang versions
-in this matrix (`zig c++` 21.1.0 / libc++ 21; `kassane/zig-mos-bootstrap`
-v0.17.0-dev = clang 22.0.0git / libc++ 22) **and against the matrix's GCC
-producer** (esp-g++ 15.2.0 / libstdc++ 15, `-ffreestanding` xtensa-esp-elf):
+Status as of writing, probed at the shell against three libc++ revisions
+and the matrix's libstdc++:
 
-| header | libc++ 21 (Zig 0.16 bundle) | libc++ 22 (v0.17.0-dev bundle) | libstdc++ 15 (esp-g++) |
-|---|---|---|---|
-| `<simd>` (P1928) | ✗ MISSING | ✗ MISSING — frontier item, not landed in libc++ 22 either | ✗ MISSING — not in libstdc++ 15 either (same upstream gap) |
-| `<experimental/simd>` (TS) | ✓ parses | ✓ parses, **but** operator+/-/*/etc. binary forms are stubs: | ✓ parses **hosted** — but `bits/requires_hosted.h` blocks `-ffreestanding` (the canonical embedded compile mode), so unreachable on bare-metal xtensa-esp-elf |
+- `$ZIG c++` — canonical Zig 0.17 bundle: clang 22.1.4 / libc++ 22.
+- `$ZIG_016 c++` — legacy Zig 0.16 bundle: clang 21.1.0 / libc++ 21.
+- `$ZIG_MOS c++` — `kassane/zig-mos-bootstrap` v0.17.0-dev: clang 22.0.0git /
+  libc++ 22 (a comparison row that confirms upstream mainline agrees with the
+  bootstrap on the C++26 surface).
+- `$GXX` — esp-g++ 15.2.0 / libstdc++ 15, `-ffreestanding` xtensa-esp-elf.
+
+| header | libc++ 21 (`$ZIG_016` legacy bundle) | libc++ 22 (`$ZIG` canonical 0.17 bundle) | libc++ 22 (`$ZIG_MOS` mainline) | libstdc++ 15 (`$GXX`) |
+|---|---|---|---|---|
+| `<simd>` (P1928) | ✗ MISSING | ✗ MISSING — frontier item, not landed in libc++ 22 either | ✗ MISSING (matches the bootstrap) | ✗ MISSING — not in libstdc++ 15 either (same upstream gap) |
+| `<experimental/simd>` (TS) | ✓ parses | ✓ parses, **but** operator+/-/*/etc. binary forms are stubs: | ✓ parses, same stubs | ✓ parses **hosted** — but `bits/requires_hosted.h` blocks `-ffreestanding` (the canonical embedded compile mode), so unreachable on bare-metal xtensa-esp-elf |
 
 ```
 error: invalid operands to binary expression

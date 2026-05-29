@@ -2,7 +2,8 @@
 # run.sh - Rust <-> Zig frontend interop on Xtensa (the two non-C LLVM frontends).
 #   (a) scalar ABI incl. C-inexpressible u128/f128/f16  -> IR signatures
 #   (b) runtime: Rust calls Zig with u128 (carry across 4 words) on qemu
-#   (c) cross-language LTO (rust 21.1.3 bc + zig 21.1.0 bc) -> version skew
+#   (c) cross-language LTO (rust 21.1.3 bc + zig 22.1.4 bc) -> LLVM-21 vs LLVM-22
+#       cluster split (was 21.1.0 vs 21.1.3 patch skew on the legacy $ZIG_016 lane)
 #   (d) atomics: both use native s32c1i (no libcall)?
 # See docs/17.
 set -euo pipefail
@@ -35,12 +36,12 @@ cp "$(find "$D/rt/target" -name librzrt.a | head -1)" "$B/"
 ld.lld -T "$QR/sim.ld" -o "$B/rz.elf" "$B/start.o" "$B/main.o" "$B/rt.o" --start-group "$B/librzrt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$B/rz.elf" || true
 
-echo "== (c) cross-language LTO: rust bc (21.1.3) + zig bc (21.1.0) =="
+echo "== (c) cross-language LTO: rust bc (21.1.3) + zig bc ($("$ZIG" cc --version|head -1|grep -oE '[0-9]+\.[0-9]+\.[0-9]+'|head -1)) =="
 ( cd "$D/rt" && RUSTC="$RUSTC" "$CARGO" rustc --release -Z build-std=core --target xtensa-esp32-none-elf -- --emit=llvm-bc >/dev/null 2>&1 )
 cp "$(find "$D/rt/target" -name 'rzrt*.bc' | head -1)" "$B/rzrt.bc"
 "$ZIG" build-obj $ZT -O ReleaseSmall -fno-emit-bin -femit-llvm-bc="$B/rt.bc" "$D/rt.zig"
 if ld.lld --lto-O2 -e rs_check_u128 -u zig_add_u128 "$B/rzrt.bc" "$B/rt.bc" -o "$B/lto.elf" 2>"$B/lto.err"; then
-  echo "  LTO linked (versions matched)"; else echo "  LTO FAILS: $(grep -oiE 'Invalid record' "$B/lto.err" | head -1) (zig 21.1.0 vs rust/lld 21.1.3)"; fi
+  echo "  LTO linked (versions matched)"; else echo "  LTO FAILS: $(grep -oiE 'Invalid record' "$B/lto.err" | head -1) (LLVM-21 cluster lld vs zig's LLVM-${ZBC_MAJ:-22} bitcode — set ZIG=\$ZIG_016 to repro the 21.1.0-vs-21.1.3 patch skew)"; fi
 
 echo "== (d) atomics: native s32c1i in both (no __atomic/__sync libcall)? =="
 "$ZIG" build-obj $ZT -O ReleaseSmall -femit-bin="$B/at.o" "$D/atomic.zig"

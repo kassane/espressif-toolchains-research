@@ -1,21 +1,30 @@
 # 05 — Deep dive: the struct-argument ABI divergence (alignment, not size)
 
-This is the one place the shared backend does **not** give a shared ABI. It is
-subtle: the trigger is **struct alignment**, not struct size, and it only affects
-by-value struct *arguments* (returns are fine).
+The canonical lane (zig 0.17, clang 21.1.3, rust 21.1.3, LDC 21.1.3, esp-gcc
+15.2.0, TinyGo 0.41.1) now has D as the **only** language with a struct-by-value
+gap on Xtensa — Zig 0.17 closed the long-standing align-1 hole (the rest of
+this doc traces what *was* broken and what the fix landed). This is the one
+place the shared backend does **not** give a shared ABI; the trigger is
+**struct alignment**, not struct size, and it only affects by-value struct
+*arguments* (returns are fine).
 
 ## The discriminator is alignment
 
 `experiments/abi-structs/sweep.sh` forwards a by-value struct to an external
-function and classifies how every available toolchain passes it on esp32:
+function and classifies how every available toolchain passes it on esp32
+(the **canonical** lane: `$ZIG` = 0.17 / LLVM 22.1.4):
 
 ```
 struct                align  clang IR arg   | clang        gcc          rust         zig            D            TinyGo
-[8]u8                  1     [2 x i32]      | REGISTERS    REGISTERS    REGISTERS    STACK (movsp)  REGISTERS    REGISTERS
-[16]u8                 1     [4 x i32]      | REGISTERS    REGISTERS    REGISTERS    STACK (movsp)  REGISTERS    REGISTERS
-[24]u8                 1     [6 x i32]      | REGISTERS    REGISTERS    REGISTERS    STACK (movsp)  REGISTERS    REGISTERS
+[8]u8                  1     [2 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS *    REGISTERS    REGISTERS
+[16]u8                 1     [4 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS *    REGISTERS    REGISTERS
+[24]u8                 1     [6 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS *    REGISTERS    REGISTERS
 {2 x u32}              4     [2 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS      REGISTERS    REGISTERS
 {6 x u32}              4     [6 x i32]      | REGISTERS    REGISTERS    REGISTERS    REGISTERS      REGISTERS    REGISTERS
+
+* on the legacy `$ZIG_016` lane (Zig 0.16 / LLVM 21.1.0), all three Zig
+  align-1 rows are STACK (movsp) — the original docs/05 bug. Switch with
+  `ZIG=$ZIG_016 bash experiments/abi-structs/sweep.sh esp32` to reproduce.
 
 C-bitfield rows (clang/gcc/zig packed struct(uN)/D — rust + TinyGo have no
 native bitfield syntax):
@@ -25,8 +34,10 @@ bf 32b(8+8+16)         4     i32            | REGISTERS    REGISTERS    n/a     
 bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a   (D IR: byval(%s.T))
 ```
 
-- **align-1 byte arrays diverge at every size — even 8 bytes.** Five of six
-  toolchains classify REGISTERS; **Zig alone uses movsp**.
+- **align-1 byte arrays USED to diverge at every size — even 8 bytes** —
+  five of six toolchains classified REGISTERS while **Zig 0.16 alone used
+  movsp**. Zig 0.17 (`$ZIG` canonical) now flattens to `[N x i32]` like clang
+  and matches; only the legacy `$ZIG_016` lane reproduces the old break.
 - **align-4 structs match at every size — even 24 bytes.**
 - **Bitfields: clang/gcc flatten to the scalar backing type** (`i32`/`i32`/
   `[1 x i64]` for the 16/32/64-bit total widths). **Zig matches clang
@@ -62,19 +73,23 @@ flattened to `[N x i32]` and passed in `a2..a7`, **regardless of alignment**.
 define i32 @c_blob_sum([6 x i32] %0)      ; rust identical; 24-byte [24]u8 → registers
 ```
 
-## What Zig does
+## What Zig *used to* do (0.16 lane, fixed in 0.17)
 
-Zig forwards the raw `extern struct` to LLVM (`i32 @zig_blob_sum(%Blob)`) and
-inherits LLVM's default calling-convention lowering. That default only passes the
-aggregate in registers when it is naturally word-aligned; an under-aligned
-(align-1) aggregate is passed in memory.
+Zig 0.16 forwarded the raw `extern struct` to LLVM (`i32 @zig_blob_sum(%Blob)`)
+and inherited LLVM's default calling-convention lowering. That default only
+passes the aggregate in registers when it is naturally word-aligned; an
+under-aligned (align-1) aggregate was passed in memory. **Zig 0.17 closed this**
+in the frontend by lowering aggregate args as `[N x i32]` exactly like clang
+does (the same `[6 x i32]` IR signature). See "Zig 0.17 status" at the bottom
+of this doc for the IR diff; this section traces what the legacy `$ZIG_016`
+lane still reproduces.
 
 ### Proof at the call site (8-byte structs, `experiments/abi-structs`)
 
-`[8]u8` (align 1) — clang registers, Zig stack:
+`[8]u8` (align 1) — clang registers, Zig 0.16 stack (Zig 0.17 matches clang):
 
 ```
-clang caller:                          zig caller:
+clang caller:                          zig 0.16 caller:
   entry a1,32                            entry a1,32
   mov.n a11,a3 ; mov.n a10,a2            mov.n a10..a15 (stage)
   callx8 <ext>                           addi a9,a1,-8 ; movsp a1,a9   ; grow stack
@@ -82,16 +97,19 @@ clang caller:                          zig caller:
                                          callx8 <ext> ; movsp a1,+8 (restore)
 ```
 
-`{u32,u32}` (align 4, *same 8 bytes*) — clang and Zig **byte-identical**:
+`{u32,u32}` (align 4, *same 8 bytes*) — clang and Zig (both 0.16 and 0.17)
+**byte-identical**:
 
 ```
 entry a1,32 ; mov.n a11,a3 ; mov.n a10,a2 ; callx8 <ext> ; mov.n a2,a10 ; retw.n
 ```
 
-A clang/rust/gcc ↔ zig call with an **under-aligned by-value struct argument**
-reads the bytes from the wrong place ⇒ silent corruption on hardware. Word-aligned
-structs are safe. (The host test in doc 03 passes regardless because x86_64 SysV
-memory-passes these structs in a way both sides agree on.)
+On the legacy `$ZIG_016` lane, a clang/rust/gcc ↔ zig call with an
+**under-aligned by-value struct argument** reads the bytes from the wrong place
+⇒ silent corruption on hardware. Word-aligned structs are safe. (The host test
+in doc 03 passes regardless because x86_64 SysV memory-passes these structs in
+a way both sides agree on.) Canonical zig 0.17 closes this — the bytes-from-
+wrong-place hazard is now D-only on Xtensa.
 
 ## Struct *returns* are fine even when under-aligned
 
@@ -140,43 +158,52 @@ in `a2` bits 0-7, TinyGo reads all of `a2` as one byte. So TinyGo joins the
 struct-arg list **for byte-array aggregates only**. Full detail in
 [docs/24](24-tinygo.md) §(e).
 
-The cumulative score at align-1 on Xtensa: **Zig**, **D/LDC**, and **TinyGo
-(byte-array case)** all diverge from clang/rust/gcc. The mitigation is the
-same for all three: pass aggregates by pointer.
+The cumulative score at align-1 on Xtensa, with **Zig 0.17 canonical**:
+**D/LDC** and **TinyGo (byte-array case)** are the diverging frontends; Zig
+0.16 (`$ZIG_016`) reproduces the historical break as a third row. The
+mitigation is the same for D/TinyGo: pass aggregates by pointer.
 
-## Not Xtensa-only — RISC-V has a *different* Zig struct bug
+## Not Xtensa-only — RISC-V *also* had a Zig struct bug (0.16, fixed in 0.17)
 
-This particular manifestation (under-aligned arg → stack) is Xtensa-specific: the
+The Xtensa manifestation (under-aligned arg → stack) was Xtensa-specific: the
 same `[8]u8` caller on RISC-V esp32c3 passes by reference in `a0` for both clang
-and Zig. **But RISC-V is not bug-free for Zig** — there the *small* `{i32,i32}`
-`Point` is mis-lowered to `[2 x i64]` (wrong registers), which the Xtensa path
-handles correctly. So Zig's experimental ESP targets each have a by-value
-struct-argument gap, just in different cases; Rust/clang/gcc are correct on both.
-The RISC-V case even reproduces on upstream Zig. See
-[docs/09](09-riscv.md) and [docs/10](10-cabi-completeness.md). The common root is
-that Zig defers aggregate ABI to LLVM's default instead of implementing the
-platform C ABI in the frontend (which clang and rust both do). This is an
-**upstream Zig** gap, not the espressif fork: `kassane/zig-espressif-bootstrap`
-patches only LLVM/LLD/Clang (no Zig `src/` changes), and Xtensa is still being
-finalized upstream under `ziglang/zig` #5467 (**CLOSED 2026-05-06**, milestone 0.17.0). See
-[docs/17](17-rust-zig-interop.md).
+and Zig. **But RISC-V wasn't bug-free for Zig 0.16 either** — there the
+*small* `{i32,i32}` `Point` was mis-lowered to `[2 x i64]` (wrong registers),
+which the Xtensa path handled correctly. Zig's two experimental ESP targets each
+had a by-value struct-argument gap, in different cases; Rust/clang/gcc were
+correct on both. The RISC-V case reproduced on upstream Zig too. **Both gaps
+closed in 0.17.0** (`$ZIG` canonical) — verified at the shell, qemu
+`zig_point_dot` flips from `FAIL` to `ok (11)` on riscv just as
+`zig_blob_sum` flips on xtensa. See
+[docs/09](09-riscv.md) and [docs/10](10-cabi-completeness.md). The common root
+was that Zig 0.16 deferred aggregate ABI to LLVM's default instead of
+implementing the platform C ABI in the frontend (which clang and rust both do).
+This was an **upstream Zig** gap, not the espressif fork:
+`kassane/zig-espressif-bootstrap` patches only LLVM/LLD/Clang (no Zig `src/`
+changes), and Xtensa was finalized upstream under `ziglang/zig` #5467
+(**CLOSED 2026-05-06**, milestone 0.17.0) — the fix shipped in 0.17 (verified
+at the shell; see "Zig 0.17 status" below). See [docs/17](17-rust-zig-interop.md).
 
 ## Cost & mitigation
 
-- Code-size symptom on esp32: Zig's 9-function lib is **715 B** of `.text` vs
-  clang **223 B** / gcc **201 B** (real `.text`, `llvm-size -A`; the often-quoted
-  647 B counted zig's default `.eh_frame` — docs/15) — the bloat is the
-  byte-by-byte stack marshalling above.
-- **Mitigations** (any one): keep cross-language structs **word-aligned** (the
+- Code-size symptom on the legacy `$ZIG_016` lane: Zig's 9-function lib was
+  **715 B** of `.text` vs clang **223 B** / gcc **201 B** (real `.text`,
+  `llvm-size -A`; the often-quoted 647 B counted zig's default `.eh_frame` —
+  docs/15) — the bloat was the byte-by-byte stack marshalling above. **Zig
+  0.17 (`$ZIG` canonical) regenerates the same `.text` shape as clang**, so
+  the size gap closes on the canonical lane.
+- **Mitigations** for the residual D/TinyGo gaps (and the legacy `$ZIG_016`
+  lane): keep cross-language structs **word-aligned** (the
   common case — any struct with an `int`/pointer member already is); or pass
   byte-array/packed/`align(1)` structs **by pointer**; or avoid by-value
   aggregates on Zig boundaries entirely. Returns need no mitigation (sret).
 
-## Zig 0.17 status — the bug is fixed in the next baseline
+## Zig 0.17 status — the bug is fixed in the canonical baseline
 
-The `kassane/zig-espressif-bootstrap` 0.17 release (**`zig-0.17.0-relsafe-
-x86_64-linux-musl-baseline.tar.xz`** under the `0.16.0-xtensa-dev` tag,
-bundled clang/LLVM **22.1.4**) closes both struct-arg gaps:
+The canonical `$ZIG` is the **`kassane/zig-espressif-bootstrap` 0.17 release**
+(`zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` under the
+`0.16.0-xtensa-dev` tag, bundled clang/LLVM **22.1.4**). It closes both
+struct-arg gaps relative to the legacy `$ZIG_016` lane:
 
 - **Xtensa `zig_blob_sum`** (24-byte `[u8;24]`, align-1): qemu went from
   `FAIL (got=409 want=300)` on 0.16 to `ok (300)` on 0.17.
@@ -196,11 +223,10 @@ The IR diff at `zig_blob_sum` shows the frontend change:
 Zig 0.17 now emits the same `[N x i32]` aggregate-flattening clang has been
 emitting all along — passing the 6 words in `a2..a7` (after the windowed
 rotation from caller's `a10..a15`) instead of growing the stack with
-`movsp`. The 0.17 binary lives at `$ZIG_017`
-(`/home/user/toolchains/zig-0.17-espressif/zig`); the rest of the env-and-
-script chain keeps `$ZIG` pointing at 0.16 for snapshot-comparison
-stability, but `ZIG=$ZIG_017 ./scripts/build-ffi.sh esp32` and
-`ZIG=$ZIG_017 ./scripts/run-qemu.sh xtensa` flip every consumer.
+`movsp`. The 0.17 binary is the default `$ZIG`
+(`/home/user/toolchains/zig-0.17-espressif/zig`); to reproduce the historical
+bug, switch with `ZIG=$ZIG_016 ./scripts/build-ffi.sh esp32` and
+`ZIG=$ZIG_016 ./scripts/run-qemu.sh xtensa`.
 
 **This narrows the cumulative score**: at align-1 on Xtensa, the diverging
 frontends are now just **D/LDC** and **TinyGo (byte-array case)** — Zig has

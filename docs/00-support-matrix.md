@@ -15,10 +15,10 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 
 | | **Rust** (esp-rs) | **Zig** (esp bootstrap) | **D** (LDC) | **esp-clang** | **GCC** (crosstool-NG) | **TinyGo** (docs/24) |
 |---|---|---|---|---|---|---|
-| version | 1.95.0-nightly | 0.16.0 | LDC 1.42-git | 21.1.3 | 15.2.0 | v0.41.1 |
-| backend | LLVM **21.1.3** | LLVM **21.1.0** | LLVM **21.1.3** (espressif fork) | LLVM **21.1.3** | GCC (own) | LLVM **20.1.1** (TinyGo-bundled) |
-| Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** | **`kassane/esp-idf-dlang` fork** (LDC + `espressif/llvm-project`; docs/23) | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` | **`tinygo-org/llvm-project` fork** (bundled in the tarball; see docs/24) |
-| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | partial — Zig 0.16 has no esp32; 0.17.0-dev (Codeberg) adds `esp32` only (no s2/s3); **fork** has all three | partial — `$LDC2_UPSTREAM` (LLVM 22.1.2) works for `esp32` only (no s2/s3; ldc #4919) and needs the `-output-s` re-assembly workaround; docs/23 | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial (esp32/esp8266 only) | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif | n/a — TinyGo bundles its own LLVM and runtime |
+| version | 1.95.0-nightly | **0.17.0-xtensa** | LDC 1.42-git | 21.1.3 | 15.2.0 | v0.41.1 |
+| backend | LLVM **21.1.3** | LLVM **22.1.4** (bundled) | LLVM **21.1.3** (espressif fork) | LLVM **21.1.3** | GCC (own) | LLVM **20.1.1** (TinyGo-bundled) |
+| Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** (0.16 legacy is `$ZIG_016`) | **`kassane/esp-idf-dlang` fork** (LDC + `espressif/llvm-project`; docs/23) | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` | **`tinygo-org/llvm-project` fork** (bundled in the tarball; see docs/24) |
+| works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | partial — upstream Zig 0.17.0 adds `esp32` only (no s2/s3); **fork** has all three. The struct-by-value bug (#5467) is fixed in 0.17 | partial — `$LDC2_UPSTREAM` (LLVM 22.1.2) works for `esp32` only (no s2/s3; ldc #4919) and needs the `-output-s` re-assembly workaround; docs/23 | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial (esp32/esp8266 only) | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif | n/a — TinyGo bundles its own LLVM and runtime |
 | esp32 / s2 / s3 | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ (via `-mcpu`) | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / **✗** / ✓ (no esp32-s2 target) |
 | `core`/libc model | no prebuilt core → `-Zbuild-std=core` + rust-src | freestanding (no std) | `-betterC` (no druntime/Phobos) | freestanding | newlib + libgcc | Go runtime + picolibc (bundled) |
 | co-linkable `.o` for FFI matrix? | ✓ | ✓ | ✓ | ✓ | ✓ | **✗** — whole-program (firmware-only output; docs/24 §d) |
@@ -31,10 +31,11 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 > carries Tier-3 target specs. Likewise **`espressif/llvm-project` ≠ upstream
 > LLVM**: the espressif fork has the complete esp32/s2/s3 backend; upstream
 > LLVM's Xtensa target is still experimental (only esp32/esp8266). Zig needs
-> the espressif bootstrap fork too: upstream Zig 0.16 has no esp32 CPU, and
-> while 0.17.0-dev (now on `codeberg.org/ziglang/zig`) adds `esp32` via upstream
-> LLVM, it still lacks esp32-s2/s3 — **only the fork has all three, exactly like
-> the Rust fork.** Only GCC's Xtensa core is upstream — and even then the ESP
+> the espressif bootstrap fork too: upstream Zig 0.17.0 (the canonical version
+> here, exposed as `$ZIG`) adds `esp32` via upstream LLVM, but still lacks
+> esp32-s2/s3 — **only the fork has all three, exactly like the Rust fork.**
+> (The legacy `$ZIG_016` lane reproduces the pre-0.17 struct-by-value gap
+> against the same fork.) Only GCC's Xtensa core is upstream — and even then the ESP
 > core configs ship via `espressif/crosstool-NG`. **D/LDC used to be the
 > exception** (riding upstream LLVM-22 directly, with a literal-pool re-assembly
 > workaround) — but the canonical 5th frontend is now
@@ -95,7 +96,7 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 | symbol mangling (internal) | v0 `_R…` / legacy `_ZN…` | module-qualified + export alias | D `_D…` / Itanium `_Z…` for `extern(C++)` | Itanium `_Z…` | Itanium `_Z…` | `<package>.<func>` (e.g. `main.go_add_i32`); `//export name` re-emits as bare `name` |
 | FFI export | `#[no_mangle] extern "C"` | `export fn` | `extern(C)` / `extern(C++[,"ns"])` | `extern "C"` | (C) | `//export name` |
 | call / emit `@"mangled"` symbols | — | ✓ (docs/12) | ✓ native `extern(C++)` + `-HC` header (docs/19) | — | — | — |
-| cross-language **LTO** peer | esp-clang (both 21.1.3) ✓ | ✗ skew (21.1.0 vs 21.1.3) | **esp-clang ✓** (same 21.1.3; docs/19) | Rust ✓ | — (not LLVM) | ✗ skew (LLVM 20.1.1, docs/24) |
+| cross-language **LTO** peer | esp-clang (both 21.1.3) ✓ | ✗ skew (22.1.4 vs 21.1.3); **LDC-upstream ✓** via $LDC_LLVM_DIR's LLVM-22 binutils | **esp-clang ✓** (same 21.1.3; docs/19) | Rust ✓ | — (not LLVM) | ✗ skew (LLVM 20.1.1, docs/24) |
 | call0 ABI | LLVM `-windowed` feat. | LLVM `-windowed` feat. | LLVM `-windowed` feat. | LLVM `-windowed` feat. | `-mabi=call0` | LLVM `-windowed` feat. (not exposed via TinyGo CLI) |
 | f32: esp32 / esp32-s3 | HW FPU | HW FPU | HW FPU | HW FPU | HW FPU | HW FPU |
 | f32: esp32-**s2** (no FPU) | soft `__mulsf3` | soft | soft | soft | soft | n/a (no s2 target, docs/24 §a) |
@@ -135,7 +136,10 @@ boundaries. Rust matches clang/GCC bit-for-bit. GCC is the smallest .text
 (201 B), Zig the largest (715 B), D in between (533 B), TinyGo whole-firmware.
 Object files link across all six with `ld.lld` and GNU `ld` (D direct `-c`
 since docs/23; TinyGo `.o` needs runtime undefs satisfied per docs/24 §d).
-Cross-language LTO needs compatible LLVM bitcode — clang↔rust↔D (all 21.1.3)
-work; zig (21.1.0) and TinyGo (LLVM 20.1.1) are skew outliers. D has the
+Cross-language LTO needs compatible LLVM bitcode — clang↔rust↔D (all 21.1.3,
+the canonical "LLVM-21 cluster") work; zig 0.17 (LLVM 22.1.4) and TinyGo
+(LLVM 20.1.1) are version-skew outliers. The optional `$LDC2_UPSTREAM` +
+`$LDC_LLVM_DIR` pairing (both LLVM-22.x) opens a second LTO cluster with zig
+0.17. D has the
 richest C/C++ FFI surface (native Itanium mangling, `-HC` headers). Details:
 docs 01–24; `Research.md`.

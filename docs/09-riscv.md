@@ -20,27 +20,30 @@ symbols**. As on Xtensa, everything links.
 
 ## Runtime (qemu-system-riscv32 `virt`)
 
-`scripts/run-qemu.sh riscv` runs the matrix on the espressif qemu RISC-V build:
+`scripts/run-qemu.sh riscv` runs the matrix on the espressif qemu RISC-V build
+(**canonical `$ZIG` = 0.17 / LLVM 22.1.4**):
 
 ```
 - scalar add_i32 : c ok, cpp ok, rs ok, zig ok, d ok
-- point_dot  (8B {i32,i32} by value) : c ok, rs ok, zig FAIL (got=-2130706553 want=11)
+- point_dot  (8B {i32,i32} by value) : c ok, rs ok, zig ok (11),
                                        d SKIP (byval→ptr deref faults on riscv
                                               small struct; docs/19)
 - blob_sum   (24B [24]u8 by value)   : c ok, cpp ok, rs ok, zig ok (300), d OK (300)
 ```
 
-The **opposite** of Xtensa: Zig **passes** the large `blob_sum` here but **fails
-`point_dot`**, the small two-`i32` struct. D's pattern flips relative to
-Xtensa too: on RISC-V the >16-byte `Blob` happens to be passed by reference
-in the C ABI itself, so D's universal `byval` *matches* — `d_blob_sum` PASSES.
+The riscv harness on the canonical 0.17 lane is **all-pass** for Zig.
+Historically (on the legacy `$ZIG_016` lane, Zig 0.16 / LLVM 21.1.0): zig
+**passed** the large `blob_sum` here but **failed `point_dot`**, the small
+two-`i32` struct (`zig FAIL (got=-2130706553 want=11)`). D's pattern is the
+**opposite** of Xtensa: on RISC-V the >16-byte `Blob` happens to be passed
+by reference in the C ABI itself, so D's universal `byval` *matches* —
+`d_blob_sum` PASSES.
 
-> **Zig 0.17 update:** the `point_dot FAIL` line above is the Zig 0.16
-> baseline. `kassane/zig-espressif-bootstrap` **0.17.0-xtensa** (LLVM
-> 22.1.4, exposed as `$ZIG_017`; docs/01 row 1b) closes this gap — re-running
-> `ZIG=$ZIG_017 ./scripts/build-ffi.sh esp32c3 && ZIG=$ZIG_017 ./scripts/run-qemu.sh riscv`
-> reports `zig ok (11)`. The riscv harness drops to **0 failures**. Documented
-> alongside the xtensa fix in docs/05 §"Zig 0.17 status".
+> **Zig 0.17 fix (`$ZIG` canonical).** Both Zig struct-by-value gaps closed in
+> the 0.17 frontend; the riscv `point_dot` flip is documented alongside the
+> xtensa `blob_sum` flip in docs/05 §"Zig 0.17 status". To reproduce the
+> historical break, `ZIG=$ZIG_016 ./scripts/build-ffi.sh esp32c3 &&
+> ZIG=$ZIG_016 ./scripts/run-qemu.sh riscv` regenerates `zig FAIL`.
 The 8-byte `Point` would still go in registers per C, so D's pointer-deref
 runs off into garbage, harness gates it as SKIP. The asymmetry is the proof
 of docs/19's frontend-bug analysis: D is correct exactly when the C ABI is

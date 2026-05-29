@@ -59,27 +59,30 @@ work, not a dependency of the experiments.
 ## Zig on Xtensa & Zig's C-ABI lowering
 
 > **Zig's repo moved to Codeberg** (`codeberg.org/ziglang/zig`). Like Rust,
-> upstream Zig support is **partial and version-gated**: 0.16.0 (tested here) has
-> *no* esp32 CPU, but **0.17.0-dev adds an `esp32` CPU model** built on upstream
-> LLVM's Xtensa (esp32/esp8266 only). The full esp32/s2/s3 set still requires the
+> upstream Zig support is **partial and version-gated**: upstream Zig **0.17.0**
+> adds an `esp32` CPU model on top of upstream LLVM's Xtensa backend
+> (esp32/esp8266 only). The full esp32/s2/s3 set still requires the
 > espressif-bootstrap **fork** — mirroring the esp-rs/rust fork situation.
+> The legacy `$ZIG_016` (0.16.0) had *no* esp32 CPU upstream; the bootstrap
+> fork carried it.
 
 - **ziglang/zig #5467 — Xtensa Support — CLOSED 2026-05-06 (milestone 0.17.0)** —
   <https://github.com/ziglang/zig/issues/5467> — Zig's umbrella Xtensa tracking
-  issue, **now closed** by alexrp; Xtensa support landed in 0.17.0. Companion:
+  issue, **closed** by alexrp; Xtensa support landed in 0.17.0. Companion:
   **#23088 — Tier System: `xtensa(eb)-linux`** (CLOSED same day) for the Linux
-  tier classification. Our 0.16.0 bootstrap remains the right pin until 0.17.0
-  ships, but the "Zig has no upstream Xtensa" framing of this whole doc is now
-  historical.
+  tier classification. The 0.17.0-xtensa bootstrap (`$ZIG`) carries the upstream
+  fix, so the "Zig has no upstream Xtensa" framing of this whole doc is
+  historical — kept here for context.
 - **Zig on Codeberg** — <https://codeberg.org/ziglang/zig> — upstream Zig's home;
-  the 0.17.0-dev commit adding the `esp32` CPU target lives here.
+  the 0.17.0 commit landing the `esp32` CPU target lives here.
 - **kassane/zig-espressif-bootstrap (xtensa)** —
   <https://github.com/kassane/zig-espressif-bootstrap/blob/xtensa/README.md> —
-  the exact Zig used: Zig 0.16 + Espressif LLVM 21.1.0. Its README's 7 patches all
-  target **LLVM/LLD/Clang/zlib — none touch Zig `src/`**, so it builds an upstream
-  Zig commit (carrying the esp32 CPU models) unmodified; the struct-ABI gap is
-  therefore *upstream Zig's*, not a fork change (latest tag `0.16.0-xtensa`; no
-  0.17.x). Confirms docs/17.
+  the canonical `$ZIG`: Zig 0.17.0 + Espressif LLVM 22.1.4 (asset
+  `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` under the
+  `0.16.0-xtensa-dev` tag). The README's 7 patches all target
+  **LLVM/LLD/Clang/zlib — none touch Zig `src/`**, so it builds an upstream
+  Zig commit unmodified; the now-fixed struct-ABI gap therefore lived in
+  upstream Zig 0.16, not the fork.
 - **ziglang/zig #16616 + PR #16632** —
   <https://github.com/ziglang/zig/issues/16616> — upstream fix for the Xtensa
   *data-layout* string (a different ABI bug, already fixed); referenced by the
@@ -128,7 +131,9 @@ work, not a dependency of the experiments.
   string the three frontends emit identically (docs/04).
 - **LLVM Developer Policy** — <https://llvm.org/docs/DeveloperPolicy.html> —
   bitcode is backward-compatible but textual IR is not; explains why same-version
-  links and why our zig (21.1.0) bitcode fails the 21.1.3 LTO reader.
+  links and why our zig (22.1.4) bitcode fails the esp-clang 21.1.3 LTO reader
+  (and why the optional LLVM-22 `llvm-link` from `$LDC_LLVM_DIR` reads esp-clang
+  21.1.3 bitcode fine in the other direction).
 - **"Closing the gap: cross-language LTO between Rust and C/C++"** (LLVM blog,
   2019) — <https://blog.llvm.org/2019/09/closing-gap-cross-language-lto-between.html>
   — official write-up of Rust↔clang LTO and the matching-LLVM-version requirement
