@@ -91,7 +91,20 @@ output.
 - [x] **D/LDC exclusive features + `@safe` parity with Rust** (docs/20,
       `experiments/dlang/safety.sh`). LDC-only, Xtensa-verified: `@fastmath`
       (`fmul fast`), `@section`→`.iram1.text`, `@weak`, inline LLVM IR `__ir!`→real
-      `add`; plus `ldc.attributes`/`pragma(LDC_*)`/`--fsanitize`. Two evolution
+      `add`; plus `ldc.attributes`/`pragma(LDC_*)`/`--fsanitize`. **Extended
+      attribute/pragma sweep** (`experiments/dlang/ldc-attrs.sh`, docs/20
+      §1.1/1.2): `@assumeUsed`/`@cold`/`@optStrategy(none|optsize|minsize)`/
+      `@naked`/`@restrict`/`@llvmAttr` + `pragma(mangle/inline(true|false)/
+      LDC_intrinsic/LDC_extern_weak)` all IR-verified on the canonical 21.1.3
+      fork. **`@assumeUsed` cross-frontend parity finding**: LDC + Rust
+      `#[used]` both emit the **strong** `@llvm.used` marker (survives
+      `--gc-sections`); clang's classic `__attribute__((used))` emits the
+      *weak* `@llvm.compiler.used` — only C23's `[[gnu::retain]]` yields the
+      strong form on clang 13+. **`import("file")` parity matrix**: D
+      `import("file")` / Zig `@embedFile` / Rust `include_bytes!` /
+      clang C23 `#embed` / TinyGo `//go:embed` all embed bytes into the
+      `.rodata` family of sections at compile time (TinyGo on Xtensa requires
+      the embed variable to be reached by a non-DCE-d code path). Two evolution
       axes: `-preview=<name>` (à la carte; `=all`; safety ones dip1000/safer/
       systemVariables/nosharedaccess) and **`--edition=` (DIP1052, valid 2023–2025,
       per-module) — exactly Rust's edition model**; editions don't flip default
