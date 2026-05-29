@@ -76,10 +76,17 @@ of coercing per the platform C ABI), not a fork regression — consistent with t
 RISC-V case reproducing on stock upstream Zig (docs/10). It's tracked upstream by
 **ziglang/zig #5467 "Xtensa Support" CLOSED 2026-05-06 (milestone 0.17.0)** —
 the umbrella issue is now done; Xtensa support landed in 0.17.0 (along with
-#23088 for `xtensa(eb)-linux` tier). Our by-value aggregate mis-lowering
-either got fixed in that landing or carries as a separate live bug — when
-0.17.0 ships, re-run `experiments/abi-structs/sweep.sh` against upstream Zig
-to confirm. Our 0.16.0-xtensa bootstrap pin still reproduces the gap.
+#23088 for `xtensa(eb)-linux` tier). **The by-value aggregate mis-lowering DID
+get fixed in that landing — verified at the shell against
+`kassane/zig-espressif-bootstrap` `zig-0.17.0-relsafe-x86_64-linux-musl-baseline`
+(bundled clang/LLVM 22.1.4, exposed as `$ZIG_017`).** The 0.17 zig frontend
+now emits `i32 @lib_zig.zig_blob_sum([6 x i32] %0)` instead of
+`i32 @lib_zig.zig_blob_sum(%lib_zig.Blob %0)` — same `[N x i32]` shape clang
+has emitted all along. qemu xtensa `zig_blob_sum` flips from `FAIL (got=409)`
+to `ok (300)`, qemu riscv `zig_point_dot` flips from `FAIL` to `ok (11)`,
+and the abi-structs sweep shows REGISTERS in every Zig row on every Xtensa
+core. The repo default `$ZIG` stays on 0.16 for snapshot continuity; switch
+with `ZIG=$ZIG_017 ...`. Full account in docs/05 §"Zig 0.17 status".
 (Cf. the *data-layout* gap upstream #16616 / PR #16632, already fixed.)
 
 ## 3. Linking & LTO

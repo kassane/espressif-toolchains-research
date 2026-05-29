@@ -13,6 +13,7 @@ the comparison.
 | # | Component | Repo / tag | Asset | Size |
 |---|-----------|-----------|-------|------|
 | 1 | Zig | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa` | `zig-relsafe-x86_64-linux-musl-baseline.tar.xz` | 75 MB |
+| 1b | Zig 0.17 (fix lane) | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa-dev` | `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` | 76 MB |
 | 2 | clang/LLVM | `espressif/llvm-project` @ `esp-21.1.3_20260408` | `clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz` | 398 MB |
 | 3 | Rust | `esp-rs/rust-build` @ `v1.95.0.0` | `rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz` (+ `rust-src-1.95.0.0.tar.xz`) | 168 MB |
 | 4 | GCC | `espressif/crosstool-NG` @ `esp-15.2.0_20251204` | `xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz` | 173 MB |
@@ -33,6 +34,7 @@ and lays out 1–5 under `$TC` (`/home/user/toolchains`). Components 5b
 
 ```
 zig                : 0.16.0
+zig (fix lane)     : 0.17.0-xtensa                       →  bundled clang 22.1.4 / LLVM 22.1.4
 zig cc (bundled)   : clang version 21.1.0  (kassane/zig-espressif-bootstrap)
 esp clang          : Espressif clang version 21.1.3 (esp-21.1.3_20260408)   [LLVM 21.1.3]
 rustc              : 1.95.0-nightly (95e5bda86 2026-04-15)  →  LLVM version: 21.1.3

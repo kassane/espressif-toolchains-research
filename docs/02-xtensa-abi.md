@@ -67,6 +67,34 @@ add(int,int):  windowed -> entry a1,32 ; ... ; retw.n
   changes how *direct* calls to far symbols are encoded (`l32r`+`callx` instead of
   a range-limited `call`); it does **not** change the ABI, so it is FFI-neutral.
 
+### Mechanized: `experiments/call0-abi/run.sh`
+
+Flips every frontend in the matrix between windowed and CALL0 on every Xtensa
+core and confirms the prologue/epilogue swap. The CALL0 selector differs by
+toolchain — the LLVM trio reaches it via *feature subtraction* on `-mcpu=`,
+GCC has a dedicated `-mabi=` flag, all five end up at the same `ret.n`:
+
+| frontend | windowed (default) | CALL0 selector |
+|---|---|---|
+| esp-clang 21.1.3 | `--target=xtensa-esp-elf -mcpu=esp32` | `… -Xclang -target-feature -Xclang -windowed` |
+| esp-gcc 15.2.0 | `XTENSA_GNU_CONFIG=$(xtensa_cfg esp32) xtensa-esp-elf-gcc` | `… -mabi=call0` |
+| zig 0.16/0.17 | `zig build-obj -mcpu=esp32` | `zig build-obj -mcpu=esp32-windowed` |
+| LDC 1.42 (espressif LLVM 21.1.3) | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32` | `… -mattr=-windowed` |
+| rustc 1.95-nightly | `--target xtensa-esp32-none-elf` (windowed default) | `… -C target-feature=-windowed` |
+
+The script is across the matrix on every core (`esp32` / `esp32s2` / `esp32s3`)
+and reports a one-line summary per object:
+
+```
+build/call0-abi/zig_w_esp32.o    WINDOWED (entry+retw.n)
+build/call0-abi/zig_c0_esp32.o   CALL0    (no-entry+ret.n)
+```
+
+Run with `source scripts/env.sh && bash experiments/call0-abi/run.sh`. The
+zig 0.17 fix lane (`$ZIG_017`, see docs/05 §"Zig 0.17 status") doesn't change
+this story — the windowed/CALL0 selector lives in LLVM, both 21.1.0 and
+22.1.4 honour `-mcpu=<core>-windowed` identically.
+
 ## CPU feature parity across frontends
 
 The three LLVM frontends agree exactly on the per-core feature set. Verified with

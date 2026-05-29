@@ -47,12 +47,21 @@ output.
       the two non-C LLVM frontends agree on **every scalar ABI incl. C-inexpressible
       `u128`/`f128`/`f16`** (Rust uses byval for the 2nd 16-byte arg, Zig direct —
       backend reconciles; runtime-verified Rust→Zig u128 carry on qemu). The only
-      clash is **by-value struct arguments** (Zig's bug — pass by pointer; an
-      *upstream* Zig gap per #5467 — **CLOSED 2026-05-06, landed in 0.17.0**;
-      0.16-bootstrap pin still reproduces). **Nullable pointers
-      interop** (`Option<&T>`/`Option<NonNull>`/`Option<fn>` ↔ `?*T`/`?*fn` =
-      single `ptr`, FFI-safe, runtime-verified). **Atomics** match (native
-      `s32c1i`). Object FFI links; **cross-language LTO fails** (21.1.3 vs 21.1.0).
+      clash was **by-value struct arguments** (Zig's bug — pass by pointer; an
+      *upstream* Zig gap per #5467 — **CLOSED 2026-05-06, landed in 0.17.0**).
+      **Verified at the shell on the kassane/zig-espressif-bootstrap
+      `zig-0.17.0-relsafe-x86_64-linux-musl-baseline` tarball** (clang/LLVM
+      **22.1.4**, exposed as `$ZIG_017`): qemu `zig_blob_sum` flips from
+      `FAIL (got=409 want=300)` to `ok (300)` on xtensa, and qemu
+      `zig_point_dot` flips from `FAIL` to `ok (11)` on riscv. The
+      `abi-structs` sweep on every Xtensa core now shows REGISTERS in every
+      Zig row (was STACK on align-1 byte arrays). `$ZIG` default stays on
+      0.16 for snapshot stability — `ZIG=$ZIG_017 ./scripts/build-ffi.sh
+      esp32` flips every consumer. See docs/05 §"Zig 0.17 status".
+      **Nullable pointers interop** (`Option<&T>`/`Option<NonNull>`/`Option<fn>`
+      ↔ `?*T`/`?*fn` = single `ptr`, FFI-safe, runtime-verified). **Atomics**
+      match (native `s32c1i`). Object FFI links; **cross-language LTO fails**
+      (21.1.3 vs 21.1.0).
 - [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D added
       to the FFI matrix + qemu harness). The canonical LDC is now LDC 1.42-git on
       **espressif/llvm-project LLVM 21.1.3** (kassane/esp-idf-dlang, docs/23) —
@@ -194,7 +203,12 @@ output.
       everywhere. call0 is reachable (gcc `-mabi=call0`; LLVM by dropping the
       `windowed` feature) but is a **different, incompatible ABI** — must be
       project-wide, can't mix with windowed. `-mlongcalls` is gcc-only (clang
-      ignores it) and FFI-neutral (call encoding, not ABI).
+      ignores it) and FFI-neutral (call encoding, not ABI). **Mechanized as
+      `experiments/call0-abi/run.sh`** — flips every frontend
+      (clang `-Xclang -target-feature -Xclang -windowed`, gcc `-mabi=call0`,
+      **zig `-mcpu=<core>-windowed`**, LDC `-mattr=-windowed`,
+      rust `-C target-feature=-windowed`) and confirms identical
+      `entry+retw.n` → `ret.n` prologue swap across esp32 / esp32s2 / esp32s3.
 - [x] **RISC-V** ESP32-C3 — full FFI matrix built, linked **and run on
       qemu-system-riscv32** (`build-ffi.sh esp32c3`, `run-qemu.sh riscv`, docs/09).
       Overturned the "Xtensa-only" assumption: RISC-V has a **different** Zig
