@@ -60,8 +60,8 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | windowed ABI (`entry`/`retw.n`, args `a2..a7`, `callx8`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | int / i64 / f32 / f64 / pointer / callback C-ABI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓¹ |
-| small struct `{i32,i32}` by value | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ (flattens to scalars) |
-| **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | **✗** | **✗** | ✓ | ✓ | **✗** (byte-per-register, docs/24 §e) |
+| small struct `{i32,i32}` by value | ✓ | ✓³ | **✗** | ✓ | ✓ | ✓ (flattens to scalars) |
+| **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | ✓⁴ | **✗** | ✓ | ✓ | **✗** (byte-per-register, docs/24 §e) |
 | **C-style bitfield struct by value** (16/32/64-bit packed) | — (no syntax) | ✓ via `packed struct(uN)` (explicit backing) | **✗** `byval(%s.T)` for every width | ✓ flattens to scalar `i32`/`[1×i64]` | ✓ flattens | — (no syntax) |
 | small struct return (8-byte, in regs) | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ |
 | large struct return (`sret`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -72,21 +72,35 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 > ² TinyGo `.o` links per-symbol but the consumer must supply the Go runtime
 > undefs (`_heap_start`/`_heap_end`, `tinygo_swapTask`, `tinygo_startTask`,
 > `tinygo_scanCurrentStack`) or accept the full runtime — docs/24 §d.
+> ³ The legacy `$ZIG_016` lane mis-lowers RISC-V `{i32,i32}` to `[2 x i64]`
+> (`zig_point_dot FAIL got=-2130706553` on riscv qemu); xtensa was already
+> fine on 0.16. Zig 0.17 (`$ZIG` canonical) closes the riscv gap —
+> docs/05/09/17.
+> ⁴ Zig 0.17 (`$ZIG` canonical) flattens align-1 aggregates to `[N x i32]`
+> like clang and passes the by-value blob_sum (`xtensa zig_blob_sum ok 300`).
+> The legacy `$ZIG_016` lane reproduces the original docs/05 break:
+> stack-spill via `movsp` for the align-1 aggregate, `zig_blob_sum FAIL
+> got=409 want=300` at qemu. Swap with `ZIG=$ZIG_016 ./scripts/build-ffi.sh
+> esp32`.
 >
-> Three outliers. **Zig** stack-spills only the `align(1)` by-value struct arg
-> (alignment-, not size-driven; runtime `242≠300`). **D/LDC** is broader: it
-> marks *every* aggregate `byval`/`sret` (indirect), so it diverges for the
-> **small `{i32,i32}` arg AND the align-1 arg AND the small-struct return** —
+> Two outliers on the canonical 0.17 / 21.1.3 lane. **D/LDC** marks *every*
+> aggregate `byval`/`sret` (indirect), so it diverges for the **small
+> `{i32,i32}` arg AND the align-1 arg AND the small-struct return** —
 > everything the C ABI puts in registers (runtime `point_dot` + `blob_sum`
-> both FAIL on Xtensa; the small struct even *faults* on RISC-V). The lone
-> struct case D gets right is the >16-byte `sret` return (the C ABI is *also*
-> indirect there). **TinyGo** joins the byte-array hole: a `struct{[24]uint8}`
-> lowers as `[24 x i8]` byte-per-register, not clang's `[6 x i32]` (docs/24
-> §e). The D divergence is **frontend-side** — the espressif-fork LDC (LLVM
-> 21.1.3) produces the identical broken IR as the upstream-22 LDC (docs/23,
-> §(h)), proving the bug isn't in the LLVM Xtensa backend. Rust, clang, GCC
-> all agree on everything. **Use by-pointer structs across any Zig, D, or
-> TinyGo boundary** (runtime-verified for zig/D; docs/05/10/11/19/24).
+> both FAIL on Xtensa qemu; the small struct even *faults* on RISC-V). The
+> lone struct case D gets right is the >16-byte `sret` return (the C ABI is
+> *also* indirect there). **TinyGo** joins the byte-array hole: a
+> `struct{[24]uint8}` lowers as `[24 x i8]` byte-per-register, not clang's
+> `[6 x i32]` (docs/24 §e). The D divergence is **frontend-side** — the
+> espressif-fork LDC (LLVM 21.1.3) produces the identical broken IR as the
+> upstream-22 LDC (docs/23 §(h)), proving the bug isn't in the LLVM Xtensa
+> backend. Rust, clang, GCC, and **Zig 0.17** all agree on everything;
+> historically Zig 0.16 was the third outlier and the legacy `$ZIG_016`
+> lane still demonstrates it. **Use by-pointer structs across any D or
+> TinyGo boundary** (runtime-verified; docs/05/10/11/19/24). On the
+> canonical Zig the by-pointer workaround is no longer required, but
+> remains the portable choice when you need cross-lane compatibility
+> with the `$ZIG_016` reproducer.
 
 ## Codegen, tooling & misc
 
