@@ -47,8 +47,8 @@ extern(C) ubyte load_as0(uint p) @trusted {
                 ret i8 %v`, ubyte)(p);
 }
 EOF
-"$LDC2" $LT -betterC -O2 -output-ll -of="$B/ir_as.ll" "$B/ir_as.d" 2>/dev/null
-"$LDC2" $LT -betterC -O2 -c -of="$B/ir_as.o" "$B/ir_as.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/ir_as.ll" "$B/ir_as.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -O2 -c -of="$B/ir_as.o" "$B/ir_as.d" 2>/dev/null
 grep -m1 'addrspace(1)' "$B/ir_as.ll" >/dev/null && echo "  D inline IR: ptr addrspace(1) carried through to IR (via __ir!)"
 d_as1=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=load_as1 "$B/ir_as.o" 2>/dev/null | grep -oE 'l8ui[[:space:]]+a[0-9]+, a[0-9]+, [0-9]+' | head -1)
 d_as0=$(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=load_as0 "$B/ir_as.o" 2>/dev/null | grep -oE 'l8ui[[:space:]]+a[0-9]+, a[0-9]+, [0-9]+' | head -1)
@@ -68,7 +68,7 @@ cat > "$B/sec.d" <<'EOF'
 import ldc.attributes;
 extern(C) @section(".iram1.text") void hot() {}
 EOF
-"$LDC2" $LT -betterC -Os -c -of="$B/sec_d.o" "$B/sec.d" 2>/dev/null
+"$LDC2" $LT $LDC_PE -betterC -Os -c -of="$B/sec_d.o" "$B/sec.d" 2>/dev/null
 sec(){ llvm-readobj --sections "$1" 2>/dev/null | grep -oE '\.iram1[a-z0-9._]*' | head -1; }
 for o in sec_clang sec_gcc sec_zig; do printf "  %-10s %s\n" "$o" "$(sec "$B/$o.o")"; done
 printf "  %-10s %s\n" "rust" "$(sec "$(find "$B/secrs/target" -name libsecrs.a|head -1)")"

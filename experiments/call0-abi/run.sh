@@ -117,9 +117,9 @@ for CPU in esp32 esp32s2 esp32s3; do
     summary "$B/zig_c0_${CPU}.o" add_i32
 
     # LDC (espressif fork, native esp32/s2/s3 -mcpu)
-    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" -betterC -O2 -c "$B/add.d" \
+    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" $LDC_PE -betterC -O2 -c "$B/add.d" \
         -of="$B/ldc_w_${CPU}.o" 2>/dev/null
-    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" -mattr=-windowed -betterC -O2 -c "$B/add.d" \
+    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" -mattr=-windowed $LDC_PE -betterC -O2 -c "$B/add.d" \
         -of="$B/ldc_c0_${CPU}.o" 2>/dev/null
     summary "$B/ldc_w_${CPU}.o"  add_i32
     summary "$B/ldc_c0_${CPU}.o" add_i32

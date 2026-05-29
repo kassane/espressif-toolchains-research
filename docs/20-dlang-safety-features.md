@@ -102,6 +102,32 @@ blobs, baked-in config), all five give you the same thing — a `const`
 D evolves breaking changes on two orthogonal axes — and the second is *exactly*
 Rust's edition model.
 
+### 2.0 The canonical `$LDC2` invocation: `$LDC_PE = "-preview=all --edition=2025"`
+
+Every `$LDC2` invocation in this repo's experiments + build scripts (with the
+intentional exception of the safety-probe sections in `safety.sh` §a/§b/§d/§g
+that *test* a specific flag) passes the bundle defined in `env.sh`:
+
+```bash
+export LDC_PE="-preview=all --edition=2025"
+```
+
+That's `-preview=all` (every upcoming language change: dip1000/dip1008/
+dip1021/safer/systemVariables/in/bitfields/fieldwise/fixAliasThis/
+rvaluerefparam/nosharedaccess/fixImmutableConv/inclusiveincontracts) plus
+`--edition=2025` (the highest edition LDC 1.42 accepts — 2026 was added to
+DIP1052 but isn't in this build yet; `safety.sh` §b records that as
+"REJECTED"). The bundle was stress-tested at the shell against every `.d`
+source in the repo; the only source-level fix needed was `@system` on raw-
+pointer-indexing kernels (e.g. `experiments/simd/vadd.d`) — the honest
+annotation for a C-ABI buffer consumer, satisfying `-preview=safer`'s
+default-safety pointer-arithmetic check.
+
+The bundle compiles cleanly on both LDC variants: the canonical 21.1.3 fork
+(`$LDC2`) AND the upstream LLVM-22 LDC (`$LDC2_UPSTREAM`) — verified in
+`experiments/ldc-fork-comparison/run.sh`. So the comparison-only arm
+preserves the same source surface as the canonical arm.
+
 **`-preview=<name>`** turns on individual not-yet-default features (`-preview=all`
 enables every one; there's a matching `-revert=`). From `ldc2 -preview=h`, the
 safety-relevant ones are `dip1000` (scoped pointers / escape analysis), `safer`

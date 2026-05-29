@@ -105,7 +105,7 @@ for spec in \
     "$CLANG" $CT -ffreestanding -O2 -c "$B/s.c" -o "$B/s_c.o" 2>/dev/null
     eval "$G" "$GCC" -ffreestanding -O2 -c "$B/s.c" -o "$B/s_gcc.o" 2>/dev/null
     "$ZIG" build-obj -target xtensa-freestanding-none -mcpu="$CPU" -O ReleaseFast -femit-bin="$B/s_z.o" "$B/s.zig" 2>/dev/null
-    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" -betterC -O2 -c -of="$B/s_d.o" "$B/s.d" 2>/dev/null
+    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" $LDC_PE -betterC -O2 -c -of="$B/s_d.o" "$B/s.d" 2>/dev/null
     rm -f "$B/s_r.o"; build_rust "$rty" || true
     rm -f "$B/s_g.o"; build_tinygo "$gty" || true
     ir=$("$CLANG" $CT -ffreestanding -O0 -S -emit-llvm "$B/s.c" -o - 2>/dev/null \
@@ -143,7 +143,7 @@ for bspec in \
     "$CLANG" $CT -ffreestanding -O2 -c "$B/s.c" -o "$B/s_c.o" 2>/dev/null
     eval "$G" "$GCC" -ffreestanding -O2 -c "$B/s.c" -o "$B/s_gcc.o" 2>/dev/null
     "$ZIG" build-obj -target xtensa-freestanding-none -mcpu="$CPU" -O ReleaseFast -femit-bin="$B/s_z.o" "$B/s.zig" 2>/dev/null
-    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" -betterC -O2 -c -of="$B/s_d.o" "$B/s.d" 2>/dev/null
+    "$LDC2" -mtriple=xtensa-esp-elf -mcpu="$CPU" $LDC_PE -betterC -O2 -c -of="$B/s_d.o" "$B/s.d" 2>/dev/null
     ir=$("$CLANG" $CT -ffreestanding -O0 -S -emit-llvm "$B/s.c" -o - 2>/dev/null \
          | grep -oE '@caller\([^)]*\)' \
          | grep -oE 'i[0-9]+ [a-z]*|\[[0-9]+ x i[0-9]+\]|ptr[^,)]*' | head -1 || true)

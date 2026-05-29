@@ -20,7 +20,7 @@ echo "== Port #95/#137/#277 to Zig (xtensa) =="
 "$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -femit-bin="$B/pz.o" "$D/ports.zig" && echo "   zig   OK (u128 supported, like Rust)"
 
 echo "== D ports =="
-LDC_FLAGS_E32="-mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) -betterC -Os"
+LDC_FLAGS_E32="-mtriple=xtensa-esp-elf $(ldc_xtensa_flags esp32) $LDC_PE -betterC -Os"
 # (a) #137-style: ucent. Reserved keyword but unimplemented in DMD/LDC.
 #     Compile the isolated fragment in its own object and capture the diagnostic.
 echo "   #137 ucent: compiling ports_ucent.d ..."

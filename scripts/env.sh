@@ -63,6 +63,19 @@ xtensa_cfg() { echo "$GCC_CFG_DIR/xtensa_${1}.so"; }  # xtensa_cfg esp32 -> .../
 export LDC_DIR="$TC/ldc-xtensa"
 export LDC2="$LDC_DIR/bin/ldc2"
 
+# Canonical $LDC2 flag set: every upcoming language change (-preview=all,
+# which includes dip1000/dip1008/dip1021/safer/systemVariables/in/bitfields/
+# fieldwise/fixAliasThis/rvaluerefparam/nosharedaccess/fixImmutableConv/
+# inclusiveincontracts) PLUS the latest accepted edition (DIP1052; LDC 1.42
+# accepts 2023–2025, rejects 2026). Stress-tested at the shell against every
+# .d source in the repo; the only required source-level fix is `@system` on
+# raw-pointer-indexing kernels (e.g. experiments/simd/vadd.d), which is the
+# honest annotation for a C-ABI buffer consumer anyway. Scripts that *probe*
+# specific preview/edition flags (safety.sh §a/§b/§d/§g) intentionally skip
+# $LDC_PE so the flag-as-test-variable contract still works. See HANDOFF and
+# docs/20 §2/§3.
+export LDC_PE="-preview=all --edition=2025"
+
 # Upstream LDC 1.42 (LLVM 22.1.2) - ldc-developers/ldc CI build. Comparison
 # only, referenced by experiments/ldc-fork-comparison/ + docs/23. Has the
 # Xtensa literal-pool MC bug ("not aligned to 4 bytes") and only recognizes

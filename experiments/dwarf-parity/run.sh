@@ -56,7 +56,7 @@ RS_O=$(find "$B/rs/target/xtensa-esp32-none-elf/release/deps" -name 'rsdbg-*.o' 
 # (docs/19) doesn't bite here, and we keep LDC's native DWARF instead of
 # losing it to the clang-as reassembly.
 echo 'extern(C) int add_i32(int a, int b) { return a + b; }' > "$B/d.d"
-"$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -g -c "$B/d.d" -of="$B/d.o"
+"$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -g -c "$B/d.d" -of="$B/d.o"
 
 echo "== (a) DWARF section bytes per toolchain =="
 # Parse `llvm-readelf -S` tabular output; field 6 = Size in hex (no 0x prefix).
