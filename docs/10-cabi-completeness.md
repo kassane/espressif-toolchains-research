@@ -8,9 +8,12 @@ to clang / gcc / D/LDC / TinyGo where the same finding applies. Also pins
 the relevant `esp-rs/rust` and `espressif/llvm-project` issue-tracker
 status as of writing.
 
-Both Rust and Zig reach the ESP architectures through the *same* espressif LLVM 21
-backend, both expose the C ABI (`#[no_mangle] extern "C"` / `export fn`), and both
-link cleanly with clang/gcc objects (docs 03/09). Where they differ is **C-ABI
+Both Rust and Zig reach the ESP architectures through espressif's LLVM Xtensa
+backend (rust on LLVM 21.1.3, zig 0.17 canonical on its bundled LLVM 22.1.4 —
+the same backend family, different point releases; the legacy `$ZIG_016` lane
+is on LLVM 21.1.0). Both expose the C ABI (`#[no_mangle] extern "C"` /
+`export fn`), and both link cleanly with clang/gcc objects at the object
+level (docs 03/09). Where they differ is **C-ABI
 completeness**, and it is measurable.
 
 ## The parity gap: C-ABI struct lowering

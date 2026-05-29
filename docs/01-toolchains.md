@@ -91,9 +91,10 @@ See [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
 - Xtensa CPUs in `zig targets`: `esp32`, `esp32s2`, `esp32s3` (+ `esp8266` and
   the RISC-V `esp32c*`).
 - Build objects with `-target xtensa-freestanding-none -mcpu=<cpu>`.
-- `zig cc`/`zig c++` is a full clang 21 driver **with** the X86 target, so it
-  doubles as the host C/C++ compiler. By default it enables ubsan-rt and (for
-  C++) libc++; on bare-metal use `-nostdlib`/`-ffreestanding`.
+- `zig cc`/`zig c++` is a full clang **22.1.4** driver (the canonical `$ZIG`
+  bundle; the legacy `$ZIG_016` lane is clang 21.1.0) **with** the X86 target,
+  so it doubles as the host C/C++ compiler. By default it enables ubsan-rt and
+  (for C++) libc++; on bare-metal use `-nostdlib`/`-ffreestanding`.
 
 ### D / LDC (kassane/esp-idf-dlang — canonical 5th frontend)
 - Built from `ldc-developers/ldc` against **`espressif/llvm-project` LLVM 21.1.3**

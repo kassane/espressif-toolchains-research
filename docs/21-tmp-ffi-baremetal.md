@@ -134,7 +134,7 @@ on `kassane/zig-mos-bootstrap` v0.17.0-dev** (bundled `clang version
 (`constexpr auto [a,b] = P{1,2};` → rc=0), confirming the gap is purely
 clang-21-vs-22 — but esp-clang stays on 21.1.3 so the Xtensa C++ producer
 in this matrix still rejects it. The Sofia-2025 C++26 frontier (Contracts
-P2900, Reflection P2996, Pattern Matching P2688, Profiles P3081) is **not**
+P2900, Reflection P2996, Pattern Matching P2688R5, Profiles P3081) is **not**
 in clang 21 or the 22.x mainline either (re-probed on the same v0.17.0-dev
 build: `-fcontracts` / `-freflection` both error as *"Unknown Clang
 option"*). Bloomberg's `clang-p2996` fork has reflection only. The

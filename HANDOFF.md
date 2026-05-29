@@ -183,13 +183,16 @@ output.
       `#![feature(asm_experimental_arch)]` and has no `qreg` class (esp-rs #265).
 - [x] **Compiler-driver parity** (docs/15, `experiments/compiler-parity/run.sh`):
       `zig cc` ⇄ `esp-clang` are effectively the same C/C++ compiler (espressif
-      clang/LLVM 21; near-identical Xtensa code, differ only in driver defaults —
-      zig emits `.eh_frame`/ubsan/libc++); `esp-gcc` has full ABI parity (windowed
-      C ABI; byte-identical Itanium C++ mangling `_ZN…` + vtables `_ZTV…`),
-      different regalloc, slightly smaller. Also corrected the size figures: zig's
-      real `.text` is **715 B** (the 647 B figure counted zig's default `.eh_frame`
-      and predated the post-swap reshuffle); current ordering rust 179 ≈ gcc 201
-      < clang 223 < D 533 < zig 715 (docs/00, docs/06).
+      clang/LLVM family — esp-clang is 21.1.3, zig 0.17 canonical is 22.1.4 but
+      shares the same espressif Xtensa backend code; near-identical Xtensa code,
+      differ only in driver defaults — zig emits `.eh_frame`/ubsan/libc++);
+      `esp-gcc` has full ABI parity (windowed C ABI; byte-identical Itanium C++
+      mangling `_ZN…` + vtables `_ZTV…`), different regalloc, slightly smaller.
+      Current `.text` ordering on the canonical lane (canonical zig 0.17 closes
+      the 0.16 struct-byval gap, so its size dropped from 715 B → 375 B):
+      **rust 171 ≈ gcc 201 < clang-C++ 204 < clang-C 219 < zig 375 < D 489**
+      (docs/00, docs/06). The legacy `$ZIG_016` lane reproduces the old
+      715 B figure for the byte-by-byte stack marshalling.
 
 ## Known outages
 

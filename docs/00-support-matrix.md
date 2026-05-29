@@ -92,7 +92,7 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 
 | | **Rust** | **Zig** | **D** | **esp-clang** | **GCC** | **TinyGo** |
 |---|---|---|---|---|---|---|
-| 9-fn lib `.text`, esp32 `-Os` | 179 B | **715 B** | 533 B | 223 B | **201 B** | n/a (whole-firmware; single `add_i32` is 7 B, docs/22 §g) |
+| 9-fn lib `.text`, esp32 `-Os` | **171 B** | **375 B** (zig 0.17 canonical; `$ZIG_016` legacy is 715 B) | 489 B | 219 B (C) / 204 B (C++) | **201 B** | n/a (whole-firmware; single `add_i32` is 7 B, docs/22 §g) |
 | symbol mangling (internal) | v0 `_R…` / legacy `_ZN…` | module-qualified + export alias | D `_D…` / Itanium `_Z…` for `extern(C++)` | Itanium `_Z…` | Itanium `_Z…` | `<package>.<func>` (e.g. `main.go_add_i32`); `//export name` re-emits as bare `name` |
 | FFI export | `#[no_mangle] extern "C"` | `export fn` | `extern(C)` / `extern(C++[,"ns"])` | `extern "C"` | (C) | `//export name` |
 | call / emit `@"mangled"` symbols | — | ✓ (docs/12) | ✓ native `extern(C++)` + `-HC` header (docs/19) | — | — | — |
@@ -132,8 +132,10 @@ toolchains on Espressif Xtensa for everything except **by-value aggregate
 lowering** in three frontends: **Zig** (align-1 only), **D** (universal —
 every aggregate including bitfields, docs/05/19), and **TinyGo**
 (byte-array fields only, docs/24). Use **by-pointer** structs across those
-boundaries. Rust matches clang/GCC bit-for-bit. GCC is the smallest .text
-(201 B), Zig the largest (715 B), D in between (533 B), TinyGo whole-firmware.
+boundaries. Rust matches clang/GCC bit-for-bit. On the canonical 0.17 lane:
+Rust the smallest (171 B), then GCC (201 B), clang (204/219 B), zig 0.17
+(375 B), D the largest (489 B from byval/sret marshalling). Legacy
+`$ZIG_016` reproduces the old 715 B zig figure. TinyGo is whole-firmware.
 Object files link across all six with `ld.lld` and GNU `ld` (D direct `-c`
 since docs/23; TinyGo `.o` needs runtime undefs satisfied per docs/24 §d).
 Cross-language LTO needs compatible LLVM bitcode — clang↔rust↔D (all 21.1.3,

@@ -169,9 +169,16 @@ Four observations a reverse-engineer cares about:
 | clang | — | 40 |
 | gcc | — | 72 |
 | rust | — | 60 |
-| zig | **44** | — |
-| LDC | **44** | — |
+| zig 0.17 (canonical) | **220** | — |
+| LDC (canonical) | **40** | — |
 | TinyGo | (in linked ELF; see §g) | — |
+
+(Numbers are the 9-fn lib `.text`-only single object, `llvm-size -A`. Zig 0.17's
+220 B `.eh_frame` is much bigger than the 44 B figure that was here previously
+— that was the 0.16 baseline; 0.17 with the struct-ABI fix routes more
+prologue work through `.eh_frame`. LDC dropped from 44 → 40 B on the canonical
+21.1.3 fork. Both numbers re-measured at `experiments/dlang/safety.sh`-time on
+the canonical lane.)
 
 DWARF distinguishes **debugging CFI** (`.debug_frame`, optional and per-DIE) from
 **runtime unwind tables** (`.eh_frame`, used by libunwind/exception throwing).

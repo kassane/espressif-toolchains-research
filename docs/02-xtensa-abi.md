@@ -91,9 +91,10 @@ build/call0-abi/zig_c0_esp32.o   CALL0    (no-entry+ret.n)
 ```
 
 Run with `source scripts/env.sh && bash experiments/call0-abi/run.sh`. The
-zig 0.17 fix lane (`$ZIG_017`, see docs/05 §"Zig 0.17 status") doesn't change
-this story — the windowed/CALL0 selector lives in LLVM, both 21.1.0 and
-22.1.4 honour `-mcpu=<core>-windowed` identically.
+canonical zig (0.17 / LLVM 22.1.4, `$ZIG`) and the legacy `$ZIG_016` lane
+(0.16 / LLVM 21.1.0) both honour `-mcpu=<core>-windowed` identically — the
+selector lives in the LLVM Xtensa backend, not the Zig frontend, and the
+backend has carried it since LLVM 21.x.
 
 ## CPU feature parity across frontends
 

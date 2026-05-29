@@ -191,8 +191,12 @@ site, clang stages the words in `a10..a15`; Zig does `movsp` to grow the stack a
 spills the under-aligned struct to memory → a clang/rust/gcc ↔ zig call reads the
 bytes from the wrong place ⇒ silent corruption on hardware. (The host test passes
 only because x86_64 SysV memory-passes these structs where both agree.) Code-size
-symptom: Zig's 9-function lib is **715 B** of `.text` vs clang **223 B** / gcc
-**201 B** (real `.text` via `llvm-size -A`; docs/06/15).
+symptom (legacy `$ZIG_016` lane, where the bug reproduces): Zig's 9-function
+lib was **715 B** of `.text` vs clang **219 B** / gcc **201 B** (real `.text`
+via `llvm-size -A`; docs/06/15). On the canonical 0.17 lane (`$ZIG`), the
+frontend now flattens aggregates to `[N x i32]` like clang, so zig drops to
+**375 B** — about 1.8× clang, the residual being a 220 B `.eh_frame` zig
+still emits by default.
 
 Root cause: Zig's experimental ESP targets don't implement the C-ABI aggregate
 coercion clang/rust do; they defer to LLVM's default lowering. This is **not
