@@ -103,8 +103,9 @@ experiments/atomics-orders/ run.sh — 4-frontend × stores/loads × N orderings
 experiments/tinygo/       run.sh — TinyGo v0.41.1 / LLVM 20.1.1 probe; whole-program compiler, outside the FFI matrix (docs/24)
 experiments/call0-abi/    run.sh — windowed vs CALL0 ABI (-mcpu=<core>-windowed) across 5 frontends × 3 cores (docs/02 §CALL0)
 experiments/zero-cost/    run.sh — D × C++ × Rust × C zero-cost abstraction parity on esp32 -Os: monomorphization, lambdas/Fn-traits, static vs dynamic dispatch, heap-allocated classes (D class needs malloc/Mallocator in -betterC); see docs/25
+experiments/tmp-parity/   run.sh — D × C++ × Rust template-metaprogramming feature surface comparison (12 capabilities × 3 languages); covers parameter forms, constraints, specialization, static-if, mixin, CTFE, introspection, variadic. Also disentangles D's three extern(C++) FFI forms (producer class / consumer class struct / POD struct) with llvm-nm symbol-role evidence; see docs/26
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
-docs/00..24               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork / tinygo
+docs/00..26               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork / tinygo / zero-cost / tmp-parity
 experiments/dwarf-parity/ run.sh — DWARF & disassembly audit across all 5 toolchains on Xtensa (docs/22)
 Research.md HANDOFF.md     headline write-up / status
 ```

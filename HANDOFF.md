@@ -373,6 +373,36 @@ output.
       pragma(mangle), Zig consumption via extern(C++,"ns")), `esp-rs-issues`
       (#137 `cent` rejected, #270 no ICE on forced FP, #278 wide stack-arg
       stores — D joins gcc/zig). docs/00-23 final.
+- [x] **Zero-cost abstraction parity D × C++ × Rust on esp32 -Os** (docs/25,
+      `experiments/zero-cost/run.sh`). Stroustrup's "what you do use, you
+      couldn't hand code any better" probed against the three monomorphizing
+      LLVM frontends. Monomorphized generics / lambdas / static dispatch are
+      byte-identical to the C hand-loop modulo a frame-pointer policy (clang
+      keeps `mov.n a7, a1` at -Os, LDC + rustc don't). Dynamic dispatch (C++
+      virtual / Rust `dyn Trait`) is NOT zero-cost: +2-3 insns per call (extra
+      `l32i` for vtable read). D class in -betterC needs hand-rolled malloc +
+      placement; identical machine code to C++ `new T(args)` and Rust
+      `Box::new` (10-11 insns / 24-26 B) — no language overhead, just no GC
+      to emit the malloc+emplace for you. D `struct` (4 insns / 9 B) is the
+      canonical embedded answer.
+- [x] **TMP feature surface parity D × C++ × Rust** (docs/26,
+      `experiments/tmp-parity/run.sh`). Twelve template-metaprogramming
+      capabilities probed × 3 languages: parameter forms (type / NTTP /
+      template-template / string NTTP), constraints (concepts / SFINAE /
+      trait bounds), full + partial specialization, compile-time branching
+      (`static if` / `if constexpr` / trait dispatch), token-level identifier
+      synthesis (D `mixin` / C++ X-macros / Rust nightly), CTFE, in-language
+      reflection (D `__traits` / C++ P2996 future / Rust proc-macro-only),
+      variadic. D supports 11/12 in-language with no host build step; C++ 10
+      (no in-language reflection, no identifier synthesis); stable Rust 6
+      (closes ~3 on nightly; the rest need proc-macros at 50-100 MB per
+      consumer). **Plus** the docs/26 §h disentanglement of D's three
+      `extern(C++)` FFI forms: `class` = D PRODUCES vtable; `extern(C++,ns)
+      class struct` = D CONSUMES (Itanium-mangled call sites only, body
+      supplied by C++ — the docs/21 shim pattern); plain `struct` = POD
+      layout in either direction. `llvm-nm` symbol-role table makes the
+      distinction concrete. The PR-27 zero-cost `extern(C++) class Counter`
+      was form (1) — DIFFERENT from form (2) used by the shim matrix.
 
 ## How to resume
 

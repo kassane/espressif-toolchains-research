@@ -174,6 +174,11 @@ extern (C):
                                               // on xtensa-esp-elf — see
                                               // docs/19 and the source file)
 
+// FORM 1: D *produces* a C++-compatible class. Vtable + bodies live in this
+// object; C++ code can construct + call it. NOT the same as D's `extern(C++,
+// ns) extern(C++, class) struct` form, which has D *consume* a class defined
+// on the C++ side (the docs/21 templated shim pattern). See docs/26 §h for
+// llvm-nm evidence distinguishing the three extern(C++) forms.
 extern(C++) class Counter {   // extern(C++) avoids druntime ClassInfo
     int v = 0;
     int step;
@@ -269,3 +274,11 @@ that compiles to the same instructions as the C++ equivalent.
 Reproduce: `bash experiments/zero-cost/run.sh`. Inspect the disasm with
 `llvm-objdump -d --mcpu=esp32 --disassemble-symbols=<sym>
 build/zero-cost/<lang>_<test>.o`.
+
+**TMP feature surface broader than monomorphization**: this doc covers only
+the "instantiate a generic at a concrete type" question. The full TMP
+capability comparison (12 features across D / C++ / Rust, including
+constraints, specialization, static-if, mixin/X-macros, CTFE, introspection,
+and variadic) is in [docs/26](26-tmp-parity.md), with the
+`extern(C++) class` vs `extern(C++, ns) class struct` vs `extern(C++) struct`
+disentanglement in §h.
