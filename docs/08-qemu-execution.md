@@ -40,7 +40,7 @@ window-ABI enable and semihosting are all working.
 (Note: qemu's semihosting console swallows the very first output byte after
 reset, so messages lead with a `\n`.)
 
-## The full FFI matrix run — and the ABI bug, live
+## The full FFI matrix run — historical ABI bugs, live (now closed on the canonical lane)
 
 `qemu_main.c` calls the `c_/cpp_/rs_/zig_/d_` functions (compiled by
 **esp-clang** for C, **esp-clang++** for C++, **rustc** for Rust, **zig
@@ -107,9 +107,10 @@ flash-image run is the way to exercise the exact esp32 core, left as follow-up.)
 
 `qemu-system-riscv32 -machine virt` runs the same matrix for ESP32-C3 — far
 simpler (no register windows, standard semihosting via the `ebreak` sequence,
-ELF at `0x80000000`). It surfaces a **different** Zig bug than Xtensa
-(`zig point_dot FAIL` on the small `{i32,i32}` struct, while `blob_sum` passes);
-see [docs/09](09-riscv.md).
+ELF at `0x80000000`). It historically surfaced a **different** Zig 0.16 bug
+than Xtensa (`zig point_dot FAIL` on the small `{i32,i32}` struct, while
+`blob_sum` passed); **closed in Zig 0.17** (canonical `$ZIG`) — the legacy
+`$ZIG_016` lane still reproduces it. See [docs/09](09-riscv.md).
 
 ## TinyGo on qemu — different harness, different boot
 

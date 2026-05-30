@@ -104,8 +104,12 @@ output.
       workarounds (literal-pool re-assembly, `.cfi_*` strip, `-output-s` step,
       `-mattr` fallback for s2/s3, LLVM-22 binutils dependency for canonical IR
       work), gives `mov.n`/`s32i.n`/`l32i.n` compact codegen byte-identical to
-      clang, and makes the datalayout match the trio. The byval/sret bug
-      survives — proving it's a frontend issue.
+      clang, and makes the datalayout match the trio. **The byval/sret bug
+      survived the original LLVM-21 ↔ LLVM-22 swap** (both legacy LDC arms
+      produced byte-identical broken IR) — that's what proved it was a
+      frontend issue, not a backend one. The **2026-05-30 LDC 1.42.0
+      maintainer re-upload** carried a new aggregate-flattening frontend
+      pass that closes the bug end-to-end (docs/05 §"LDC 1.42 status").
 - [x] **D/LDC exclusive features + `@safe` parity with Rust** (docs/20,
       `experiments/dlang/safety.sh`). LDC-only, Xtensa-verified: `@fastmath`
       (`fmul fast`), `@section`→`.iram1.text`, `@weak`, inline LLVM IR `__ir!`→real
@@ -253,9 +257,12 @@ output.
       every size, align-4 match at every size. Extended with **C-style
       bitfield** rows (D supports native `extern(C) struct{uint a:4;...}`):
       clang flattens to scalar backing (i16/i32/[1 x i64]); Zig matches when
-      `packed struct(uN)` has explicit backing; D wraps every bitfield as
-      `byval(%s.T)` — universal-aggregate bug applies to bitfields too
-      (docs/05/19).
+      `packed struct(uN)` has explicit backing; **legacy** D (LDC 1.42-git
+      on LLVM 21.1.3, preserved on `$LDC2_UPSTREAM`) wrapped every
+      bitfield as `byval(%s.T)` — universal-aggregate bug applied to
+      bitfields too; **canonical** LDC 1.42.0 (LLVM 22.1.4) flattens
+      bitfields to scalar backing like clang, so every D row classifies
+      REGISTERS on the canonical lane (docs/05/19, 2026-05-30 re-upload).
 - [x] **`-mlongcalls` / call0 ABI** variant (docs/02): default is windowed
       everywhere. call0 is reachable (gcc `-mabi=call0`; LLVM by dropping the
       `windowed` feature) but is a **different, incompatible ABI** — must be
