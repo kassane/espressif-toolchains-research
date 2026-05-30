@@ -1,20 +1,38 @@
 # 23 — LDC on the espressif fork: same frontend, two LLVM backends, what flips
 
-> **Mirror unavailable (since 2026-05-28):** the `kassane/esp-idf-dlang`
-> `xtensa-toolchain` asset is no longer fetchable from the previously-pinned
-> URL, so a clean `./scripts/setup.sh` falls back to the upstream-LLVM-22 LDC
-> (`$LDC2_UPSTREAM`) — which means the workarounds this doc documents as
-> "dropped" come back for fresh installs.
-> If you have the original 49 MB tarball (sha256 `0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211`),
-> drop it at `$DL/ldc-esp.tar.xz` and re-run setup to keep the canonical fork
-> path. The architectural intent below is the steady-state; the operational
-> reality may be the fallback. See HANDOFF.md §"Known outages".
+> **Mirror restored (2026-05-30) AND maintainer republished the tarball on
+> a different LLVM.** The `kassane/esp-idf-dlang` `xtensa-toolchain` URL is
+> fetchable again, but the asset is now a **different build**: LDC **1.42.0**
+> (release, no `-git` suffix) on **LLVM 22.1.4**, sha256
+> `c2cd9f5bdd1caa80233cebc7b3d61243366b1b1a8780af019d0dbfb80becb548`
+> (80 MB; old was `0e99b893…` 50 MB). The bump from LLVM 21.1.3 → 22.1.4 is
+> a major version skew vs the LLVM-21 cluster (esp-clang + rust), so the
+> canonical LDC has effectively **moved out of the LLVM-21 cluster into the
+> LLVM-22 cluster** (joining zig 0.17 and `$LDC2_UPSTREAM`). And it carries
+> the `[N x i32]` aggregate-flattening frontend fix — the universal D
+> `byval`/`sret` ABI bug this doc previously documented is **closed** on
+> the canonical lane.  Implications:
+>
+> - The "literal-pool workarounds" listed below are still dropped on the
+>   new canonical (the espressif Xtensa MC patches are still applied on
+>   top of LLVM 22.1.4 — fork code preserved through the bump). Direct
+>   `ldc2 -c -> ld.lld` still works (verified at the shell, 0 undef link).
+> - The "D byval/sret" bug section (§(h)) is now history on the canonical
+>   lane. `$LDC2_UPSTREAM` (still the pre-fix LDC on upstream LLVM 22.1.2)
+>   keeps reproducing it for regression-tracker purposes.
+> - LTO via esp-clang's `ld.lld` (21.1.3) used to work for D ↔ clang ↔ rust
+>   because all three were on 21.1.3; it now FAILS for canonical D ↔ clang
+>   the same way clang ↔ zig has since 0.17 (docs/04). Use
+>   `$LDC_LLVM_DIR/bin/ld.lld` for cross-language LTO on the 22.x cluster.
+> - **Backward compatibility for the regression tracker**: the old 50 MB
+>   tarball with sha256 `0e99b893…` is preserved at `$DL/ldc-esp-OLD.tar.xz`
+>   for anyone who needs to reproduce the 21.1.3 LDC behaviour.
 
-The 5th frontend (D) has, until now, sat on a different LLVM than the other four:
-clang/rust/zig ride the **espressif/llvm-project** fork (`esp-21.1.3`, plus zig
-0.16's bundled 21.1.0); LDC 1.42-git rode **upstream LLVM 22.1.2**, the only
-toolchain in the repo carrying upstream-LLVM Xtensa (still listed
-*experimental* there). That worked but cost three workarounds:
+The 5th frontend (D) used to sit on a different LLVM than the other four:
+clang/rust ride the **espressif/llvm-project** fork at `esp-21.1.3`; zig 0.17
+bundles 22.1.4; the previous canonical LDC 1.42-git rode the espressif fork
+at LLVM 21.1.3. That worked but cost three workarounds when comparing
+against the *upstream*-LLVM-22 LDC (`$LDC2_UPSTREAM`):
 
 1. `ldc2 -c` produced an object whose `l32r` literal pool wasn't 4-aligned, so
    `ld.lld` rejected it (`R_XTENSA_SLOT0_OP … not aligned to 4 bytes`).

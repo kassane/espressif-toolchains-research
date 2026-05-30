@@ -32,7 +32,7 @@ TINYGO_URL="https://github.com/tinygo-org/tinygo/releases/download/v0.41.1/tinyg
 # docs/23. The upstream CI LDC (below, LLVM 22.1.2) is kept as a comparison-only
 # toolchain referenced by experiments/ldc-fork-comparison/.
 LDC_URL="https://github.com/kassane/esp-idf-dlang/releases/download/xtensa-toolchain/ldc2-v1.42.0-espressif-linux-musl-static.tar.xz"
-LDC_SHA256="0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211"
+LDC_SHA256="c2cd9f5bdd1caa80233cebc7b3d61243366b1b1a8780af019d0dbfb80becb548"
 # Upstream LDC CI (LLVM 22.1.2, upstream-LLVM Xtensa): the "before" of the fork
 # comparison. Pinned to c8305d0a; the CI tag is mutable. Fetched only when
 # LDC_UPSTREAM=1 (opt-in; ~57 MB) so default users don't pay for the comparison.

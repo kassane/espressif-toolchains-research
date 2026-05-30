@@ -196,16 +196,25 @@ output.
 
 ## Known outages
 
-- **LDC mirror unavailability (since 2026-05-28):** the `kassane/esp-idf-dlang`
-  `xtensa-toolchain` release isn't reachable from the previously-pinned URL.
-  `scripts/setup.sh` detects the failed fetch and auto-promotes
-  `$LDC2_UPSTREAM` (the ldc-developers CI build on LLVM 22.1.2) to canonical
-  so the build still completes — but that re-enables the docs/23 workarounds
-  (literal-pool re-assembly, `-mattr` fallback for s2/s3). If you have the
-  original 49 MB tarball (sha256
-  `0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211`), drop it
-  at `$DL/ldc-esp.tar.xz` to restore the canonical fork-LDC path. Until a new
-  mirror is published, docs/23 reads as the architectural intent — the
+- **LDC mirror RESTORED on 2026-05-30 — different tarball.** The mirror is
+  fetchable again. The maintainer republished
+  `ldc2-v1.42.0-espressif-linux-musl-static.tar.xz` as **LDC 1.42.0 on
+  LLVM 22.1.4** (was LDC 1.42-git on LLVM 21.1.3), sha256
+  `c2cd9f5bdd1caa80233cebc7b3d61243366b1b1a8780af019d0dbfb80becb548` (80 MB;
+  old was `0e99b893…` 50 MB). `scripts/setup.sh` is bumped to the new sha.
+  Major implications: (1) the universal D `byval`/`sret` aggregate ABI bug
+  (docs/05/19/23) is **closed** on the new canonical — qemu xtensa drops
+  from 2 D failures to 0; (2) the canonical LDC moved from the LLVM-21
+  cluster (was with clang/rust on 21.1.3) into the LLVM-22 cluster (now
+  with zig 0.17 + upstream LDC + LDC_LLVM_DIR binutils), so clang↔D LTO
+  via esp-clang's 21.1.3 lld now fails — use `$LDC_LLVM_DIR`'s lld for
+  cross-language LTO on the 22.x side. The fork still has the espressif
+  Xtensa MC patches, so the literal-pool workaround is still dropped
+  (`ldc2 -c -> ld.lld` works direct). The old 50 MB tarball is preserved
+  at `$DL/ldc-esp-OLD.tar.xz` and the old install at
+  `$TC/ldc-xtensa-old/` for anyone who needs to reproduce the 21.1.3
+  behaviour. **(Previous outage note, 2026-05-28 → 2026-05-30, kept for
+  the record):** the
   auto-fallback in `env.sh` is the operational path.
 
 ## Not done / next steps
