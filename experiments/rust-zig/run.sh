@@ -33,13 +33,17 @@ echo "== (b) runtime: Rust computes 2x u128, calls Zig, checks carry (qemu xtens
 cp "$(find "$D/rt/target" -name librzrt.a | head -1)" "$B/"
 "$CLANG" $CT -ffreestanding -Os -I"$QR" -c "$D/main.c" -o "$B/main.o"
 "$CLANG" $CT -ffreestanding -Os -c "$QR/start.S" -o "$B/start.o"
-ld.lld -T "$QR/sim.ld" -o "$B/rz.elf" "$B/start.o" "$B/main.o" "$B/rt.o" --start-group "$B/librzrt.a" "$RTLIB" --end-group
+$LLD -T "$QR/sim.ld" -o "$B/rz.elf" "$B/start.o" "$B/main.o" "$B/rt.o" --start-group "$B/librzrt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$B/rz.elf" || true
 
 echo "== (c) cross-language LTO: rust bc (21.1.3) + zig bc ($("$ZIG" cc --version|head -1|grep -oE '[0-9]+\.[0-9]+\.[0-9]+'|head -1)) =="
 ( cd "$D/rt" && RUSTC="$RUSTC" "$CARGO" rustc --release -Z build-std=core --target xtensa-esp32-none-elf -- --emit=llvm-bc >/dev/null 2>&1 )
 cp "$(find "$D/rt/target" -name 'rzrt*.bc' | head -1)" "$B/rzrt.bc"
 "$ZIG" build-obj $ZT -O ReleaseSmall -fno-emit-bin -femit-llvm-bc="$B/rt.bc" "$D/rt.zig"
+# Intentional bare ld.lld here (resolves through PATH to esp-clang's LLD
+# 21.1.3) — the probe documents the LLVM cluster split (esp-clang 21.1.3 cannot
+# LTO post-21 bitcode). Object-level links use $LLD; only this LTO probe stays
+# on the LLVM-21 lld to capture the failure mode.
 if ld.lld --lto-O2 -e rs_check_u128 -u zig_add_u128 "$B/rzrt.bc" "$B/rt.bc" -o "$B/lto.elf" 2>"$B/lto.err"; then
   echo "  LTO linked (versions matched)"; else echo "  LTO FAILS: $(grep -oiE 'Invalid record' "$B/lto.err" | head -1) (LLVM-21 cluster lld vs zig's LLVM-${ZBC_MAJ:-22} bitcode — set ZIG=\$ZIG_016 to repro the 21.1.0-vs-21.1.3 patch skew)"; fi
 
@@ -59,7 +63,7 @@ echo "  zig_opt IR: $(grep -hoE 'i32 @opt.zig_opt\([^)]*\)' "$B/opt.ll" | head -
 printf '#include "semihost.h"\nextern int rs_check_opt(void);\nint xmain(void){int ok=rs_check_opt();puts_(ok==1?"\\n  opt-ptr: Some(&x)->addr, None->0  OK\\n":"\\n  opt-ptr FAIL\\n");sys_exit(ok==1?0:1);return 0;}\n' > "$B/optmain.c"
 "$CLANG" $CT -ffreestanding -Os -I"$QR" -c "$B/optmain.c" -o "$B/optmain.o"
 cp "$(find "$D/opt/target" -name librzopt.a | head -1)" "$B/"
-ld.lld -T "$QR/sim.ld" -o "$B/opt.elf" "$B/start.o" "$B/optmain.o" "$B/opt.o" --start-group "$B/librzopt.a" "$RTLIB" --end-group
+$LLD -T "$QR/sim.ld" -o "$B/opt.elf" "$B/start.o" "$B/optmain.o" "$B/opt.o" --start-group "$B/librzopt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$B/opt.elf" || true
 
 echo "== (f) packed structs: Rust #[repr(packed)] vs Zig packed struct (different!) =="

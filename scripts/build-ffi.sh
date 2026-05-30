@@ -64,10 +64,10 @@ build_xtensa() {
 
     local COMMON="$B/driver.o $B/entry.o $B/lib_cpp.o $B/lib_zig.o $B/lib_d.o"
     # (a) pure-LLVM linked by lld
-    ld.lld -T "$SRC/xtensa.ld" -o "$B/ffi_llvm.elf"  $COMMON "$B/lib_c_clang.o" \
+    $LLD -T "$SRC/xtensa.ld" -o "$B/ffi_llvm.elf"  $COMMON "$B/lib_c_clang.o" \
         --start-group "$B/libffi_rs.a" "$RT" --end-group
     # (b) GCC C + LLVM rest, linked by lld
-    ld.lld -T "$SRC/xtensa.ld" -o "$B/ffi_mixed.elf" $COMMON "$B/lib_c_gcc.o" \
+    $LLD -T "$SRC/xtensa.ld" -o "$B/ffi_mixed.elf" $COMMON "$B/lib_c_gcc.o" \
         --start-group "$B/libffi_rs.a" "$RT" --end-group
     # (c) pure-LLVM linked by GNU ld
     XTENSA_GNU_CONFIG="$(xtensa_cfg "$CPU")" xtensa-esp-elf-ld -T "$SRC/xtensa.ld" -o "$B/ffi_gnuld.elf" \
@@ -94,7 +94,7 @@ build_riscv() {
     "$LDC2" -mtriple=riscv32-unknown-none-elf -mattr=+m,+c $LDC_PE -betterC -Os -c -of="$B/lib_d.o" "$SRC/d/lib_d.d"
     ( cd "$SRC/rust" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target riscv32imc-unknown-none-elf >/dev/null 2>&1 )
     cp "$SRC/rust/target/riscv32imc-unknown-none-elf/release/libffi_rs.a" "$B/"
-    ld.lld -e _start --section-start=.text=0x40380000 -o "$B/ffi_rv.elf" \
+    $LLD -e _start --section-start=.text=0x40380000 -o "$B/ffi_rv.elf" \
         "$B/driver.o" "$B/entry.o" "$B/lib_c.o" "$B/lib_cpp.o" "$B/lib_zig.o" "$B/lib_d.o" \
         --start-group "$B/libffi_rs.a" "$RT" --end-group
     echo "  linked ffi_rv.elf; undefined: $(llvm-nm "$B/ffi_rv.elf" 2>/dev/null | grep -c ' U ')"

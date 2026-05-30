@@ -63,7 +63,7 @@ for tag in fork upstream; do
         continue
     fi
     # Provide the rest of the FFI matrix object set so ld.lld has a real graph.
-    if ld.lld -T "$M/xtensa.ld" -o "$B/ffi_$tag.elf" \
+    if $LLD -T "$M/xtensa.ld" -o "$B/ffi_$tag.elf" \
         build/xtensa-esp32/driver.o build/xtensa-esp32/entry.o \
         build/xtensa-esp32/lib_cpp.o build/xtensa-esp32/lib_zig.o \
         "$out" build/xtensa-esp32/lib_c_clang.o \

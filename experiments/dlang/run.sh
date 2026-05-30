@@ -48,7 +48,7 @@ printf "  D     d_point_dot first load:   %s   (a1=SP => reads the STACK)\n" "$(
 echo "== (d) literal-pool: direct ldc2 -c -> ld.lld with the FFI linker script =="
 "$LDC2" $LT $LDC_PE -betterC -Os -c -of="$B/direct.o" "$M/d/lib_d.d" 2>/dev/null
 RT_E32="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/libclang_rt.builtins.a"
-if ld.lld -T "$M/xtensa.ld" -o "$B/direct.elf" \
+if $LLD -T "$M/xtensa.ld" -o "$B/direct.elf" \
     build/xtensa-esp32/driver.o build/xtensa-esp32/entry.o \
     build/xtensa-esp32/lib_cpp.o build/xtensa-esp32/lib_zig.o \
     "$B/direct.o" build/xtensa-esp32/lib_c_clang.o \
@@ -95,6 +95,10 @@ printf 'extern(C) int d_lto(int x){return x+1;}\n' > "$B/l.d"
 printf 'extern int d_lto(int);\nint c_lto(int x){return d_lto(x)+1;}\n' > "$B/l.c"
 "$LDC2" $LT $LDC_PE -betterC -Os -output-bc -of="$B/d.bc" "$B/l.d"
 "$CLANG" $CT -ffreestanding -Os -emit-llvm -c "$B/l.c" -o "$B/c.bc"
+# Intentional bare ld.lld here (resolves through PATH to esp-clang's LLD
+# 21.1.3) — the probe documents the LLVM cluster split (esp-clang 21.1.3 cannot
+# LTO post-21 bitcode). Object-level links use $LLD; only this LTO probe stays
+# on the LLVM-21 lld to capture the failure mode.
 if ld.lld --lto-O2 -e c_lto -u d_lto "$B/c.bc" "$B/d.bc" -o "$B/lto.elf" 2>"$B/lto.err"; then
   echo "  LTO linked + inlined across the boundary: c_lto = $(llvm-objdump -d --mcpu=esp32 --disassemble-symbols=c_lto "$B/lto.elf" 2>/dev/null | grep -oE 'addi\.n[[:space:]]+a[0-9]+, a[0-9]+, [0-9]+' | head -1) (x+2)"
 else

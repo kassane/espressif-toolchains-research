@@ -28,7 +28,7 @@ if [ "$ARCH" = riscv ]; then
     cp "$D/qemu_main.c" "$B/qm.c"; cp "$D/riscv/semihost.h" "$B/semihost.h"
     "$CLANG" $CT -ffreestanding -Os -I"$B" -I"$INC" -c "$B/qm.c" -o "$B/qm.o"
     "$CLANG" $CT -ffreestanding -Os -c "$D/riscv/start.S" -o "$B/start.o"
-    ld.lld -T "$D/riscv/virt.ld" -o "$B/ffi_rv_run.elf" "$B/start.o" "$B/qm.o" \
+    $LLD -T "$D/riscv/virt.ld" -o "$B/ffi_rv_run.elf" "$B/start.o" "$B/qm.o" \
         "$LIB/lib_c.o" "$LIB/lib_cpp.o" "$LIB/lib_zig.o" "$LIB/lib_d.o" \
         --start-group "$LIB/libffi_rs.a" "$RT" --end-group
     echo "===== FFI matrix on qemu-system-riscv32 (virt) ====="
@@ -45,10 +45,10 @@ QEMU="$TC/qemu/qemu/bin/qemu-system-xtensa"
 "$CLANG" $CT -ffreestanding -Os -I"$D" -I"$INC" -c "$D/qemu_main.c" -o "$B/qemu_main.o"
 printf '#include "semihost.h"\nint xmain(void){ puts_("\\nHELLO from qemu-system-xtensa\\n"); sys_exit(0); return 0; }\n' > "$B/hello.c"
 "$CLANG" $CT -ffreestanding -Os -I"$D" -c "$B/hello.c" -o "$B/hello.o"
-ld.lld -T "$D/sim.ld" -o "$B/hello.elf" "$B/start.o" "$B/hello.o"
+$LLD -T "$D/sim.ld" -o "$B/hello.elf" "$B/start.o" "$B/hello.o"
 echo "===== hello (semihosting smoke test) ====="
 timeout 8 "$QEMU" -machine sim -semihosting -nographic -monitor none -kernel "$B/hello.elf" || true
-ld.lld -T "$D/sim.ld" -o "$B/ffi_run.elf" "$B/start.o" "$B/qemu_main.o" \
+$LLD -T "$D/sim.ld" -o "$B/ffi_run.elf" "$B/start.o" "$B/qemu_main.o" \
     "$LIB/lib_c_clang.o" "$LIB/lib_cpp.o" "$LIB/lib_zig.o" "$LIB/lib_d.o" \
     --start-group "$LIB/libffi_rs.a" "$RT" --end-group
 echo "===== FFI matrix on qemu-system-xtensa (sim/dc233c) ====="

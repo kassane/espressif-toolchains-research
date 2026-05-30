@@ -22,6 +22,26 @@ export ZIG="${ZIG:-$TC/zig-0.17-espressif/zig}"
 # ./scripts/build-ffi.sh esp32` recreates the pre-0.17 baseline.
 export ZIG_016="$TC/zig-relsafe-x86_64-linux-musl-baseline/zig"
 
+# $LLD — the canonical lld invocation every script in the repo uses. Resolved
+# to `zig ld.lld` (the LLD bundled inside $ZIG, currently LLD 22.1.4 on the
+# 0.17 canonical lane). Three reasons:
+#   1. Reproducibility — pinned to the in-repo $ZIG instead of $PATH, which
+#      can resolve to the host package's LLD 18 (rejects post-18 IR — CLAUDE
+#      gotcha #4) or to esp-clang's Espressif LLD 21.1.3, depending on shell
+#      state.
+#   2. LLVM cluster fit — now that LDC is also LLVM 22.1.4 (docs/05 §"LDC
+#      1.42 status"), `zig ld.lld` matches both the canonical Zig AND the
+#      canonical LDC. Object-level FFI is identical either way; for LTO
+#      it's the right tool for the 22.x cluster.
+#   3. One central handle — to swap lld (e.g. to esp-clang's for a specific
+#      LTO probe), pass `LLD="$ESP_CLANG_DIR/ld.lld" ./scripts/build-ffi.sh
+#      esp32`. env.sh honors a pre-set $LLD.
+#
+# Scripts use `$LLD -T ... -o … ...` — bash word-splits the unquoted
+# variable in command position, so the `$ZIG ld.lld` two-token form
+# expands correctly.
+export LLD="${LLD:-$ZIG ld.lld}"
+
 # Zig v0.17.0-dev (kassane/zig-mos-bootstrap, bundled clang 22.0.0git / libc++ 22).
 # Comparison-only: a different upstream build, same LLVM-22 family as the
 # canonical $ZIG. Used by `experiments/simd/run.sh` §6 only to cross-check that
