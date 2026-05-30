@@ -9,9 +9,9 @@ PASS/FAIL matrix (D added to all four other languages) is `scripts/run-qemu.sh`.
 
 | | value |
 |---|---|
-| compiler | **LDC 1.42.0-git-04a6c8b** (DMD v2.112.1 frontend) |
-| backend | **espressif/llvm-project LLVM 21.1.3** — same family as esp-clang and rustc |
-| source | [`kassane/esp-idf-dlang`](https://github.com/kassane/esp-idf-dlang/releases/tag/xtensa-toolchain) `xtensa-toolchain` (static-musl); the upstream `ldc-developers/ldc` CI build (LLVM 22.1.2) remains as `$LDC2_UPSTREAM` for the comparison in docs/23 |
+| compiler | **LDC 1.42.0** (DMD v2.112.1 frontend; was LDC 1.42.0-git-04a6c8b before the 2026-05-30 maintainer re-upload) |
+| backend | **espressif/llvm-project LLVM 22.1.4** — same Xtensa MC patches as the previous 21.1.3 fork build, now in the LLVM-22 cluster with zig 0.17 (was in the LLVM-21 cluster with esp-clang and rustc before 2026-05-30) |
+| source | [`kassane/esp-idf-dlang`](https://github.com/kassane/esp-idf-dlang/releases/tag/xtensa-toolchain) `xtensa-toolchain` (static-musl); the upstream `ldc-developers/ldc` CI build (LLVM 22.1.2) remains as `$LDC2_UPSTREAM` for the comparison in docs/23 — and as the regression-tracker baseline for the historical universal byval/sret bug the 2026-05-30 re-upload closed |
 | Xtensa | **first-class** in the espressif fork: `-mcpu=esp32`/`s2`/`s3` all recognized natively |
 | bare-metal | **`-betterC`** (no druntime/Phobos/GC/ModuleInfo) — D's analogue of Rust `no_std` / Zig `freestanding` |
 | invocation | `ldc2 -mtriple=xtensa-esp-elf -mcpu=esp32 -betterC -c` |
@@ -21,19 +21,33 @@ is the richest in this matrix (see §5). With the espressif-fork LDC it now ride
 the **same backend family** as clang/rust/zig (all 21.1.x); the
 upstream-LLVM-22 path is documented in [docs/23](23-ldc-espressif-fork.md).
 
-## 2. The headline: D mis-lowers **every** by-value aggregate
+## 2. Historical headline: D *used to* mis-lower **every** by-value aggregate (closed 2026-05-30)
 
-D's frontend marks **all** struct arguments `byval(ptr)` and **all** struct
-returns `sret` — i.e. *explicitly indirect* in the IR — then defers the actual
-ABI to the LLVM backend. The Xtensa (and RISC-V) backends lower `byval`/`sret`
-**by memory**, which does **not** match the platform C ABI's register passing.
-This is the same *root cause* as Zig (frontend defers to the backend instead of
-implementing the C ABI), but D's divergence is **broader** because it marks the
-aggregates indirect unconditionally.
+> **Status update.** This whole section is the *pre-2026-05-30* state. The
+> previous LDC 1.42-git on LLVM 21.1.3 (and the upstream-22 LDC) emitted the
+> `byval`/`sret` IR documented below; the canonical LDC 1.42.0 on LLVM
+> 22.1.4 (2026-05-30 maintainer re-upload) emits `[N x i32]` like clang —
+> see docs/05 §"LDC 1.42 status" + docs/23 banner. The historical IR is
+> still reproducible on `$LDC2_UPSTREAM` (LDC on upstream LLVM 22.1.2,
+> no aggregate-flattening fix). The rest of §2 below is kept as the
+> reference for what the bug looked like and why it bit Xtensa harder
+> than RISC-V; readers wanting the *current* canonical behaviour should
+> skip to docs/05 §"LDC 1.42 status".
 
-The three frontends emit three different IRs for the same `Point`/`Blob`:
+The legacy D frontend marked **all** struct arguments `byval(ptr)` and
+**all** struct returns `sret` — i.e. *explicitly indirect* in the IR — then
+deferred the actual ABI to the LLVM backend. The Xtensa (and RISC-V)
+backends lower `byval`/`sret` **by memory**, which does **not** match the
+platform C ABI's register passing. This was the same *root cause* as Zig
+0.16 (frontend defers to the backend instead of implementing the C ABI),
+but D's divergence was **broader** because it marked the aggregates
+indirect unconditionally — on the canonical 22.1.4 lane, both Zig 0.17
+and LDC 1.42.0 now implement the C ABI in the frontend.
 
-| fn | **clang** (C-ABI reference) | **Zig** | **D / LDC** |
+The three frontends emitted three different IRs for the same `Point`/`Blob`
+on the legacy lane:
+
+| fn | **clang** (C-ABI reference) | **Zig 0.16** (legacy) | **LDC 1.42-git 21.1.3** (legacy) |
 |----|------|-----|---|
 | `point_dot(Point,Point)` | `([2 x i32],[2 x i32])` → regs | `(%Point,%Point)` direct | `(ptr byval(%Point), ptr byval(%Point))` |
 | `make_point→Point` | `→[2 x i32]` regs | `→%Point` direct | `(ptr sret(%Point), …)` |
@@ -188,15 +202,22 @@ LLVM frontends — no llvm-link warning).
 D/LDC slots in as a **5th frontend on the shared backend** and is a strong C/C++
 FFI citizen: scalars at parity, object-level linking with all four others (0
 undef), **byte-identical Itanium mangling**, C++-header generation (`-HC`) with a
-verified C++→D round-trip, and **working cross-language LTO with clang**
-(same-21.1.3 since docs/23, so no skew). The caveat that survives is
-**by-value aggregates** — D marks *every* struct `byval`/`sret`, so it diverges
-from the register-based Xtensa C ABI more broadly than Zig (both `point_dot` and
-`blob_sum`; on RISC-V the small struct even faults). Pass structs **by
-pointer**. Crucially, this bug is **frontend-side**: both the canonical
-espressif-fork LDC (LLVM 21.1.3) and the upstream-22 LDC produce the identical
-broken IR ([docs/23](23-ldc-espressif-fork.md) §(h)), and the same family of
-narrow-target-blind frontend bug shows up on MOS 6502 too
+verified C++→D round-trip. The **2026-05-30 LDC 1.42.0 maintainer re-upload**
+(LLVM 22.1.4) closes the universal `byval`/`sret` aggregate ABI bug
+documented in §2 — `d_point_dot` is now byte-identical to `c_point_dot`, qemu
+xtensa drops to 0 D failures, the abi-structs sweep shows REGISTERS on every
+D row (docs/05 §"LDC 1.42 status", docs/23). The historical break is
+preserved on `$LDC2_UPSTREAM` (LDC on upstream LLVM 22.1.2, no aggregate-
+flattening fix) for the regression tracker. **Cross-language LTO with clang
+USED to work** on the LLVM-21 cluster (LDC + clang + rust all on 21.1.3);
+the 2026-05-30 re-upload moves D to LLVM 22.1.4, so `clang ↔ D` LTO via
+esp-clang's 21.1.3 lld now FAILS (`Invalid record`) — `D ↔ zig 0.17` LTO
+is newly reachable via `$LDC_LLVM_DIR`'s lld instead (docs/04). The bug
+was **frontend-side**, confirmed across both legacy LDC arms — the
+espressif-fork LDC at LLVM 21.1.3 and the upstream-22 LDC at LLVM 22.1.2
+produced byte-identical broken IR ([docs/23](23-ldc-espressif-fork.md)
+§(h)); the same family of narrow-target-blind frontend bug shows up on
+MOS 6502 too
 ([kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1),
 wontfix). So the fix would need to land in LDC's DMD-ABI lowering, not in a
 downstream LLVM fork. The historical literal-pool link bug is **gone** on the

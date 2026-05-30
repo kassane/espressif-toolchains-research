@@ -76,6 +76,21 @@ from dropping the function, but the linker can still GC it.
 LDC's `@assumeUsed` and Rust's `#[used]` give you that directly. For clang
 you need C23's `[[gnu::retain]]` — the legacy `((used))` is not enough.
 
+**LLD version caveat (PR #24 finding).** The strong/weak split above holds
+for **function symbols** under both LLD 21.1.3 (esp-clang's `ld.lld`) and
+LLD 22.1.4 (`$LLD` = `$ZIG ld.lld`, the canonical linker in this repo).
+For **data symbols**, however, LLD 22.1.4 GCs Rust's `#[used] pub static
+MARKER` under `--gc-sections` *even though* the IR has `@llvm.used` — LLD
+21.1.3 keeps it. The behaviour difference is reproducible in
+`experiments/dlang/ldc-attrs.sh §f`: override the linker explicitly via
+`LLD=$ESP_CLANG_DIR/ld.lld` to recover the 21.1.3 outcome. On the canonical
+`$LLD` 22.1.4, `MARKER_RS` is reported as GC'd while `marker_d`
+(LDC `@assumeUsed`, *function*) and `marker_cr` (clang
+`[[gnu::retain]]`, *function*) both survive. Practical fallout for ISR
+vector tables and similar function-symbol use cases: nothing changes. For
+*data*-symbol pinning under LLD 22, wrap the data in a function (return
+a `static` reference) or use a `KEEP()` directive in the linker script.
+
 ### 1.2 Compile-time file embed — `import("file")` parity matrix
 
 D's `import("file.bin")` is a *string import* — the file content is read at

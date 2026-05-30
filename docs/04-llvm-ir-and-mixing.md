@@ -41,12 +41,17 @@ revealing rows:
 | `blob_sum` (24B) | `i32 ([6 x i32])` | `i32 ([6 x i32])` | `i32 (%Blob)` | `i32 (byval ptr)` | `i32 ([24 x i8])` |
 | `make_blob` (24B) | `void (sret ptr, i8)` | `void (sret ptr, i8)` | `%Blob (i8)` | `void (sret ptr, i8)` | `void (sret ptr, i8)` |
 
-Three strategies: **clang and rust** coerce in-frontend to
-`[N x i32]` (C-ABI match); **Zig** hands raw aggregate types to the backend;
-**D/LDC** always pointer-indirects (`byval`/`sret`); **TinyGo** flattens
-struct-of-scalars to the scalar fields (`a.X`, `a.Y`, …) but leaves byte-array
-aggregates as `[N x i8]`. The first wins; the next three each fail somewhere
-on Xtensa (docs/05/19/24).
+Three historical strategies — converged to two on the canonical lane:
+**clang, rust, Zig 0.17, and now D/LDC 1.42.0** all coerce in-frontend to
+`[N x i32]` (C-ABI match); **TinyGo** flattens struct-of-scalars to the
+scalar fields (`a.X`, `a.Y`, …) but leaves byte-array aggregates as
+`[N x i8]`. Historically Zig 0.16 handed raw aggregate types to the backend
+(closed in 0.17, docs/05 §"Zig 0.17 status") and the previous LDC 1.42-git
+(LLVM 21.1.3) pointer-indirected every aggregate with `byval`/`sret`
+(closed in the 2026-05-30 LDC 1.42.0 maintainer re-upload, docs/05 §"LDC
+1.42 status", docs/23). The legacy `$ZIG_016` and `$LDC2_UPSTREAM` arms
+preserve both historical breaks for the regression tracker. The TinyGo
+byte-array case is the residual divergence on Xtensa (docs/05/19/24).
 
 Two lessons:
 
@@ -140,8 +145,21 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
 > esp-clang's 21.1.3 ld.lld now FAILS (`Invalid record`, the same
 > failure clang ↔ zig had since PR #18); **D ↔ zig LTO** is *newly
 > reachable* via the LLVM-22 lld (use `$LDC_LLVM_DIR/bin/ld.lld` or
-> the lld bundled with `$ZIG`). TinyGo (LLVM 20.1.1) sits outside both
+> `$LLD` itself, since `$LLD = $ZIG ld.lld` resolves to LLD 22.1.4 — see
+> CLAUDE gotcha #4 + PR #24). TinyGo (LLVM 20.1.1) sits outside both
 > clusters as before.
+>
+> **$LLD (= `$ZIG ld.lld`, LLD 22.1.4) is the canonical linker for every
+> `.sh` in the repo** (PR #24). Two intentional LTO probes — `rust-zig/
+> run.sh §c` and `dlang/run.sh §LTO` — keep bare `ld.lld` to resolve via
+> PATH to esp-clang's 21.1.3 LLD, where the cluster-boundary `Invalid
+> record` failure mode is the experiment. Observed side effect of the LLD
+> version bump: under `$LLD` 22.1.4, Rust's `#[used]` on *data symbols*
+> (e.g. `pub static MARKER: u32`) is GC'd by `--gc-sections` even though
+> the IR has `@llvm.used`; LLD 21.1.3 keeps it. Function-symbol strong/
+> weak split (`@assumeUsed` / `[[gnu::retain]]` survive vs `((used))` /
+> plain extern get GC'd) holds for both versions — see
+> `experiments/dlang/ldc-attrs.sh §f` for the live demo.
 >
 > IR portability is real (shared backend; identical datalayout across
 > every LLVM frontend in this matrix since docs/23/24); the rule of thumb

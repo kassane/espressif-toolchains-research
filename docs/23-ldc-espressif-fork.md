@@ -168,8 +168,9 @@ ldc2 -mtriple=xtensa-esp-elf <flags> -betterC -Os -c -of=lib_d.o lib_d.d
 ```
 
 DWARF survives end-to-end now (the workaround dropped it on re-assembly). The
-fork's producer DIE reads `LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)` in
-`dwarfdump`; the upstream LDC's re-assembled object has no producer string at
+fork's producer DIE reads `LDC 1.42.0 (LLVM 22.1.4)` in `dwarfdump` (was
+`LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)` before the 2026-05-30 maintainer
+re-upload); the upstream LDC's re-assembled object has no producer string at
 all.
 
 ## Reproducing

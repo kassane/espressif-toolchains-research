@@ -46,7 +46,7 @@ Every other language references the symbol verbatim, no glue:
 |---|---|---|---|
 | provider | C++ | **esp-clang 21.1.3** | `template class Gpio<5>;` (explicit instantiation) |
 | provider (alt) | C++ | **gcc 15.2.0** | same source compiles to *byte-identical* Itanium symbols |
-| consumer | D | **LDC 1.42-git (espressif LLVM 21.1.3; docs/23)** | `extern(C++,"shims") extern(C++,class) struct Gpio(int Pin)` |
+| consumer | D | **LDC 1.42.0 (espressif LLVM 22.1.4; 2026-05-30 re-upload — docs/23)** | `extern(C++,"shims") extern(C++,class) struct Gpio(int Pin)` |
 | consumer | Rust | **rustc 1.95-nightly (LLVM 21.1.3)** | `#[link_name="_ZN5shims4GpioILi5EE3setEv"] fn pin5_set();` |
 | consumer | Zig | **Zig 0.17.0-xtensa (LLVM 22.1.4)** — `$ZIG` canonical | `extern fn @"_ZN5shims4GpioILi5EE3setEv"() callconv(.c) void;` |
 
