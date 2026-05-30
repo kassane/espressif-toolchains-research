@@ -102,6 +102,7 @@ experiments/ldc-fork-comparison/ run.sh — espressif-21 vs upstream-22 LDC side
 experiments/atomics-orders/ run.sh — 4-frontend × stores/loads × N orderings, esp32 (atomics gap closed beyond docs/17's single-order probe)
 experiments/tinygo/       run.sh — TinyGo v0.41.1 / LLVM 20.1.1 probe; whole-program compiler, outside the FFI matrix (docs/24)
 experiments/call0-abi/    run.sh — windowed vs CALL0 ABI (-mcpu=<core>-windowed) across 5 frontends × 3 cores (docs/02 §CALL0)
+experiments/zero-cost/    run.sh — D × C++ × Rust × C zero-cost abstraction parity on esp32 -Os: monomorphization, lambdas/Fn-traits, static vs dynamic dispatch, heap-allocated classes (D class needs malloc/Mallocator in -betterC); see docs/25
 scripts/                  setup.sh env.sh build-ffi.sh analyze.sh run-qemu.sh
 docs/00..24               support-matrix / toolchains / abi / … / dlang-ldc / dlang-safety / tmp-ffi-baremetal / dwarf-codegen-parity / ldc-espressif-fork / tinygo
 experiments/dwarf-parity/ run.sh — DWARF & disassembly audit across all 5 toolchains on Xtensa (docs/22)
