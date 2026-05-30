@@ -17,9 +17,13 @@ language frontends** now ride an LLVM with that backend:
 - **clang** — espressif's LLVM directly (`clang` 21.1.3).
 - **rustc** — esp-rs ships a rustc built against the same LLVM (1.95-nightly, *LLVM 21.1.3*).
 - **zig** — kassane's `zig-espressif-bootstrap`; the canonical `$ZIG` is **0.17.0-xtensa** built against *clang/LLVM 22.1.4* (asset `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz`). The legacy 0.16.0 lane (`$ZIG_016`, *clang/LLVM 21.1.0*) is kept for the docs/05 struct-bug reproducer.
-- **D / LDC** — `kassane/esp-idf-dlang` ships LDC 1.42-git built against the
-  same espressif LLVM 21.1.3 (`-betterC` for bare-metal). Joined the fork in
-  docs/23, dropping five workarounds. The upstream-LLVM-22 LDC stays as
+- **D / LDC** — `kassane/esp-idf-dlang` ships **LDC 1.42.0** built against
+  the espressif LLVM **22.1.4** fork (`-betterC` for bare-metal; 2026-05-30
+  maintainer re-upload bumped both the release tag AND the bundled LLVM,
+  AND dropped the universal byval/sret aggregate lowering — docs/05 §"LDC
+  1.42 status", docs/23). The fork's Xtensa MC patches are still applied
+  on top of LLVM 22.1.4 (esp32/s2/s3 -mcpu, literal-pool fix), so the
+  five workarounds dropped by docs/23 stay dropped. The upstream-LLVM-22 LDC stays as
   `$LDC2_UPSTREAM` for the side-by-side. Deep dive: [docs/19](docs/19-dlang-ldc.md).
 - **TinyGo** — v0.41.1 bundles its own LLVM 20.1.1 fork (`tinygo-org/llvm-project`)
   and targets esp32 + esp32s3 + esp32c3 (no s2). Whole-program compiler,
@@ -248,14 +252,17 @@ Yes, with a version caveat.
   **and** zig — they all feed the one backend. (Upstream LLVM-22's `llc` lacks the
   `esp32` CPU, so esp32 *codegen* of merged/22 IR still needs the espressif backend.)
 - **Cross-language LTO** (the practical IR-merge path): compile to LLVM bitcode
-  and let `ld.lld` merge it. **LLVM-21 cluster** (clang/rust/canonical-LDC all
-  on **21.1.3**) LTOs end-to-end via esp-clang's `ld.lld`. **LLVM-22 cluster**
-  (zig 0.17 / 22.1.4 + upstream LDC / 22.1.2) needs its own matching `ld.lld`
-  to take bitcode through full LTO inlining. The 21.1.3 LTO reader **rejects**
-  zig 0.17 bitcode (`Invalid record`) — same failure as the 0.16 lane, but the
-  skew is now major (22 vs 21) instead of patch (21.1.0 vs 21.1.3). The
-  optional `$LDC_LLVM_DIR` LLVM-22 `llvm-link` is forward-compatible — it
-  merges esp-clang 21.1.3 bitcode with zig 22.1.4 bitcode into one module
+  and let `ld.lld` merge it. **LLVM-21 cluster** (esp-clang + rust, both
+  21.1.3) LTOs end-to-end via esp-clang's `ld.lld`. **LLVM-22 cluster**
+  (**canonical LDC 1.42.0 / 22.1.4** + zig 0.17 / 22.1.4 + `$LDC2_UPSTREAM`
+  22.1.2) needs its own matching `ld.lld` — the repo's `$LLD` (= `$ZIG
+  ld.lld`, LLD 22.1.4, PR #24) covers the cluster's object-link
+  needs by default. The 21.1.3 LTO reader **rejects** post-21 bitcode
+  (`Invalid record`) — same failure mode for clang↔zig and now for
+  clang↔D since the 2026-05-30 LDC re-upload moved D out of the 21
+  cluster. The optional `$LDC_LLVM_DIR` LLVM-22 `llvm-link` is forward-
+  compatible — it merges esp-clang 21.1.3 bitcode with the canonical
+  LDC 22.1.4 / zig 22.1.4 bitcode into one module
   cleanly, so cross-cluster IR analysis (`opt`, `llc`) is reachable; only the
   *LTO inline* step needs one cluster end-to-end. Details:
   [docs/04-llvm-ir-and-mixing.md](docs/04-llvm-ir-and-mixing.md).
@@ -269,22 +276,33 @@ Yes, with a version caveat.
    Cross-language FFI on Xtensa is real and practical today.
 2. **Linkers are interchangeable.** lld and GNU ld each link both object
    families; GCC and LLVM (clang/rust/zig/D) objects coexist in one image.
-3. **The residual struct-argument leak is now D-only** (canonical lane). **Zig
-   0.16** mis-lowered align-1 byte arrays on Xtensa and `{i32,i32}` on RISC-V
-   (the latter reproduces on upstream Zig 0.16); **Zig 0.17 closed both** —
-   the frontend now flattens to `[N x i32]` like clang (docs/05 §"Zig 0.17
-   status"). **D/LDC** still marks every aggregate `byval`/`sret`, so it
-   diverges for *all* register-passed structs + small-struct returns
-   (broader than the old Zig). Rust/clang/gcc + canonical Zig are correct
-   everywhere. Confirmed live on qemu (xtensa + riscv); `ZIG=$ZIG_016`
-   regenerates the historical break.
+3. **The residual struct-argument leak is now TinyGo-only** (byte-array case
+   on the canonical lane). **Zig 0.16** mis-lowered align-1 byte arrays on
+   Xtensa and `{i32,i32}` on RISC-V (the latter reproduces on upstream Zig
+   0.16); **Zig 0.17 closed both** — the frontend now flattens to `[N x i32]`
+   like clang (docs/05 §"Zig 0.17 status"). The **previous LDC 1.42-git
+   (LLVM 21.1.3)** marked *every* aggregate `byval`/`sret`, so it diverged
+   broader than 0.16-Zig; **the 2026-05-30 LDC 1.42.0 maintainer re-upload
+   (LLVM 22.1.4) drops the universal byval/sret lowering** — `d_point_dot`
+   is byte-identical to `c_point_dot` and qemu xtensa drops to 0 D failures
+   (docs/05 §"LDC 1.42 status", docs/23). Rust/clang/gcc + canonical Zig +
+   canonical LDC are correct everywhere. **TinyGo** still lowers
+   `struct{[N]uint8}` as `[N x i8]` byte-per-register (docs/24 §e), so it
+   alone owns the byte-array hole. Confirmed live on qemu (xtensa + riscv);
+   `ZIG=$ZIG_016` regenerates the historical Zig break, `$LDC2_UPSTREAM`
+   regenerates the historical LDC break.
 4. **IR is portable; tooling versions are the gotcha.** A compatible datalayout
    makes IR mixing sound; with the matching LLVM-22 binutils `llvm-link` merges
-   every LLVM frontend (it reads esp-clang 21.1.3 bitcode AND zig 0.17 22.1.4
-   bitcode), while the *LTO* reader is pickier and is now split into two
-   clusters (LLVM-21 cluster: clang/rust/D-canonical at 21.1.3; LLVM-22
-   cluster: zig 0.17 + LDC-upstream + the binutils) — "same LLVM cluster" is
-   the rule of thumb.
+   every LLVM frontend (it reads esp-clang 21.1.3 bitcode AND zig 0.17 /
+   LDC 1.42.0 22.1.4 bitcode), while the *LTO* reader is pickier and is split
+   into two clusters: **LLVM-21 cluster** (esp-clang + rust, both 21.1.3),
+   **LLVM-22 cluster** (canonical LDC 1.42.0 22.1.4 + zig 0.17 22.1.4 +
+   `$LDC2_UPSTREAM` 22.1.2 + `$LDC_LLVM_DIR` binutils 22.1.2). "Same LLVM
+   cluster" is the rule of thumb for `ld.lld` LTO. **Note**: the 2026-05-30
+   LDC re-upload moved D from the LLVM-21 cluster to the LLVM-22 cluster,
+   so `clang ↔ D` LTO via esp-clang's 21.1.3 lld now fails (same as
+   `clang ↔ zig`). Object-level FFI is unaffected — datalayouts identical
+   across all clusters.
 
 ## 8. Practical FFI guidance for ESP32 polyglot projects
 

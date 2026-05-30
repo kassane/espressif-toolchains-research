@@ -40,19 +40,24 @@ zig (legacy)       : 0.16.0                              →  bundled clang 21.1
 esp clang          : Espressif clang version 21.1.3 (esp-21.1.3_20260408)   [LLVM 21.1.3]
 rustc              : 1.95.0-nightly (95e5bda86 2026-04-15)  →  LLVM version: 21.1.3
 xtensa-esp-elf-gcc : 15.2.0 (crosstool-NG esp-15.2.0_20251204)
-ldc2 (canonical)   : 1.42.0-git-04a6c8b (DMD v2.112.1)  →  LLVM version: 21.1.3 (espressif fork)
+ldc2 (canonical)   : 1.42.0 (DMD v2.112.1)              →  LLVM version: 22.1.4 (espressif fork; 2026-05-30 re-upload bumped from 1.42.0-git-04a6c8b / 21.1.3 — docs/23)
 ldc2 (upstream,opt): 1.42.0-git-c8305d0 (DMD v2.112.1)  →  LLVM version: 22.1.2
 tinygo             : 0.41.1 (Go 1.24.7)                 →  LLVM version: 20.1.1 (tinygo-org fork; bundled)
 ```
 
-**Backend alignment.** Two LLVM clusters in the matrix now:
+**Backend alignment** (post-2026-05-30 LDC re-upload). Two LLVM clusters in
+the matrix:
 
-- **LLVM-21 cluster** (esp-clang 21.1.3, rustc 21.1.3, LDC canonical 21.1.3) —
-  the three share an LLVM point release exactly, so cross-language LTO via
-  esp-clang's bundled `ld.lld` works without skew.
-- **LLVM-22 cluster** (Zig 0.17 / LLVM 22.1.4, LDC upstream / LLVM 22.1.2,
-  `$LDC_LLVM_DIR` binutils 22.1.2). With `LLVM22=1` installed, the optional
-  binutils can `llvm-link` cross-cluster (22 reads 21.1.3 bitcode fine) but
+- **LLVM-21 cluster** (esp-clang 21.1.3, rustc 21.1.3) — the two share an
+  LLVM point release exactly, so `clang ↔ rust` cross-language LTO via
+  esp-clang's bundled `ld.lld` works without skew. **The canonical LDC
+  used to live here**; the 2026-05-30 maintainer re-upload bumped it to
+  LLVM 22.1.4 and moved it out — `clang ↔ D` LTO via esp-clang's
+  21.1.3 lld now fails (docs/05 §"LDC 1.42 status", docs/23).
+- **LLVM-22 cluster** (canonical LDC 1.42.0 / 22.1.4, Zig 0.17 / 22.1.4,
+  $LDC2_UPSTREAM / 22.1.2, $LDC_LLVM_DIR binutils 22.1.2). With
+  `LLVM22=1` installed, the optional binutils can `llvm-link`
+  cross-cluster (22 reads 21.1.3 bitcode fine) but
   the 21.1.3 LTO reader rejects post-21 bitcode (`Invalid record`), so the
   full LTO pipeline only works within a cluster. **TinyGo** (LLVM 20.1.1)
   sits outside both. All three datalayouts are byte-identical, so
@@ -106,10 +111,12 @@ See [04-llvm-ir-and-mixing.md](04-llvm-ir-and-mixing.md) +
   first-class `-mcpu` values:** `esp32` / `esp32s2` / `esp32s3` (no `-mattr`
   fallback needed for the CPU; `env.sh:ldc_xtensa_flags` still pins the
   feature set explicitly to match esp-clang).
-- Direct `ldc2 -c` Xtensa objects link cleanly under `ld.lld -T xtensa.ld`
-  (literal pools are correctly aligned). The `-output-s` + esp-clang
-  re-assembly workaround is **gone**. DWARF survives end-to-end; the producer
-  DIE reads `LDC 1.42.0-git-04a6c8b (LLVM 21.1.3)`.
+- Direct `ldc2 -c` Xtensa objects link cleanly under `$LLD -T xtensa.ld`
+  (literal pools are correctly aligned — fork Xtensa MC patches preserved
+  on top of the LLVM 22.1.4 bump). The `-output-s` + esp-clang re-assembly
+  workaround stays **gone**. DWARF survives end-to-end; the producer DIE
+  reads `LDC 1.42.0 (LLVM 22.1.4)` (was `LDC 1.42.0-git-04a6c8b (LLVM
+  21.1.3)` before the 2026-05-30 re-upload).
 
 ### D / LDC (ldc-developers/ldc — comparison-only, opt-in)
 - The rolling **`CI`** pre-release (LLVM **22.1.2**), pinned to `c8305d0a`. The

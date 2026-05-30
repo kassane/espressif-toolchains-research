@@ -10,9 +10,13 @@ output.
       Versions confirmed: clang/LLVM 21.1.3, rustc 1.95-nightly/LLVM 21.1.3,
       **zig 0.17.0-xtensa / bundled clang/LLVM 22.1.4** (canonical `$ZIG`; the
       legacy 0.16.0/LLVM 21.1.0 lane `$ZIG_016` is kept for the docs/05
-      struct-bug reproducer), gcc 15.2.0, **LDC 1.42-git on espressif LLVM
-      21.1.3** (D; canonical fork build, swapped in — docs/23). The upstream
-      LLVM-22 LDC remains as `$LDC2_UPSTREAM` for the side-by-side comparison.
+      struct-bug reproducer), gcc 15.2.0, **LDC 1.42.0 on espressif LLVM
+      22.1.4** (D; canonical fork build — 2026-05-30 maintainer re-upload
+      bumped both the release tag and the bundled LLVM, AND dropped the
+      universal byval/sret aggregate lowering; docs/05 §"LDC 1.42 status",
+      docs/23). The upstream LLVM-22 LDC (`$LDC2_UPSTREAM`, LDC 1.42-git on
+      LLVM 22.1.2) stays for the side-by-side comparison + as the
+      regression-tracker baseline for the historical byval/sret bug.
 - [x] Confirmed the shared backend: identical CPU feature sets and identical
       `target datalayout` across clang/rust/zig (docs 02, 04).
 - [x] FFI matrix (`experiments/ffi-matrix`): one C-ABI contract, 5 implementations
@@ -65,22 +69,36 @@ output.
       across the LLVM-21/LLVM-22 cluster split (21.1.3 rust vs 22.1.4 zig
       bitcode; docs/04 §"Two LLVM clusters").
 - [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D added
-      to the FFI matrix + qemu harness). The canonical LDC is now LDC 1.42-git on
-      **espressif/llvm-project LLVM 21.1.3** (kassane/esp-idf-dlang, docs/23) —
-      same backend family as clang/rust. `-betterC` = freestanding. **Headline:**
-      D marks **every** by-value aggregate `byval`/`sret` (indirect) and defers
-      to the backend, so it diverges from the register-based Xtensa C ABI **more
-      broadly than Zig** — runtime `point_dot` (align-4) **and** `blob_sum`
-      (align-1) both FAIL on Xtensa; on RISC-V the small struct even *faults*
-      while the large one PASSES. The fork LDC produces the **identical broken
-      IR** as the upstream-22 LDC (docs/23 §(h)), so the bug is **frontend-side**
-      — same family as kassane/dlang-mos-hello-world#1 (wontfix). Fix: **pass
-      structs by pointer** (runtime-verified). Scalars at parity; links into the
-      one ELF with the four FFI-matrix peers (0 undef). Rich C/C++ FFI: byte-identical
-      Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref), `-HC` C++-header
-      gen with a verified C++→D round-trip. Cross-language LTO with clang
-      succeeds (both on 21.1.3, no skew). Known issues: ldc #5091 (ICE EH+opt);
-      ldc #4919 (cpu-feature defaults — fixed for esp32-s2/s3 on the fork).
+      to the FFI matrix + qemu harness). The canonical LDC is **LDC 1.42.0 on
+      espressif/llvm-project LLVM 22.1.4** (kassane/esp-idf-dlang, 2026-05-30
+      maintainer re-upload; docs/23) — same backend family as clang/rust at
+      the espressif fork, but at a different LLVM point release. `-betterC` =
+      freestanding. **Headline (historical):** the previous LDC 1.42-git on
+      LLVM 21.1.3 marked **every** by-value aggregate `byval`/`sret` (indirect)
+      and deferred to the backend, so it diverged from the register-based
+      Xtensa C ABI more broadly than Zig — `point_dot` (align-4) AND `blob_sum`
+      (align-1) both FAILED on Xtensa; on RISC-V the small struct even
+      *faulted* while the large one PASSED. **Headline (canonical, post-
+      2026-05-30):** the LDC 1.42.0 frontend drops the universal byval/sret
+      lowering and emits `[N x i32]` like clang. `d_point_dot` disasm is
+      byte-identical to `c_point_dot` (`mull/mull/add.n/retw.n`); `d_make_point`
+      is just `entry/retw.n`. **qemu xtensa drops from 2 D failures to 0**.
+      The legacy break is preserved on `$LDC2_UPSTREAM` (LDC on upstream LLVM
+      22.1.2, no aggregate-flattening fix) for the regression tracker
+      (`experiments/ldc-fork-comparison/run.sh`). The bug was **frontend-side**
+      — confirmed across both legacy LDC arms (fork-21.1.3 + upstream-22.1.2
+      produced byte-identical broken IR). Scalars at parity; links into the
+      one ELF with the four FFI-matrix peers (0 undef). Rich C/C++ FFI:
+      byte-identical Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref),
+      `-HC` C++-header gen with a verified C++→D round-trip. **Cross-language
+      LTO**: `clang ↔ rust` still works (LLVM-21 cluster), `clang ↔ D` LTO
+      via esp-clang's 21.1.3 lld now **FAILS** (`Invalid record`) since D
+      moved to LLVM-22; `D ↔ zig` LTO is newly reachable via `$LDC_LLVM_DIR`'s
+      lld (docs/04 §"Two LLVM clusters"). Known issues: ldc #5091 (ICE
+      EH+opt); ldc #4919 (cpu-feature defaults — fixed for esp32-s2/s3 on
+      the fork). **`$LLD`** (= `$ZIG ld.lld`, LLD 22.1.4, PR #24) is the
+      canonical linker for every `.sh` in the repo; gotcha #4 host-LLVM-18
+      risk is mitigated.
 - [x] **LDC espressif-fork comparison** (docs/23, `experiments/ldc-fork-comparison`).
       Side-by-side both LDCs on the same `lib_d.d` for esp32. The fork drops 5
       workarounds (literal-pool re-assembly, `.cfi_*` strip, `-output-s` step,
