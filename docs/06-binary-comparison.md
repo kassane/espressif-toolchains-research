@@ -13,7 +13,7 @@ Berkeley `llvm-size` "text" column, which folds in zig's default `.eh_frame`:
 | clang 21 (C++) | 204 | templates fully inlined; C-ABI exports only |
 | **zig 0.17** (LLVM 22.1.4, `$ZIG` canonical) | **375** | ~1.8× clang — frontend now flattens aggregates to `[N x i32]` (docs/05 §"Zig 0.17 status"), so `blob_sum`/`make_blob` no longer shuffle bytes through the stack; the residual gap is from the `.eh_frame` Zig still emits by default (220 B, see docs/15) plus a more verbose per-function prologue |
 | zig 0.16 (`$ZIG_016` legacy) | 715 | ~3× — old non-C-ABI large-struct marshalling (doc 05); kept here for the comparison |
-| D 1.42 (LDC esp-fork, `-betterC`) | 489 | per-function sections sum; verbose byte loops in `make_blob`/`blob_sum` (the residual D `byval` gap, docs/19, /23) |
+| D 1.42.0 (LDC esp-fork, `-betterC`) | 516 | per-function sections sum; canonical LDC 1.42.0 (LLVM 22.1.4, 2026-05-30 maintainer re-upload) **closes** the universal byval/sret aggregate bug — `d_point_dot` is now byte-identical to `c_point_dot`. `.text` went UP slightly (489 → 516 B) because `d_blob_sum`'s in-register byte unpacking (`srli`/`extui`/`and`) takes a few more instructions than the old indirect byte loads did, but qemu xtensa now reports 0 D failures (docs/05 §"LDC 1.42 status", docs/19, /23). |
 | TinyGo v0.41.1 | *whole firmware ~140 KB ELF (docs/24)* | not directly comparable: TinyGo emits a flash image (header `e9 02 02 1f`), not a per-function `.o`; the included Go runtime + std lib dominate. At -opt=0 the single-function disasm matches Rust release in 7 bytes (docs/22 §g). |
 
 Re-derive with `./scripts/analyze.sh esp32` (writes

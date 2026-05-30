@@ -4,7 +4,13 @@ At-a-glance comparison for **Espressif Xtensa (ESP32 / S2 / S3)** and the
 RISC-V outlier **ESP32-C3**, distilled from the experiments in this repo.
 Legend: ✓ works / correct · ✗ broken · — n/a.
 
-> **LDC mirror unavailable (since 2026-05-28):** the canonical D toolchain's
+> **LDC mirror RESTORED (2026-05-30) with a different tarball — see docs/23
+> banner**: the maintainer republished the canonical D toolchain on LLVM
+> 22.1.4 (was 21.1.3). The universal D byval/sret aggregate ABI bug
+> documented below is **closed** on the new canonical; the LDC mirror outage
+> note below is the *previous* state and is retained for the record.
+>
+> **(Previous note, 2026-05-28 → 2026-05-30):** the canonical D toolchain's
 > upstream (`kassane/esp-idf-dlang`) isn't fetchable. `scripts/setup.sh`
 > auto-falls back to the upstream LDC (LLVM 22.1.2) — re-enabling docs/23's
 > workarounds for fresh installs. See HANDOFF.md §"Known outages". The matrix
@@ -15,8 +21,8 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 
 | | **Rust** (esp-rs) | **Zig** (esp bootstrap) | **D** (LDC) | **esp-clang** | **GCC** (crosstool-NG) | **TinyGo** (docs/24) |
 |---|---|---|---|---|---|---|
-| version | 1.95.0-nightly | **0.17.0-xtensa** | LDC 1.42-git | 21.1.3 | 15.2.0 | v0.41.1 |
-| backend | LLVM **21.1.3** | LLVM **22.1.4** (bundled) | LLVM **21.1.3** (espressif fork) | LLVM **21.1.3** | GCC (own) | LLVM **20.1.1** (TinyGo-bundled) |
+| version | 1.95.0-nightly | **0.17.0-xtensa** | **LDC 1.42.0** | 21.1.3 | 15.2.0 | v0.41.1 |
+| backend | LLVM **21.1.3** | LLVM **22.1.4** (bundled) | LLVM **22.1.4** (espressif fork; was 21.1.3 before the 2026-05-30 maintainer re-upload) | LLVM **21.1.3** | GCC (own) | LLVM **20.1.1** (TinyGo-bundled) |
 | Xtensa via | **`esp-rs/rust` fork** | **`kassane/zig-espressif-bootstrap` fork** (0.16 legacy is `$ZIG_016`) | **`kassane/esp-idf-dlang` fork** (LDC + `espressif/llvm-project`; docs/23) | **`espressif/llvm-project` fork** | `espressif/crosstool-NG` | **`tinygo-org/llvm-project` fork** (bundled in the tarball; see docs/24) |
 | works on **upstream**? | ✗ — esp-rs is a *fork*; upstream rustc has only Tier-3 *target specs*, no working Xtensa codegen | partial — upstream Zig 0.17.0 adds `esp32` only (no s2/s3); **fork** has all three. The struct-by-value bug (#5467) is fixed in 0.17 | partial — `$LDC2_UPSTREAM` (LLVM 22.1.2) works for `esp32` only (no s2/s3; ldc #4919) and needs the `-output-s` re-assembly workaround; docs/23 | ✗ — **espressif/llvm ≠ upstream LLVM**; upstream's Xtensa backend is experimental/partial (esp32/esp8266 only) | ~ — Xtensa is in upstream GCC, but the esp32/s2/s3 cores come from espressif | n/a — TinyGo bundles its own LLVM and runtime |
 | esp32 / s2 / s3 | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ (via `-mcpu`) | ✓ / ✓ / ✓ | ✓ / ✓ / ✓ | ✓ / **✗** / ✓ (no esp32-s2 target) |
@@ -60,10 +66,10 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | windowed ABI (`entry`/`retw.n`, args `a2..a7`, `callx8`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | int / i64 / f32 / f64 / pointer / callback C-ABI | ✓ | ✓ | ✓ | ✓ | ✓ | ✓¹ |
-| small struct `{i32,i32}` by value | ✓ | ✓³ | **✗** | ✓ | ✓ | ✓ (flattens to scalars) |
-| **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | ✓⁴ | **✗** | ✓ | ✓ | **✗** (byte-per-register, docs/24 §e) |
-| **C-style bitfield struct by value** (16/32/64-bit packed) | — (no syntax) | ✓ via `packed struct(uN)` (explicit backing) | **✗** `byval(%s.T)` for every width | ✓ flattens to scalar `i32`/`[1×i64]` | ✓ flattens | — (no syntax) |
-| small struct return (8-byte, in regs) | ✓ | ✓ | **✗** | ✓ | ✓ | ✓ |
+| small struct `{i32,i32}` by value | ✓ | ✓³ | ✓⁵ | ✓ | ✓ | ✓ (flattens to scalars) |
+| **under-aligned (`align(1)`) struct by-value *arg*** | ✓ | ✓⁴ | ✓⁵ | ✓ | ✓ | **✗** (byte-per-register, docs/24 §e) |
+| **C-style bitfield struct by value** (16/32/64-bit packed) | — (no syntax) | ✓ via `packed struct(uN)` (explicit backing) | ✓⁵ | ✓ flattens to scalar `i32`/`[1×i64]` | ✓ flattens | — (no syntax) |
+| small struct return (8-byte, in regs) | ✓ | ✓ | ✓⁵ | ✓ | ✓ | ✓ |
 | large struct return (`sret`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | links under `ld.lld` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓² |
 | links under GNU `ld` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓² |
@@ -82,25 +88,32 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 > stack-spill via `movsp` for the align-1 aggregate, `zig_blob_sum FAIL
 > got=409 want=300` at qemu. Swap with `ZIG=$ZIG_016 ./scripts/build-ffi.sh
 > esp32`.
+> ⁵ LDC 1.42.0 (the 2026-05-30 maintainer re-upload on LLVM 22.1.4) closes
+> the universal D `byval`/`sret` aggregate ABI bug that LDC 1.42-git on LLVM
+> 21.1.3 carried. The frontend now lowers aggregates to `[N x i32]` like
+> clang, so `d_point_dot`/`d_blob_sum` pass byte-identically to clang's
+> register-passing convention; `d_make_point` returns in registers via the
+> windowed ABI's small-struct-return slot. Disasm: `d_point_dot` reads from
+> `a2/a3/a4/a5` (matches clang `c_point_dot`); `d_make_point` is just
+> `entry/retw.n`. qemu xtensa drops to **0 failures**; qemu riscv stays at
+> 0. Docs/05 §"LDC 1.42 status", docs/19, docs/23. The old `$LDC2_UPSTREAM`
+> arm of the fork-vs-upstream comparison (the pre-fix LDC on upstream-LLVM
+> 22.1.2) still reproduces the broken IR; that's the regression-tracker
+> baseline now, not the canonical.
 >
-> Two outliers on the canonical 0.17 / 21.1.3 lane. **D/LDC** marks *every*
-> aggregate `byval`/`sret` (indirect), so it diverges for the **small
-> `{i32,i32}` arg AND the align-1 arg AND the small-struct return** —
-> everything the C ABI puts in registers (runtime `point_dot` + `blob_sum`
-> both FAIL on Xtensa qemu; the small struct even *faults* on RISC-V). The
-> lone struct case D gets right is the >16-byte `sret` return (the C ABI is
-> *also* indirect there). **TinyGo** joins the byte-array hole: a
-> `struct{[24]uint8}` lowers as `[24 x i8]` byte-per-register, not clang's
-> `[6 x i32]` (docs/24 §e). The D divergence is **frontend-side** — the
-> espressif-fork LDC (LLVM 21.1.3) produces the identical broken IR as the
-> upstream-22 LDC (docs/23 §(h)), proving the bug isn't in the LLVM Xtensa
-> backend. Rust, clang, GCC, and **Zig 0.17** all agree on everything;
-> historically Zig 0.16 was the third outlier and the legacy `$ZIG_016`
-> lane still demonstrates it. **Use by-pointer structs across any D or
-> TinyGo boundary** (runtime-verified; docs/05/10/11/19/24). On the
-> canonical Zig the by-pointer workaround is no longer required, but
-> remains the portable choice when you need cross-lane compatibility
-> with the `$ZIG_016` reproducer.
+> One outlier on the canonical lane. **TinyGo** still owns the byte-array
+> hole: a `struct{[24]uint8}` lowers as `[24 x i8]` byte-per-register, not
+> clang's `[6 x i32]` (docs/24 §e). Rust, clang, GCC, Zig 0.17, **and now
+> LDC 1.42.0** all agree on every other row. The historical D bug was
+> **frontend-side** — confirmed by `$LDC2_UPSTREAM` (LDC on upstream LLVM
+> 22.1.2, pre-fix) producing the same broken IR the old fork did; the new
+> 1.42 fork drops the byval/sret universal lowering even though it's still
+> using a 22.1.4 backend (docs/23 §(h)). **Use by-pointer structs across
+> any TinyGo boundary if the field is a byte array** (the only case
+> runtime-verified to corrupt today). On the canonical Zig + canonical
+> LDC the by-pointer workaround is no longer required for the cases
+> documented in docs/05/19; the legacy `$ZIG_016` lane and the upstream
+> `$LDC2_UPSTREAM` arm are the reproducers for the historical breaks.
 
 ## Codegen, tooling & misc
 

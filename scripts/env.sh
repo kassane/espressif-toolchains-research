@@ -53,13 +53,17 @@ export GXX="$GCC_DIR/bin/xtensa-esp-elf-g++"
 export GCC_CFG_DIR="$GCC_DIR/lib"
 xtensa_cfg() { echo "$GCC_CFG_DIR/xtensa_${1}.so"; }  # xtensa_cfg esp32 -> .../xtensa_esp32.so
 
-# LDC 1.42.0-git (espressif/llvm-project, LLVM 21.1.3) - kassane/esp-idf-dlang
-# fork build. The canonical 5th frontend. Same LLVM family as esp-clang and
-# rustc (21.1.3), so no bitcode-version skew and no -output-s re-assembly
-# workaround (its Xtensa MC lays literal pools correctly). First-class -mcpu
-# values: esp32, esp32s2, esp32s3, esp8266, cnl, generic. Static-musl binary;
-# ldc2.conf pre-bundled. Bare-metal uses -betterC (no druntime/Phobos), the D
-# analogue of Rust no_std / Zig freestanding. See docs/23.
+# LDC 1.42.0 (espressif/llvm-project, LLVM 22.1.4) - kassane/esp-idf-dlang
+# fork build. The canonical 5th frontend. Now in the LLVM-22 cluster (same as
+# zig 0.17 + $LDC2_UPSTREAM + $LDC_LLVM_DIR binutils — docs/04), no longer in
+# the LLVM-21 cluster with esp-clang/rust. Still has the espressif Xtensa MC
+# patches (literal pools lay correctly, no -output-s re-assembly), AND
+# carries the [N x i32] frontend struct-arg lowering — closes the universal
+# D byval/sret aggregate ABI bug (docs/05/19/23) that the old 21.1.3 build
+# had. First-class -mcpu values: esp32, esp32s2, esp32s3, esp8266, cnl,
+# generic. Static-musl binary; ldc2.conf pre-bundled. Bare-metal uses
+# -betterC (no druntime/Phobos), the D analogue of Rust no_std / Zig
+# freestanding. See docs/19/23.
 export LDC_DIR="$TC/ldc-xtensa"
 export LDC2="$LDC_DIR/bin/ldc2"
 

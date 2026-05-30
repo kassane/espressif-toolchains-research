@@ -1,12 +1,24 @@
 # 05 — Deep dive: the struct-argument ABI divergence (alignment, not size)
 
-The canonical lane (zig 0.17, clang 21.1.3, rust 21.1.3, LDC 21.1.3, esp-gcc
-15.2.0, TinyGo 0.41.1) now has D as the **only** language with a struct-by-value
-gap on Xtensa — Zig 0.17 closed the long-standing align-1 hole (the rest of
-this doc traces what *was* broken and what the fix landed). This is the one
-place the shared backend does **not** give a shared ABI; the trigger is
-**struct alignment**, not struct size, and it only affects by-value struct
-*arguments* (returns are fine).
+**As of 2026-05-30** the canonical lane (zig 0.17, clang 21.1.3, rust 21.1.3,
+**LDC 1.42.0 / LLVM 22.1.4**, esp-gcc 15.2.0, TinyGo 0.41.1) has **TinyGo
+(byte-array case) as the only remaining language with a struct-by-value gap
+on Xtensa**. Two long-standing bugs closed:
+
+- Zig 0.17 (`$ZIG`) flattens aggregates to `[N x i32]` like clang —
+  align-1 by-value structs pass cleanly. See "Zig 0.17 status" below.
+- LDC 1.42.0 (the maintainer-republished tarball, `kassane/esp-idf-dlang`
+  `xtensa-toolchain` release) drops the universal `byval`/`sret` aggregate
+  lowering that LDC 1.42-git on LLVM 21.1.3 carried, and now emits the same
+  `[N x i32]` form clang does. See "LDC 1.42 status" below.
+
+The rest of this doc traces what *was* broken and what each fix landed.
+The original framing — "shared backend doesn't give a shared ABI; trigger
+is alignment not size; only by-value arguments" — held for every frontend
+that deferred aggregate lowering to LLVM's default. By construction the
+two frontends that didn't defer (clang/gcc — the C ABI authors) were
+already correct. Rust matched them. The Zig and D frontends were the
+deferring ones; both have now stopped deferring.
 
 ## The discriminator is alignment
 
@@ -31,13 +43,21 @@ native bitfield syntax):
 
 bf 16b(4+4+8)          2     i32            | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a
 bf 32b(8+8+16)         4     i32            | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a
-bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a   (D IR: byval(%s.T))
+bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS    n/a          REGISTERS      REGISTERS    n/a
 ```
 
 - **align-1 byte arrays USED to diverge at every size — even 8 bytes** —
   five of six toolchains classified REGISTERS while **Zig 0.16 alone used
   movsp**. Zig 0.17 (`$ZIG` canonical) now flattens to `[N x i32]` like clang
   and matches; only the legacy `$ZIG_016` lane reproduces the old break.
+- **D bitfields USED to lower as `byval(%s.T)` on every width** — the LDC
+  1.42-git build on LLVM 21.1.3 wrapped every aggregate in `byval`/`sret`,
+  including the bitfield rows above (note the now-deleted "D IR:
+  byval(%s.T)" annotation that used to live next to the 64-bit row).
+  **LDC 1.42.0** (the 2026-05-30 maintainer-republished tarball on LLVM
+  22.1.4) flattens the same way clang does — every D bitfield row above
+  now classifies REGISTERS without footnote. The legacy 21.1.3 LDC bug
+  is preserved on the `$LDC2_UPSTREAM` arm and recorded in docs/23.
 - **align-4 structs match at every size — even 24 bytes.**
 - **Bitfields: clang/gcc flatten to the scalar backing type** (`i32`/`i32`/
   `[1 x i64]` for the 16/32/64-bit total widths). **Zig matches clang
@@ -120,22 +140,37 @@ buffer). Compatible — the divergence is specific to under-aligned *arguments*.
 
 ## D/LDC and TinyGo: two more "defer to backend" stories
 
-Zig isn't the only frontend that hands aggregates raw to the LLVM Xtensa
-backend. Two more bend the matrix in different ways.
+Zig isn't the only frontend that *used to* hand aggregates raw to the LLVM
+Xtensa backend. Two more did, in different ways.
 
-**D/LDC marks every aggregate `byval`/`sret`.** Whether the input is
-`Point{int x, int y}`, `Blob{ubyte[24] data}`, or anything else, LDC's IR
-puts the parameter behind a pointer with `byval`. Backend lowers that as
-"copy to caller's frame, read via SP". So D fails *every* by-value struct
-case the C ABI puts in registers: `point_dot` (align-4) **and** `blob_sum`
-(align-1) **and** the 8-byte struct return. The lone case D gets right is
-the >16-byte `sret` return, where the C ABI is *also* indirect.
+**D/LDC used to mark every aggregate `byval`/`sret`.** Whether the input
+was `Point{int x, int y}`, `Blob{ubyte[24] data}`, or anything else, the
+LDC 1.42-git build's IR put every parameter behind a pointer with `byval`.
+The backend lowered that as "copy to caller's frame, read via SP". So D
+failed *every* by-value struct case the C ABI puts in registers:
+`point_dot` (align-4) **and** `blob_sum` (align-1) **and** the 8-byte
+struct return. The lone case D got right was the >16-byte `sret` return,
+where the C ABI is *also* indirect.
 [experiments/ldc-fork-comparison](../experiments/ldc-fork-comparison/run.sh)
-proves the bug is frontend-side: the espressif-fork LDC (LLVM 21.1.3) and
-the upstream-22 LDC produce byte-identical broken IR. Same family as
+proved the bug was frontend-side: the espressif-fork LDC (LLVM 21.1.3) and
+the upstream-22 LDC produced byte-identical broken IR. Same family as
 [kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
-on MOS 6502 (wontfix). Full account in [docs/19](19-dlang-ldc.md) +
-[docs/23](23-ldc-espressif-fork.md) §(h).
+on MOS 6502 (wontfix).
+
+**LDC 1.42.0 (2026-05-30) closes this hole.** The maintainer-republished
+tarball at `kassane/esp-idf-dlang/releases/download/xtensa-toolchain/`
+bumps the canonical LDC to **LDC 1.42.0 (release, no -git suffix) on LLVM
+22.1.4**, and the frontend now emits the same `[N x i32]` aggregate
+flattening clang does. `d_point_dot`'s IR is
+`define i32 @d_point_dot([2 x i32] %a_arg, [2 x i32] %b_arg)`; the disasm
+is `mull a8,a5,a3; mull a9,a4,a2; add.n a2,a9,a8; retw.n` — **byte-
+identical to clang's `c_point_dot`**. `d_make_point` is `entry/retw.n` —
+return is in `a2/a3`, no `sret` slot. qemu xtensa drops to **0 failures**;
+abi-structs sweep reports REGISTERS for D on every row (small/large align,
+bitfield, return). Full account in [docs/19](19-dlang-ldc.md) +
+[docs/23](23-ldc-espressif-fork.md) §"LDC 1.42 status". The legacy
+behaviour is preserved on `$LDC2_UPSTREAM` (which is still the pre-fix
+LDC on upstream LLVM 22.1.2) for regression-tracker purposes.
 
 **TinyGo splits the difference by field type.** A struct of scalars gets
 flattened to its fields:
@@ -158,10 +193,12 @@ in `a2` bits 0-7, TinyGo reads all of `a2` as one byte. So TinyGo joins the
 struct-arg list **for byte-array aggregates only**. Full detail in
 [docs/24](24-tinygo.md) §(e).
 
-The cumulative score at align-1 on Xtensa, with **Zig 0.17 canonical**:
-**D/LDC** and **TinyGo (byte-array case)** are the diverging frontends; Zig
-0.16 (`$ZIG_016`) reproduces the historical break as a third row. The
-mitigation is the same for D/TinyGo: pass aggregates by pointer.
+The cumulative score at align-1 on Xtensa, with **Zig 0.17 canonical** and
+**LDC 1.42.0 canonical** (2026-05-30): **TinyGo (byte-array case) is the only
+diverging frontend**. Zig 0.16 (`$ZIG_016`) and the legacy `$LDC2_UPSTREAM`
+(LDC on upstream LLVM 22.1.2, pre-fix) reproduce the historical breaks as
+two off-canonical rows. The mitigation for TinyGo is the same as it always
+was: pass the byte-array aggregate by pointer.
 
 ## Not Xtensa-only — RISC-V *also* had a Zig struct bug (0.16, fixed in 0.17)
 
@@ -229,10 +266,77 @@ bug, switch with `ZIG=$ZIG_016 ./scripts/build-ffi.sh esp32` and
 `ZIG=$ZIG_016 ./scripts/run-qemu.sh xtensa`.
 
 **This narrows the cumulative score**: at align-1 on Xtensa, the diverging
-frontends are now just **D/LDC** and **TinyGo (byte-array case)** — Zig has
-left the list. The original "Zig defers aggregate ABI to LLVM default"
-diagnosis from `ziglang/zig` #5467 (closed 0.17 milestone, 2026-05-06)
-shipped, so the upstream lane caught up with what clang+rust+gcc do.
-D/LDC's `byval`/`sret` universalism (docs/19/23) is unaffected and TinyGo's
-`[N x i8]` shape (docs/24) is unaffected — those bugs are in different
-frontends.
+frontend is now just **TinyGo (byte-array case)** — both Zig 0.17 and LDC
+1.42.0 have left the list. The original "Zig defers aggregate ABI to LLVM
+default" diagnosis from `ziglang/zig` #5467 (closed 0.17 milestone,
+2026-05-06) shipped, so the upstream lane caught up with what
+clang+rust+gcc do. And the parallel "LDC marks every aggregate
+`byval`/`sret`" diagnosis (docs/19/23) is now history on the canonical
+LDC — see "LDC 1.42 status" below. TinyGo's `[N x i8]` shape (docs/24)
+is unaffected — that bug is in the tinygo-org/llvm-project fork's
+frontend pass, not in upstream LDC or Zig.
+
+## LDC 1.42 status — the universal D byval/sret bug is fixed in the canonical baseline
+
+The canonical `$LDC2` is now the **`kassane/esp-idf-dlang` 1.42 release**
+(`ldc2-v1.42.0-espressif-linux-musl-static.tar.xz` under the
+`xtensa-toolchain` tag, re-uploaded 2026-05-30; bundled **LLVM 22.1.4**).
+It closes the universal aggregate ABI bug the previous LDC 1.42-git build
+(on LLVM 21.1.3) carried — every divergence row in the deep-dive table
+above now reads REGISTERS for D:
+
+- **xtensa `d_point_dot`** (8-byte `{i32,i32}`, align-4): qemu went from
+  `FAIL (got=4548 want=11)` on the old LDC to `ok (11)`.
+- **xtensa `d_blob_sum`** (24-byte `[u8;24]`, align-1): qemu went from
+  `FAIL (got=394 want=300)` to `ok (300)`.
+- **xtensa `d_make_point`** (8-byte struct return in regs): used to be
+  routed through an `sret` slot; now just `entry/retw.n` — return in
+  `a2/a3` like clang.
+- **`experiments/abi-structs/sweep.sh`** on every Xtensa core: every D
+  row now classifies REGISTERS at both the heuristic AND the IR level
+  (the 64-bit bitfield row's old "D IR: byval(%s.T)" annotation is gone).
+
+IR diff at `d_point_dot`:
+
+```
+old LDC 1.42-git (LLVM 21.1.3): i32 @d_point_dot(ptr byval(%lib_d.Point) %a, ptr byval(%lib_d.Point) %b)
+new LDC 1.42.0   (LLVM 22.1.4): i32 @d_point_dot([2 x i32] %a_arg, [2 x i32] %b_arg)
+```
+
+Disasm at the callee shifts from "spill to stack, read via SP" to
+"args in `a2/a3/a4/a5`, multiply directly":
+
+```
+old (legacy LDC, still reproducible via $LDC2_UPSTREAM):
+    l32i.n a8, a1, +N    ; first arg loaded from SP-relative stack slot
+new (canonical $LDC2):
+    mull   a8, a5, a3    ; b.y * a.y
+    mull   a9, a4, a2    ; b.x * a.x
+    add.n  a2, a9, a8    ; sum
+    retw.n
+```
+
+The new disasm is **byte-identical to clang's `c_point_dot`** — D
+finally produces register-passing C-ABI code by default.
+
+`$LDC2` is `/home/user/toolchains/ldc-xtensa/bin/ldc2` (sha256 of the
+tarball: `c2cd9f5b…becb548`; old tarball was `0e99b893…2114211`).
+`$LDC2_UPSTREAM` (LDC on upstream LLVM 22.1.2, no Xtensa MC patches
+and no aggregate-flattening fix) still reproduces the historical broken
+IR — that's now the regression-tracker baseline. The bug was
+**frontend-side**, confirmed both directions: same Xtensa MC patches as
+the old LDC fork, different aggregate-lowering pass → correct IR. So
+the 2026-05-30 maintainer re-upload is a frontend-driven win, not a
+backend change.
+
+**Caveat — LLVM cluster shift.** The new canonical LDC bundles LLVM
+22.1.4 (was 21.1.3). That moves it out of the LLVM-21 cluster
+(esp-clang + rust, both 21.1.3) and into the LLVM-22 cluster (zig 0.17
+22.1.4 + `$LDC2_UPSTREAM` 22.1.2 + `$LDC_LLVM_DIR` binutils). `ld.lld`
+LTO across canonical-LDC ↔ esp-clang/rust now fails with "Invalid
+record" the same way clang↔zig LTO does — they're not in the same
+cluster anymore. Object-level FFI is unaffected (datalayouts are still
+byte-identical and we just rebuilt the full FFI matrix with 0 link
+failures). See [docs/04](04-llvm-ir-and-mixing.md) §"Two LLVM
+clusters" — that section needs a follow-up to move LDC from the LLVM-21
+column to the LLVM-22 column.

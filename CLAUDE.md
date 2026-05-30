@@ -58,27 +58,37 @@ windowed `entry` instruction decodes as garbage.
    `--emit=...` must go after `--` in `cargo rustc`.
 3. **esp clang can't target the host** — use `zig cc` for host C/C++.
 4. **`llvm-link`/`opt`/`llvm-dis` are not shipped** by esp clang; the host's are
-   LLVM 18 and reject LLVM-21/22 IR. The canonical 21.1.3 LDC's bitcode reads
-   cleanly via esp-clang's own 21.1.3 binutils — no skew, no extra download.
-   Cross-language **LTO** (`ld.lld`): clang↔rust↔D all on 21.1.3 (the **LLVM-21
-   cluster**), all link; zig (22.1.4) fails "Invalid record" against the
-   21.1.3 `ld.lld` (the version skew got bigger with the 0.17 flip — major
-   instead of patch). The optional **LLVM-22 binutils**
-   (`$LDC_LLVM_DIR`, `setup.sh LLVM22=1`) form a second cluster with zig 0.17
-   + upstream LDC; their LLVM-22 `llvm-link` *also* reads esp-clang 21.1.3
-   bitcode (forward-compatible), so cross-cluster IR analysis is reachable —
-   only full LTO inlining needs one cluster end-to-end. See docs/04
-   §"Two LLVM clusters".
-5. **D's by-value struct ABI is a frontend bug, not a backend one.** Both LDC
-   variants emit `byval`/`sret` for every aggregate; the espressif-21 fork
-   doesn't change that, so `point_dot`/`blob_sum` still FAIL at runtime on
-   Xtensa. Pass structs by pointer across a D boundary. Same family as
+   LLVM 18 and reject LLVM-21/22 IR. **Cross-language LTO clusters changed
+   on 2026-05-30** when the maintainer republished the canonical LDC on
+   LLVM 22.1.4 (was 21.1.3). Current state:
+   - **LLVM-21 cluster** (esp-clang + rust, both 21.1.3) — ld.lld LTO works
+     within; `clang↔rust` LTO still links cleanly.
+   - **LLVM-22 cluster** (canonical LDC 22.1.4 + zig 0.17 22.1.4 +
+     `$LDC2_UPSTREAM` 22.1.2 + `$LDC_LLVM_DIR` binutils 22.1.2) — needs
+     `$LDC_LLVM_DIR/bin/ld.lld` or `$ZIG`'s bundled lld for LTO inlining.
+   - The optional LLVM-22 `llvm-link` reads BOTH 21.1.3 and 22.x bitcode
+     (forward-compatible) so cross-cluster IR analysis is reachable; only
+     full LTO inlining needs one cluster end-to-end.
+   - **clang ↔ D LTO** that used to work via esp-clang's 21.1.3 ld.lld
+     now FAILS (`Invalid record`) — D moved out of the 21 cluster. See
+     docs/04 §"Two LLVM clusters" for the updated map.
+5. **D's by-value struct ABI WAS a frontend bug, FIXED on 2026-05-30.**
+   The previous LDC 1.42-git on LLVM 21.1.3 emitted `byval`/`sret` for
+   every aggregate, so `point_dot`/`blob_sum` FAILED at runtime on Xtensa.
+   The 2026-05-30 maintainer-republished LDC 1.42.0 on LLVM 22.1.4 closes
+   the bug — the frontend now lowers aggregates to `[N x i32]` like
+   clang, qemu xtensa drops to 0 failures, and `d_point_dot`'s disasm is
+   byte-identical to `c_point_dot` (docs/05 §"LDC 1.42 status"). The
+   legacy break is preserved on `$LDC2_UPSTREAM` for the regression
+   tracker (`experiments/ldc-fork-comparison/run.sh`). Same family as
    [kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
-   (wontfix) — docs/23. **Zig had the same family of bug on 0.16 (LLVM
-   21.1.0), closed by `$ZIG` 0.17 (LLVM 22.1.4)** — the frontend now flattens
-   to `[N x i32]` matching clang, qemu `zig_blob_sum` passes on xtensa AND
-   `zig_point_dot` passes on riscv (docs/05 §"Zig 0.17 status"). `ZIG=$ZIG_016
-   ./scripts/build-ffi.sh esp32` reproduces the historical break.
+   on MOS 6502 (wontfix; that target doesn't have the new frontend
+   pass yet). **Zig had the same family of bug on 0.16 (LLVM 21.1.0),
+   closed by `$ZIG` 0.17 (LLVM 22.1.4)** — the frontend now flattens to
+   `[N x i32]` matching clang, qemu `zig_blob_sum` passes on xtensa AND
+   `zig_point_dot` passes on riscv (docs/05 §"Zig 0.17 status").
+   `ZIG=$ZIG_016 ./scripts/build-ffi.sh esp32` reproduces the historical
+   Zig break.
 
 ## Repo map
 

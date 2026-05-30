@@ -16,7 +16,7 @@ For the related LLVM-driver peers in the 6-toolchain matrix not covered here:
 
 | | LDC (espressif-fork) | TinyGo |
 |---|---|---|
-| engine | LDC 1.42-git / LLVM **21.1.3** (espressif fork; docs/23) | tinygo 0.41.1 / LLVM **20.1.1** (tinygo-org fork; docs/24) |
+| engine | LDC **1.42.0** / LLVM **22.1.4** (espressif fork; bumped from 1.42-git / LLVM 21.1.3 on 2026-05-30 — docs/05 §"LDC 1.42 status", docs/23) | tinygo 0.41.1 / LLVM **20.1.1** (tinygo-org fork; docs/24) |
 | C-ABI bridge | `extern(C)` / `extern(C++)` | `//export` (cgo on host; firmware-only on Xtensa) |
 | `-mattr` for `-mcpu=esp32` | mirrors esp-clang's set (via env.sh `ldc_xtensa_flags`) | `+atomctl,+memctl,+timerint` instead of esp-clang's `+dcache,+expstate,+highpriinterrupts-level7,+mul16,+timers3` — C-ABI essentials (+windowed,+density,+mul32,+s32c1i) in both |
 | relocatable `.o` for the cross-toolchain link? | ✓ direct `-c` since docs/23 | ✗ flash-image only; docs/24 |
