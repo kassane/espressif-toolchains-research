@@ -1,0 +1,16 @@
+[package]
+name = "tmp_parity_rs"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = false
+codegen-units = 1
+overflow-checks = false
+incremental = false
