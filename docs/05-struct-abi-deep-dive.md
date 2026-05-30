@@ -67,15 +67,21 @@ bf 64b(32+32)          8     [1 x i64]      | REGISTERS    REGISTERS    n/a     
   parameter of type 'F' not allowed in function with calling convention 'xtensa_call0'
   note: inferred backing integer of packed struct has unspecified signedness
   ```
-  **D — including the new espressif-fork LDC (LLVM 21.1.3) — wraps every
+  **D — on the *legacy* LDC 1.42-git build (LLVM 21.1.3) — wrapped every
   bitfield struct in `byval(%s.T)` at the IR level**, same as every other
-  aggregate. The movsp heuristic still classifies the caller as REGISTERS
+  aggregate. The movsp heuristic still classified the caller as REGISTERS
   (the backend lowers byval to pointer-passthrough without movsp), but the
-  *machine* ABI is still indirect — a clang caller expecting the scalar
-  flattening would mismatch on any case where the function actually reads
-  its bitfields from `a2` (not `[a1 + off]`). This is the strongest
-  evidence yet that D's struct-ABI bug is universal: byte-array, word-array,
-  bitfield — every aggregate shape lowers the same broken way.
+  *machine* ABI was still indirect — a clang caller expecting the scalar
+  flattening would mismatch on any case where the function actually read
+  its bitfields from `a2` (not `[a1 + off]`). That *was* the strongest
+  evidence yet that D's struct-ABI bug was universal: byte-array, word-array,
+  bitfield — every aggregate shape lowered the same broken way. **The
+  2026-05-30 LDC 1.42.0 maintainer re-upload (LLVM 22.1.4) closes the bug
+  end-to-end** — every D row in the table above now classifies REGISTERS at
+  both heuristic AND IR level. See "LDC 1.42 status" below. The legacy
+  `$LDC2_UPSTREAM` arm (LDC on upstream LLVM 22.1.2, no aggregate-
+  flattening fix) still reproduces the broken IR for regression-tracker
+  purposes.
 - **Rust + TinyGo have no native bitfield syntax** — Rust offers
   `bitfield-struct` and similar crates (not in this baremetal probe);
   TinyGo/Go has no analog at all.

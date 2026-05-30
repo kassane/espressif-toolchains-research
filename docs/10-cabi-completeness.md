@@ -31,12 +31,16 @@ Result, verified by disassembly **and** qemu runtime (docs 05/08/09):
 | RISC-V: `{i32,i32}` 8 B | ok | ok | n/a | **wrong** (`[2 x i64]`, wrong regs) | gated (byval→ptr deref faults, docs/19) | n/a (TinyGo esp32c3 target, not in matrix) |
 | RISC-V: `[24]u8` 24 B | ok | ok | n/a | ok (by-ref) | ok (C ABI is by-ref there too) | n/a |
 
-So **Rust is at parity with clang/gcc on the C ABI for both ESP architectures;
-Zig is not** — it has a different struct-argument bug on each. **D/LDC fails
-broader** (every by-value aggregate, docs/19) and **TinyGo joins on byte-array
-fields** (docs/24 §e). Everything else tested (scalars, `i64`, `f32`/`f64`,
-pointers, callbacks, small/large struct *returns*) is at parity across every
-FFI-matrix toolchain.
+So **Rust, clang, gcc, canonical Zig 0.17 (`$ZIG`) and canonical LDC 1.42.0
+(`$LDC2`) are all at parity on the C ABI for both ESP architectures**.
+Historically: **Zig 0.16** (legacy `$ZIG_016`) had a different struct-
+argument bug on each arch — closed by 0.17 (docs/05 §"Zig 0.17 status");
+**LDC 1.42-git on LLVM 21.1.3** failed broader (every by-value aggregate,
+docs/19) — closed by the 2026-05-30 maintainer re-upload (docs/05 §"LDC
+1.42 status"). **TinyGo still diverges on byte-array fields**
+(docs/24 §e) — that's the only canonical-lane outlier left. Everything
+else tested (scalars, `i64`, `f32`/`f64`, pointers, callbacks, small/large
+struct *returns*) is at parity across every FFI-matrix toolchain.
 
 Practical parity guidance for Rust↔Zig (or C↔Zig) FFI on ESP: pass structs **by
 pointer** across any Zig boundary; scalars/pointers/callbacks are always safe.
@@ -49,8 +53,11 @@ Rust has it? **No.** `-lc` is a *linker* choice — it provides the C *library*
 (`printf`, `malloc`, `memcpy`, …). The C *calling convention* (how args/structs
 are passed) is a *codegen* decision fixed when the object is built
 (`export fn` / `callconv(.c)` / `extern struct`), and is independent of `-lc`.
-Verified: `zig_point_dot` is lowered to the buggy `[2 x i64]` **identically**
-with `-lc`, without it, and even on `riscv32-linux-musl` with a real libc. Rust,
+Verified on legacy `$ZIG_016`: `zig_point_dot` was lowered to the buggy
+`[2 x i64]` **identically** with `-lc`, without it, and even on
+`riscv32-linux-musl` with a real libc — same upstream Zig 0.16 frontend bug
+regardless of libc context. Canonical `$ZIG` (0.17) emits `[2 x i32]` like
+clang. Rust,
 by contrast, gets the C ABI right from rustc's own per-target ABI tables — even in
 `#![no_std]` with no libc at all. So `-lc` buys you libc symbols, not Rust-grade
 ABI correctness; the fix for the struct gaps has to come from Zig's codegen.

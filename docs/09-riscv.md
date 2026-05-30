@@ -6,9 +6,12 @@ check whether the Zig struct-argument divergence (docs/05) is Xtensa-specific.
 **TinyGo** also has an `esp32c3-generic` target (LLVM 20.1.1, docs/24) but is
 firmware-only so doesn't join the link matrix here.
 
-**It is not.** RISC-V has its *own*, different Zig struct-ABI bug — caught by the
-qemu runtime test (docs/08-style), which a static spot-check of only the large
-struct had missed. Rust, clang and gcc are correct on both architectures.
+**Historically, no.** RISC-V had its *own*, different Zig 0.16 struct-ABI
+bug — caught by the qemu runtime test (docs/08-style), which a static
+spot-check of only the large struct had missed. **Zig 0.17 (`$ZIG`
+canonical) closes it** — the riscv `zig_point_dot FAIL` line below is the
+0.16 baseline reproducible only on `$ZIG_016` now. Rust, clang and gcc
+are correct on both architectures in both lanes.
 
 ## Build & link — fine
 

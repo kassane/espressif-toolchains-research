@@ -79,8 +79,11 @@ committed; `.gitignore` guards against it.
 experiments/
   ffi-matrix/      5 languages implement one C-ABI contract (ffi_abi.h); a C
                    driver calls all of them. Builds for host + xtensa.
-  abi-structs/     clang/zig/D caller sweep — isolates the by-value struct-arg
-                   bug; covers byte arrays, word arrays, AND C-style bitfields
+  abi-structs/     clang/zig/D caller sweep — documents the historical
+                   by-value struct-arg bugs (Zig 0.16 + LDC 1.42-git, both
+                   fixed on canonical; reproduce via `ZIG=$ZIG_016` /
+                   `$LDC2_UPSTREAM`); covers byte arrays, word arrays, AND
+                   C-style bitfields
   llvm-ir-mix/     cross-language LTO / IR-merge probes (+ LLVM-22 llvm-link merge)
   dlang/           D/LDC deep-dive: ABI, extern(C++), -HC headers, LTO (docs/19)
   ldc-fork-comparison/ espressif-21 vs upstream-22 LDC side-by-side (docs/23)

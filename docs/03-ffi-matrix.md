@@ -44,8 +44,9 @@ genuine runtime proof that the C-ABI contract is consistent across all
 implementations. (D's by-value struct *args* pass on the x86_64 host — SysV
 matches — but diverge on Xtensa/RISC-V; see [docs/19](19-dlang-ldc.md).)
 
-> Caveat: the host SysV ABI masks the Xtensa large-struct bug (§05) because a
-> 24-byte struct is memory-passed on x86_64 where clang and zig happen to agree.
+> Caveat: the host SysV ABI masked the historical Xtensa large-struct bugs
+> (§05; Zig 0.16 + legacy LDC 1.42-git) because a 24-byte struct is memory-
+> passed on x86_64 where clang, Zig 0.16, and legacy LDC happened to agree.
 > Tier 2 is what exposes target-specific ABI.
 
 ## Tier 2 — Xtensa (esp32 / esp32s2 / esp32s3), linked & disassembled

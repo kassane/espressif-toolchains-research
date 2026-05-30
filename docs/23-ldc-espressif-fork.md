@@ -93,8 +93,14 @@ clang/rust by contrast coerce small aggregates to `[N x i32]` *in the frontend*
 (matching the Xtensa SysV-style C ABI). Same espressif backend, different IR
 shape going in → different machine ABI coming out.
 
-Runtime (`scripts/run-qemu.sh xtensa`) confirms the bug is not LLVM-version
-sensitive:
+Runtime (`scripts/run-qemu.sh xtensa`) on the legacy LDC arms confirmed the
+bug was not LLVM-version sensitive (both LLVM 21.1.3 fork-build and LLVM
+22.1.2 upstream produced the same broken IR + same runtime failures —
+that's what proved it was a frontend issue, not a backend one). The
+2026-05-30 maintainer re-upload (canonical $LDC2 on LLVM 22.1.4) carries
+a new aggregate-flattening frontend pass and closes the bug end-to-end —
+qemu xtensa now reports 0 D failures. Snapshot below is the historical
+legacy-arm output:
 
 ```
 - point_dot: 8B struct by value ==11    d FAIL (got=4548 want=11)

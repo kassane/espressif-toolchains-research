@@ -113,8 +113,12 @@ For each of esp32/s2/s3 we link three ELFs and check for unresolved symbols:
 
 So `ld.lld` links GCC-produced Xtensa objects, GNU `ld` links LLVM-produced
 objects, and a single image can contain GCC C + clang C++ + Rust + Zig + D.
-(D's object needs a literal-pool re-assembly with esp clang — a real LDC-Xtensa
-bug, docs/19 — but then links cleanly with the rest.)
+(Historically, the upstream-LLVM-22 LDC's object needed a literal-pool
+re-assembly with esp-clang — a real LDC-Xtensa MC bug on upstream LLVM,
+docs/19/23. The espressif fork patches that on top of LLVM 22.1.4 too, so
+the canonical `$LDC2` direct-c → `$LLD` link works without the
+workaround; `$LDC2_UPSTREAM` still requires it. The result either way:
+clean link with the rest of the matrix.)
 
 ### 4.3 The ABI is identical in the disassembly
 
@@ -186,8 +190,11 @@ bf 64b(32+32)      8    [1 x i64]    | REGISTERS    REGISTERS      REGISTERS    
 
 clang flattens bitfields to their scalar backing type and Zig matches when
 you give `packed struct(uN)` an explicit backing integer; D wraps every
-bitfield struct as `byval(%s.T)` at the IR level, same as every other
-aggregate — confirming D's struct-ABI bug is universal (docs/05/19).
+bitfield struct as `byval(%s.T)` at the IR level on the legacy LDC 1.42-git
+build (LLVM 21.1.3), same as every other aggregate — confirming D's struct-ABI
+bug *was* universal (docs/05/19). The 2026-05-30 LDC 1.42.0 maintainer
+re-upload (LLVM 22.1.4) closes it on the canonical lane; the historical
+behaviour is preserved on `$LDC2_UPSTREAM`.
 
 So the earlier intuition "small OK / large broken" was a confound: `Point` (8 B)
 is `{i32,i32}` (align 4) and `Blob` (24 B) is `[24]u8` (align 1). At the call
@@ -203,12 +210,18 @@ frontend now flattens aggregates to `[N x i32]` like clang, so zig drops to
 still emits by default.
 
 Root cause: Zig's experimental ESP targets don't implement the C-ABI aggregate
-coercion clang/rust do; they defer to LLVM's default lowering. This is **not
-Xtensa-only** — RISC-V (ESP32-C3) has a *different* Zig struct-arg bug: the small
-`{i32,i32}` `Point` is mis-lowered to `[2 x i64]` (wrong registers), even though
-the large `[24]u8` is fine there (by reference). The RISC-V case reproduces on
-*upstream* Zig too (`pip install ziglang`), so it is an upstream Zig frontend bug,
-not the espressif fork. Rust, clang and gcc are correct on both architectures.
+coercion clang/rust do; they defer to LLVM's default lowering. This was **not
+Xtensa-only** — RISC-V (ESP32-C3) had a *different* Zig 0.16 struct-arg bug:
+the small `{i32,i32}` `Point` was mis-lowered to `[2 x i64]` (wrong registers),
+even though the large `[24]u8` was fine there (by reference). The RISC-V case
+reproduced on
+*upstream* Zig too (`pip install ziglang`), so it was an upstream Zig frontend
+bug, not the espressif fork. **Zig 0.17 closed both gaps** (xtensa align-1 +
+riscv `[2 x i64]`); the canonical `$ZIG` (0.17, LLVM 22.1.4) emits `[N x i32]`
+like clang on both arches. Rust, clang and gcc remain correct on both. The
+legacy `$ZIG_016` lane (0.16 / LLVM 21.1.0) still reproduces the historical
+break. Root cause was Zig's deferral to the LLVM default; 0.17 implements
+the C-ABI coercion in the frontend (ziglang/zig #5467, closed 2026-05-06).
 Full teardown: [docs/05](docs/05-struct-abi-deep-dive.md),
 [docs/09](docs/09-riscv.md), [docs/10](docs/10-cabi-completeness.md).
 
