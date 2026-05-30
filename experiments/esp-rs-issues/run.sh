@@ -51,5 +51,5 @@ RTLIB="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/lib
 "$CLANG" $CTX -ffreestanding -Os -I"$QR" -c "$RT/rt_main.c" -o "$RB/rt_main.o"
 "$CLANG" $CTX -ffreestanding -Os -c "$QR/start.S" -o "$RB/start.o"
 cp "$RT/target/xtensa-esp32-none-elf/release/librt.a" "$RB/"
-ld.lld -T "$QR/sim.ld" -o "$RB/rt.elf" "$RB/start.o" "$RB/rt_main.o" --start-group "$RB/librt.a" "$RTLIB" --end-group
+$LLD -T "$QR/sim.ld" -o "$RB/rt.elf" "$RB/start.o" "$RB/rt_main.o" --start-group "$RB/librt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$RB/rt.elf" || true

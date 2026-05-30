@@ -195,11 +195,11 @@ extern(C):
 @optStrategy("optsize") int small(int x)     { return x*x*x; }
 @optStrategy("minsize") int tiny(int x)      { return x*x*x; }
 @hidden int internal_fn() { return 1; }
-@naked void barebones() { asm { "ret.n"; } }
+@naked @trusted void barebones() { asm { "ret.n"; } }   // @trusted for the asm
 @noplt extern int external_thing();
 @llvmAttr("noredzone","true") int with_attr() { return 42; }
-int sum_no_alias(@restrict int* a, @restrict int* b, int n) {
-    int s = 0; foreach (i; 0 .. n) s += a[i] + b[i]; return s;
+@system int sum_no_alias(@restrict int* a, @restrict int* b, int n) {
+    int s = 0; foreach (i; 0 .. n) s += a[i] + b[i]; return s;   // @system: raw ptr index
 }
 EOF
 "$LDC2" $LT $LDC_PE -betterC -O2 -output-ll -of="$B/full.ll" "$B/full.d" 2>/dev/null
@@ -284,7 +284,7 @@ EOF
 "$CLANG" $CT -ffreestanding -O2 -c "$B/au.c"            -o "$B/au_c.o"
 "$CLANG" $CT -ffreestanding -O2 -std=c23 -c "$B/au_retain.c" -o "$B/au_cr.o" 2>/dev/null
 RS_O=$(find "$B/rs/target" -name 'au_rs-*.o' | head -1)
-ld.lld -e _start --gc-sections \
+$LLD -e _start --gc-sections \
     -T experiments/ffi-matrix/xtensa.ld \
     "$B/entry.o" "$B/au_d.o" "$B/au_c.o" "$B/au_cr.o" "$RS_O" \
     -o "$B/gc.elf" 2>/dev/null
@@ -296,10 +296,15 @@ surv() {  # symbol label
         printf "  %-32s GC'd                  ✗\n" "$2"
     fi
 }
-surv marker_d  "LDC @assumeUsed (strong)"
-surv MARKER_RS "Rust #[used] (strong)"
-surv marker_cr "clang [[gnu::retain]] (strong)"
-surv marker_c  "clang ((used))  (weak)"
+surv marker_d  "LDC @assumeUsed (strong, fn)"
+surv MARKER_RS "Rust #[used] (strong, data)"
+surv marker_cr "clang [[gnu::retain]] (strong, fn)"
+surv marker_c  "clang ((used))  (weak, fn)"
 surv regular_d "LDC plain extern(C)"
 surv regular_c "clang plain extern"
-echo "  Demonstrates the strong/weak split end-to-end on the canonical 21.1.3 fork."
+echo "  Function-symbol strong/weak split holds end-to-end (marker_d + marker_cr"
+echo "  survive; marker_c is GC'd; regular_* GC'd). Linker is \$LLD (zig's LLD"
+echo "  22.1.4 — matches the canonical 22.x cluster). For data-symbol Rust"
+echo "  #[used] the behavior diverges across LLD point releases — LLD 22.1.4"
+echo "  GCs MARKER_RS even though the IR has @llvm.used. Re-link with"
+echo "  \$ESP_CLANG_DIR/ld.lld (21.1.3) to see the older behavior."

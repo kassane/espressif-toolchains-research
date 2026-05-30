@@ -162,7 +162,7 @@ __attribute__((used)) volatile int g_sink;
 int _start(void){ g_sink = d_callsite() + rs_callsite() + zig_callsite(); for(;;){} }
 C
 "$CLANG" $CT -ffreestanding -Os -c "$B/glue.c" -o "$B/glue.o"
-ld.lld -e _start -T experiments/ffi-matrix/xtensa.ld \
+$LLD -e _start -T experiments/ffi-matrix/xtensa.ld \
     "$B/glue.o" "$B/shims_clang.o" "$B/d_caller.o" "$B/zig_caller.o" \
     --start-group "$B/libtmpffi_rs.a" "$RT" --end-group \
     -o "$B/tmpffi.elf"
