@@ -46,13 +46,17 @@ All script output below is real.
 | frontend | esp32c3 (rv32imc) | esp32p4 (rv32imafc) | esp32p4 SIMD asm |
 |---|---|---|---|
 | **esp-clang 21.1.3** | `--target=riscv32-esp-elf -mcpu=esp32c3` | `--target=riscv32-esp-elf -mcpu=esp32p4` | yes; `-mcpu=esp32p4eco4` for ESPV 2.1 mnemonics |
-| **LDC 1.42.0** (LLVM 22.1.4) | `-mtriple=riscv32-unknown-none-elf -mattr=+m,+c` | `-mtriple=riscv32-unknown-none-elf -mattr=+m,+a,+f,+c` | `-mattr=+m,+a,+f,+c,+xespv1v,+xesploop` |
+| **LDC 1.42.0** (LLVM 22.1.4) | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32c3` | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4` | `-mcpu=esp32p4eco4` |
 | **Zig 0.17.0-xtensa** | `-target riscv32-freestanding-none -mcpu=esp32c3` | `-target riscv32-freestanding-none -mcpu=esp32p4` | `-mcpu=esp32p4eco4` |
 | **rustc 1.95-nightly** | `--target riscv32imc-unknown-none-elf` | `--target riscv32imafc-unknown-none-elf` | `-C target-cpu=esp32p4eco4` |
 
-All four frontends accept their target's CPU name (or recognize the rv32 base
-ISA via `-mattr=`/`-mcpu=generic_rv32`). LDC uniquely has no riscv CPU model
-names and must enumerate features with `-mattr`. Rust currently has no
+All three LLVM-based C-family frontends accept the esp* CPU names natively
+because they share the espressif LLVM RISC-V backend: esp-clang's LLVM 21.1.3
+and LDC's bundled LLVM 22.1.4 both enumerate `esp32c2/c3/c5/c6/c61/h2/h21/h4/
+p4/p4eco4/s31` plus their `+xesploop / +xespv / +xespv1v / +xespdsp` features
+through `-mcpu=help` / `-mattr=help`. The fallback `-mattr=+m,+c[,+a,+f]`
+form still works but produces equivalent codegen — the difference is purely
+that `-mcpu=esp32X` also sets tuning hints. Rust currently has no
 `riscv32imafc-esp-elf` target — `riscv32imafc-unknown-none-elf` + `-C
 target-cpu=esp32p4eco4` is the working combination.
 
