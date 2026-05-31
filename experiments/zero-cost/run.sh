@@ -251,5 +251,5 @@ echo ""
 echo "  → The zero-cost story is ISA-portable: every static abstraction"
 echo "    that vanishes on xtensa also vanishes on riscv32. Differences"
 echo "    in absolute counts reflect the ABIs and instruction encodings,"
-echo "    not the abstraction tax. See docs/27 for the cross-ISA synthesis."
+echo "    not the abstraction tax. See docs/25 §'RISC-V variant' for the table."
 fi

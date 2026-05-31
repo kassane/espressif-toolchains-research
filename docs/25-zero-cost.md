@@ -271,9 +271,67 @@ nothing, the dynamic ones cost the same as C++/Rust dynamic ones, and the
 allocator boilerplate that druntime would hide is a stable 3-4 lines of D
 that compiles to the same instructions as the C++ equivalent.
 
-Reproduce: `bash experiments/zero-cost/run.sh`. Inspect the disasm with
-`llvm-objdump -d --mcpu=esp32 --disassemble-symbols=<sym>
-build/zero-cost/<lang>_<test>.o`.
+Reproduce: `bash experiments/zero-cost/run.sh {esp32|esp32c3|esp32p4}`. Inspect the disasm with
+`llvm-objdump -d --mcpu=<cpu> --disassemble-symbols=<sym>
+build/zero-cost-<cpu>/<lang>_<test>.o`.
+
+## RISC-V variant (esp32c3 + esp32p4)
+
+The four scenarios above cross-compiled to esp32c3 (rv32imc):
+
+```
+== (a) Generic accumulator (sum) ==
+  C   sum_c                          10 insn  24 B
+  C++ sum_cpp_loop                   10 insn  24 B
+  C++ sum_cpp_tmpl<int>              10 insn  24 B
+  Rust sum_rs_loop                   10 insn  24 B (ICF-merged)
+  Rust sum_rs_iter                   12 insn  26 B  ← lone outlier
+  Rust sum_rs_generic<T>             10 insn  24 B
+  D   sum_d_loop                     10 insn  24 B
+  D   sum_d_tmpl!(int)               10 insn  24 B
+
+== (b) Higher-order (apply f) ==
+  ALL FORMS                          2 insn   4 B   (= slli a0, a0, 1 ; ret)
+
+== (c) Static vs dynamic dispatch ==
+  C++ static_via_template            6 insn   18 B
+  C++ virtual_via_class             20 insn   42 B  (+14 insn / +24 B)
+  Rust impl_trait_static             6 insn   18 B
+  Rust dyn_trait_dynamic            21 insn   44 B  (+15 insn / +26 B)
+  D struct-template static           6 insn   18 B
+
+== (d) Heap allocation ==
+  C++ Counter_cpp_new               14 insn  34 B
+  Rust Box<Counter>                 14 insn  34 B
+  D Counter (extern(C++) class)     14 insn  34 B
+  D CounterStruct (value type)       3 insn   6 B   ← smallest of all
+```
+
+Cross-ISA comparison (esp32 xtensa → esp32c3 riscv):
+
+- **§a sum**: xtensa 10-11 / 23-25 B; riscv 10-12 / 24-26 B. Same monomorph
+  story; riscv is +1 B per function because rv32imc uses 4-byte `addi` for
+  the literal counter inits where xtensa's `movi.n` is 2 bytes.
+- **§b apply**: xtensa 3-4 insn; riscv 2 insn. **riscv is TIGHTER** because
+  xtensa's register-window `entry/retw.n` pair costs ~6 B of frame setup;
+  riscv has no register windows and the function body is literally
+  `slli a0, a0, 1 ; ret`.
+- **§c dispatch**: vtable cost is ~+14 insn / +24 B on riscv, vs ~+6 insn /
+  +14 B on xtensa. Wider gap because riscv's indirect call (`jalr ra, rt, 0`)
+  is 4 B and the vtable read needs `lw` + offset arithmetic, while xtensa
+  packs more into each instruction.
+- **§d heap**: xtensa 10-11 insn; riscv 14 insn. Heavier on riscv because
+  `malloc(sizeof)` is one `addi a0, zero, 8` + `auipc/jalr` pair vs xtensa's
+  `movi.n a10, 8 ; callx8 malloc`. D struct value-type: **riscv beats
+  xtensa** (3 / 6 B vs 4 / 9 B) — fewer instructions to load + return a
+  small value through a0/a1 than through xtensa's a2/a3 + register-window.
+
+**Verdict**: every "zero-cost abstraction" claim above holds on RISC-V. The
+numbers shift because the ABIs and encodings shift; the *relative* costs
+(static = free, dynamic = +14 insn, heap = ~14 insn) are preserved. esp32p4
+(rv32imafc) produces the same counts as esp32c3 for these probes — the
+extra `+a / +f / +b / xespv1v / xesploop` features it carries don't affect
+non-SIMD scalar code.
 
 **TMP feature surface broader than monomorphization**: this doc covers only
 the "instantiate a generic at a concrete type" question. The full TMP

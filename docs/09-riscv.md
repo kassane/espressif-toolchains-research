@@ -83,3 +83,63 @@ both. This is the concrete frontend-C-ABI-completeness gap discussed in
 [10-cabi-completeness.md](10-cabi-completeness.md). The shared backend gives a shared
 ABI only where each frontend implements the platform C ABI correctly; Rust does,
 Zig (for these WIP targets) does not yet.
+
+## Adding ESP32-P4 (rv32imafc + vendor PIE/ESPV)
+
+esp-clang 21.1.3 also targets **esp32p4** (mainstream, ESPV 2.2) and
+**esp32p4eco4** (older revision, ESPV 2.1). esp32p4 is rv32imafc + B
+(`zba/zbb/zbc/zbs`) + extensive Zc compressed extensions + the two vendor
+extensions `Xespv` and `Xesploop` (plus `Xespdsp` opt-in). ABI is ilp32f.
+
+The `zero-cost` and `tmp-parity` experiments (docs/25, docs/26) now accept
+esp32c3 and esp32p4 as `-mcpu` targets:
+
+```bash
+experiments/zero-cost/run.sh   {esp32 | esp32c3 | esp32p4}
+experiments/tmp-parity/run.sh  {esp32 | esp32c3 | esp32p4}
+```
+
+Vendor SIMD (`esp.*` mnemonics on esp32p4) — see [docs/16
+§"ESP32-P4 RISC-V vendor SIMD"](16-simd-vectorization.md).
+
+### Four-frontend toolchain matrix for RISC-V ESP targets
+
+| frontend | esp32c3 (rv32imc) | esp32p4 (rv32imafc) | esp32p4 SIMD asm |
+|---|---|---|---|
+| **esp-clang 21.1.3** | `--target=riscv32-esp-elf -mcpu=esp32c3` | `--target=riscv32-esp-elf -mcpu=esp32p4` | `-mcpu=esp32p4eco4` for ESPV 2.1 mnemonics |
+| **LDC 1.42.0** (LLVM 22.1.4) | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32c3` | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4` | `-mcpu=esp32p4eco4` |
+| **Zig 0.17.0-xtensa** | `-target riscv32-freestanding-none -mcpu=esp32c3` | `-target riscv32-freestanding-none -mcpu=esp32p4` | `-mcpu=esp32p4eco4` |
+| **rustc 1.95-nightly** | `--target riscv32imc-unknown-none-elf` | `--target riscv32imafc-unknown-none-elf` | `-C target-cpu=esp32p4eco4` |
+
+All three LLVM C-family frontends accept the esp* CPU names natively because
+they share the espressif LLVM RISC-V backend: esp-clang's 21.1.3 and LDC's
+bundled 22.1.4 both enumerate `esp32c2/c3/c5/c6/c61/h2/h21/h4/p4/p4eco4/s31`
+plus their `+xesploop / +xespv / +xespv1v / +xespdsp` features through
+`-mcpu=help` / `-mattr=help`. Rust currently has no `riscv32imafc-esp-elf`
+target — `riscv32imafc-unknown-none-elf` + `-C target-cpu=esp32p4eco4` is
+the working combination. compiler-rt builtins for both targets ship under
+`$ESP_CLANG_DIR/../lib/clang-runtimes/riscv32-esp-unknown-elf/` (esp-clang
+ships `rv32imc-…`, `rv32imafc-…`, plus many `…_no-rtti` variants).
+
+### RISC-V ABI quirks observed across the experiments
+
+A few rv32 ABI properties the parameterized runs make visible:
+
+1. **No register windows** — rv32 functions don't carry an `entry/retw`
+   pair, so every leaf function is 1-2 insns shorter than its xtensa peer.
+   The riscv ABI passes args + return in `a0..a7` (no per-call rotation).
+2. **2/4-byte instruction encoding** — `c.*` compressed instructions are
+   2 bytes; non-compressed are 4 bytes (vs xtensa's 2/3 byte split). The
+   bytes-per-function totals shift accordingly.
+3. **`li` macro expansion** — `li a0, K` for K outside ±2KB expands to
+   `lui a0, hi(K) ; addi a0, a0, lo(K)` (8 bytes total). `0x78` fits in
+   12-bit imm so it stays 4 bytes. This makes the riscv `fact(5)` and
+   `static_sum(42)` returns slightly tighter than xtensa where every
+   const-return is `movi a2, K ; retw.n` (5-6 bytes).
+4. **Vendor-extension MCA gap** — LLVM's RISC-V Machine Code Analyzer
+   (`llvm-mca`) has no cost model for `Xespv` ops yet, so cycle counting
+   the ESPV kernels needs manual lookup against the ESPV 2.1 ISA manual.
+
+These shift absolute byte counts in the docs/25 (zero-cost) and docs/26
+(TMP) probes, but every *relative* conclusion (static = free, dynamic =
++vtable cost, CTFE = single-`li` return) holds across both architectures.

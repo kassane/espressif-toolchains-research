@@ -1,7 +1,7 @@
 // esp.c — ESP32-P4 (RISC-V rv32imafc) vendor PIE/ESPV vector ops via inline
 // asm. Targets `-mcpu=esp32p4eco4` because the broadly-documented mnemonics
 // belong to ESPV 2.1; plain esp32p4 (ESPV 2.2) has different opcodes whose
-// spellings aren't yet public. See docs/27 for the toolchain notes.
+// spellings aren't yet public. See docs/16 §"ESP32-P4 RISC-V vendor SIMD".
 //
 // Vector regs q0..q? + accumulators qacc/xacc, 128-bit wide — same q-reg
 // model as the xtensa s3 EE.* PIE, just with `esp.*` mnemonics.
