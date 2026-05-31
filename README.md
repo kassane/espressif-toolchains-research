@@ -132,7 +132,8 @@ CLAUDE.md          orientation for future automated sessions
   callbacks are fine everywhere; **pass structs by pointer** across a Zig,
   D, or TinyGo-byte-array boundary.
 - **Confirmed at runtime on qemu** (both `qemu-system-xtensa` and
-  `qemu-system-riscv32`): Xtensa → `zig blob_sum FAIL` + `d point_dot`/`d blob_sum
-  FAIL`; RISC-V → `zig point_dot FAIL` (D's small struct gated, TinyGo
-  out-of-matrix). The by-pointer variant and everything else
-  pass for every FFI-matrix language.
+  `qemu-system-riscv32`): on the **canonical lane** (`$ZIG` 0.17 + `$LDC2`
+  1.42.0), every FFI-matrix language passes — xtensa qemu reports 0 failures.
+  On the legacy lanes (`$ZIG_016` / `$LDC2_UPSTREAM`) the historical breaks
+  reproduce: xtensa `zig blob_sum FAIL` + `d point_dot/d blob_sum FAIL`;
+  riscv `zig point_dot FAIL`. TinyGo is out-of-matrix.

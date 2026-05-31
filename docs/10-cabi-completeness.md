@@ -20,16 +20,20 @@ completeness**, and it is measurable.
 
 Rust implements the per-target C ABI in the compiler (`rustc_target`'s
 `abi/call/{xtensa,riscv}.rs`, explicitly written to match clang's
-`TargetInfo.cpp` — see esp-rs/rust #18). Zig's *experimental* ESP targets hand
-aggregates to LLVM's default lowering instead, which is not the platform C ABI.
-Result, verified by disassembly **and** qemu runtime (docs 05/08/09):
+`TargetInfo.cpp` — see esp-rs/rust #18). Zig's *experimental* ESP targets handed
+aggregates to LLVM's default lowering historically (pre-0.17), and LDC
+historically marked every aggregate `byval`/`sret` (pre-2026-05-30) — both
+deferred to a backend whose Xtensa lowering doesn't match the platform C ABI.
+Both are closed on the canonical lane. Cross-architecture summary verified by
+disassembly **and** qemu runtime (docs 05/08/09); legacy-lane FAILs reproduce
+via `$ZIG_016` / `$LDC2_UPSTREAM`:
 
-| by-value struct argument | Rust | clang | gcc | **Zig** | D/LDC | TinyGo |
-|--------------------------|:----:|:-----:|:---:|:-------:|:-----:|:------:|
-| Xtensa: `{i32,i32}` 8 B | ok | ok | ok | ok | **wrong** (byval, docs/19) | ok (flattens) |
-| Xtensa: `[24]u8` 24 B (align 1) | ok | ok | ok | **wrong** (stack, not `[6 x i32]` regs) | **wrong** (byval; runtime FAIL) | **wrong** (`[24 x i8]` byte-per-register, docs/24 §e) |
-| RISC-V: `{i32,i32}` 8 B | ok | ok | n/a | **wrong** (`[2 x i64]`, wrong regs) | gated (byval→ptr deref faults, docs/19) | n/a (TinyGo esp32c3 target, not in matrix) |
-| RISC-V: `[24]u8` 24 B | ok | ok | n/a | ok (by-ref) | ok (C ABI is by-ref there too) | n/a |
+| by-value struct argument | Rust | clang | gcc | **Zig** ($ZIG / $ZIG_016) | D/LDC ($LDC2 / $LDC2_UPSTREAM) | TinyGo |
+|--------------------------|:----:|:-----:|:---:|:--------------------------|:-------------------------------|:------:|
+| Xtensa: `{i32,i32}` 8 B | ok | ok | ok | ok / ok | ok / **wrong** (byval, docs/19) | ok (flattens) |
+| Xtensa: `[24]u8` 24 B (align 1) | ok | ok | ok | ok / **wrong** (stack vs `[6 x i32]` regs) | ok / **wrong** (byval; runtime FAIL) | **wrong** (`[24 x i8]` byte-per-register, docs/24 §e) |
+| RISC-V: `{i32,i32}` 8 B | ok | ok | n/a | ok / **wrong** (`[2 x i64]`, wrong regs) | ok / gated (byval→ptr deref faults, docs/19) | n/a (TinyGo esp32c3 target, not in matrix) |
+| RISC-V: `[24]u8` 24 B | ok | ok | n/a | ok | ok (C ABI is by-ref there too) | n/a |
 
 So **Rust, clang, gcc, canonical Zig 0.17 (`$ZIG`) and canonical LDC 1.42.0
 (`$LDC2`) are all at parity on the C ABI for both ESP architectures**.

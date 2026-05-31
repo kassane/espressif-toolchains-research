@@ -50,20 +50,25 @@ Rust's null-pointer optimization makes `Option<NonNull<u8>>` a single `i32 ptr`
 So a nullable pointer crosses Rust↔Zig (and ↔C) transparently — no `*mut T` +
 manual null dance needed.
 
-## 2. The one real clash: by-value **struct arguments**
+## 2. The historical clash: by-value **struct arguments** (closed in 0.17)
 
-This is the single Rust↔Zig FFI break, and it's Zig's: Zig's experimental ESP
-targets mis-lower by-value struct *arguments* where Rust (matching clang/gcc)
+The single Rust↔Zig FFI break was Zig's: Zig's experimental ESP targets used
+to mis-lower by-value struct *arguments* where Rust (matching clang/gcc)
 implements the platform C ABI:
 
 - **Xtensa**: under-aligned (`align(1)`) structs — Rust passes `[N x i32]` in
-  `a2..a7`, Zig stack-spills (docs/05). Runtime: `zig blob_sum FAIL` (docs/08).
-- **RISC-V**: a small `{i32,i32}` — Rust passes `[2 x i32]` in regs, Zig lowers to
-  `[2 x i64]` and reads the wrong registers (docs/09). Runtime: `zig point_dot FAIL`.
+  `a2..a7`, Zig 0.16 stack-spilled (docs/05). Runtime: `zig blob_sum FAIL` on
+  the legacy `$ZIG_016` lane (docs/08).
+- **RISC-V**: a small `{i32,i32}` — Rust passes `[2 x i32]` in regs, Zig 0.16
+  lowered to `[2 x i64]` and read the wrong registers (docs/09). Runtime:
+  `zig point_dot FAIL` on `$ZIG_016`.
 
-So a Rust↔Zig call passing such a struct **by value** corrupts data. Struct
-*returns* (sret) are fine. **Mitigation:** pass structs **by pointer** across any
-Rust↔Zig boundary — then everything (incl. u128/f128) interoperates.
+Both gaps are closed on the canonical `$ZIG` (0.17, LLVM 22.1.4) — the
+frontend now emits `[N x i32]` like clang. `$ZIG_016` still reproduces the
+historical breaks. **General mitigation:** pass structs **by pointer** across
+any Rust↔Zig boundary anyway — that's the FFI-safe pattern across all
+ABI-defer frontends (incl. TinyGo byte-array fields, the only remaining
+canonical-lane case).
 
 **Provenance — it was upstream Zig, not the espressif fork.** The
 `kassane/zig-espressif-bootstrap` README enumerates its 7 patches and **every one
