@@ -153,7 +153,7 @@ echo ""
 P4=esp32p4eco4
 P4C="--target=riscv32-esp-elf -mcpu=$P4"
 P4Z="-target riscv32-freestanding-none -mcpu=$P4"
-P4L="-mtriple=riscv32-unknown-none-elf -mattr=+m,+a,+f,+c,+xespv1v,+xesploop"
+P4L="-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4eco4"
 B4=build/simd-p4; mkdir -p "$B4"
 espn(){ "$ESP_CLANG_DIR/llvm-objdump" -d "$1" 2>/dev/null | grep -cE 'esp\.v|<unknown>'; }
 

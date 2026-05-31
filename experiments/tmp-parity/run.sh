@@ -38,7 +38,7 @@ case "$TARGET" in
         ;;
     esp32c3)
         ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=esp32c3"
-        LT="-mtriple=riscv32-unknown-none-elf -mattr=+m,+c"
+        LT="-mtriple=riscv32-unknown-none-elf -mcpu=esp32c3"
         ZT="-target riscv32-freestanding-none -mcpu=esp32c3"
         RS_TARGET="riscv32imc-unknown-none-elf"
         DUMP_FLAGS=""  # riscv: llvm-objdump auto-detects from ELF
@@ -46,7 +46,7 @@ case "$TARGET" in
         ;;
     esp32p4)
         ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=esp32p4"
-        LT="-mtriple=riscv32-unknown-none-elf -mattr=+m,+a,+f,+c"
+        LT="-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4"
         ZT="-target riscv32-freestanding-none -mcpu=esp32p4"
         RS_TARGET="riscv32imafc-unknown-none-elf"
         DUMP_FLAGS=""
