@@ -65,8 +65,11 @@ For the related LLVM-driver peers in the 6-toolchain matrix not covered here:
 > the 0.16 lane when its real `.text` was 715 B (the struct-marshalling of
 > docs/05). On the canonical 0.17 lane (`$ZIG`, LLVM 22.1.4) zig drops to
 > **375 B** real `.text` because the frontend now flattens aggregates to
-> `[N x i32]` like clang — D's 489 B byval/sret marshalling is the residual
-> outlier (docs/06).
+> `[N x i32]` like clang. D (canonical LDC 1.42.0 / LLVM 22.1.4) lands at
+> 516 B on the same metric — slightly *up* from the legacy 489 B because
+> the post-fix in-register byte unpacking takes a few more instructions
+> than the old byval/sret indirection did, but qemu xtensa now reports
+> 0 D failures (docs/06).
 
 ## Verdict
 
