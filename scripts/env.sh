@@ -42,15 +42,6 @@ export ZIG_016="$TC/zig-relsafe-x86_64-linux-musl-baseline/zig"
 # expands correctly.
 export LLD="${LLD:-$ZIG ld.lld}"
 
-# Zig v0.17.0-dev (kassane/zig-mos-bootstrap, bundled clang 22.0.0git / libc++ 22).
-# Comparison-only: a different upstream build, same LLVM-22 family as the
-# canonical $ZIG. Used by `experiments/simd/run.sh` §6 only to cross-check that
-# upstream mainline clang and the espressif bootstrap agree on the C++26
-# surface. Optional download from
-# https://github.com/kassane/zig-mos-bootstrap/releases/tag/0.17.0-dev,
-# extracted to $TC/zig-mos.
-export ZIG_MOS="$TC/zig-mos/zig"
-
 # Espressif clang/LLVM 21.1.3 (espressif/llvm-project esp-21.1.3_20260408)
 export ESP_CLANG_DIR="$TC/esp-clang/bin"
 export CLANG="$ESP_CLANG_DIR/clang"

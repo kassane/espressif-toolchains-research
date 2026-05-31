@@ -32,10 +32,9 @@ output.
       links; clang↔zig LTO blocked by the LLVM-21 vs LLVM-22 cluster split
       (zig 0.17 = 22.1.4 bitcode rejected by esp-clang's 21.1.3 `ld.lld`; doc 04).
 - [x] Binary/size/mangling comparison (doc 06): real `.text` rust 171 ≈ gcc 201
-      < clang 219 (C) / 204 (C++) < zig 375 (down from 715 on 0.16) < D 489
-      for the 9-fn lib (numbers
-      shifted after the docs/23 LDC swap brought back clang-class compact
-      forms in the LDC arm; `llvm-size -A`, current as of doc 06).
+      < clang 219 (C) / 204 (C++) < zig 375 (down from 715 on 0.16) < D 516
+      for the 9-fn lib (canonical LDC 1.42.0 post-fix; numbers `llvm-size -A`,
+      current as of doc 06).
 
 - [x] **Address spaces** (docs/18, `experiments/addrspace/run.sh`): the Xtensa
       backend is single-flat-address-space (datalayout `p:32:32` only), so
@@ -191,9 +190,9 @@ output.
       mangling `_ZN…` + vtables `_ZTV…`), different regalloc, slightly smaller.
       Current `.text` ordering on the canonical lane (canonical zig 0.17 closes
       the 0.16 struct-byval gap, so its size dropped from 715 B → 375 B):
-      **rust 171 ≈ gcc 201 < clang-C++ 204 < clang-C 219 < zig 375 < D 489**
-      (docs/00, docs/06). The legacy `$ZIG_016` lane reproduces the old
-      715 B figure for the byte-by-byte stack marshalling.
+      **rust 171 ≈ gcc 201 < clang-C++ 204 < clang-C 219 < zig 375 < D 516**
+      (docs/00, docs/06; canonical LDC 1.42.0 post-fix). The legacy `$ZIG_016`
+      lane reproduces the old 715 B figure for the byte-by-byte stack marshalling.
 
 ## Known outages
 
@@ -303,11 +302,13 @@ output.
       upstream Xtensa; espressif/llvm ≠ upstream LLVM (docs/00/01/07, Research §1).
 - [ ] Remaining: the **espidf** std target (`xtensa-*-espidf`) — needs the
       esp-idf framework + ldproxy + `build-std=std`; required to reproduce
-      #277/#275/#253/#256/#258. The only untested frontend config. Also: file the
-      Zig struct-ABI gaps upstream (ziglang/zig) with the `experiments/abi-structs`
-      repro.
-- [ ] File/track the Zig large-struct ABI gap upstream (zig Xtensa C-ABI lowering)
-      once reduced to a minimal repro (start from `experiments/abi-structs`).
+      #277/#275/#253/#256/#258. The only untested frontend config.
+- [x] **Zig struct-ABI gaps upstream tracking** — closed by ziglang/zig #5467
+      (Xtensa Support, landed 0.17.0 / 2026-05-06). Both the Xtensa align-1
+      and the RISC-V `{i32,i32}→[2 x i64]` paths now flatten to `[N x i32]`
+      like clang; the historical `experiments/abi-structs` repros run clean
+      on `$ZIG`. The legacy `$ZIG_016` lane still reproduces the breaks for
+      the regression tracker (docs/05 §"Zig 0.17 status").
 - [x] **Version-matched LLVM binutils for true module-merge** (docs/04,
       `experiments/llvm-ir-mix/run.sh`): added the **LLVM 22.1.2** tools from
       `ldc-developers/llvm-project` `ldc-v22.1.2` (the LLVM LDC is built on;

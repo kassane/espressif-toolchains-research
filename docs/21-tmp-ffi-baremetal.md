@@ -128,16 +128,15 @@ single 11-function module — three frontends, one module, ready for `opt` or
 > `decomposition declaration cannot be declared 'constexpr'`
 
 The *one* core-language addition clang 22 lands over 21 — **P2686R5
-constexpr structured bindings** — is missing from esp-clang. **Verified
-on `kassane/zig-mos-bootstrap` v0.17.0-dev** (bundled `clang version
-22.0.0git`, LLVM 22 mainline): P2686R5 now compiles cleanly there
-(`constexpr auto [a,b] = P{1,2};` → rc=0), confirming the gap is purely
-clang-21-vs-22 — but esp-clang stays on 21.1.3 so the Xtensa C++ producer
-in this matrix still rejects it. The Sofia-2025 C++26 frontier (Contracts
-P2900, Reflection P2996, Pattern Matching P2688R5, Profiles P3081) is **not**
-in clang 21 or the 22.x mainline either (re-probed on the same v0.17.0-dev
-build: `-fcontracts` / `-freflection` both error as *"Unknown Clang
-option"*). Bloomberg's `clang-p2996` fork has reflection only. The
+constexpr structured bindings** — is missing from esp-clang. Verified on
+the canonical `$ZIG c++` (Zig 0.17 bundle, clang 22.1.4): P2686R5
+compiles cleanly there (`constexpr auto [a,b] = P{1,2};` → rc=0),
+confirming the gap is purely clang-21-vs-22 — but esp-clang stays on
+21.1.3 so the Xtensa C++ producer in this matrix still rejects it. The
+Sofia-2025 C++26 frontier (Contracts P2900, Reflection P2996, Pattern
+Matching P2688R5, Profiles P3081) is **not** in clang 21 or the 22.x
+mainline either: `-fcontracts` / `-freflection` both error as *"Unknown
+Clang option"*. Bloomberg's `clang-p2996` fork has reflection only. The
 `ldc-developers/llvm-project` 22.1.2 tarball ships *no clang at all*
 (only LLVM core binutils), so even upgrading the tarball wouldn't put
 C++26 features on the Xtensa C++ producer — that requires the official

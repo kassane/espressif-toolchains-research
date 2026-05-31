@@ -159,9 +159,7 @@ struct return. The lone case D got right was the >16-byte `sret` return,
 where the C ABI is *also* indirect.
 [experiments/ldc-fork-comparison](../experiments/ldc-fork-comparison/run.sh)
 proved the bug was frontend-side: the espressif-fork LDC (LLVM 21.1.3) and
-the upstream-22 LDC produced byte-identical broken IR. Same family as
-[kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
-on MOS 6502 (wontfix).
+the upstream-22 LDC produced byte-identical broken IR.
 
 **LDC 1.42.0 (2026-05-30) closes this hole.** The maintainer-republished
 tarball at `kassane/esp-idf-dlang/releases/download/xtensa-toolchain/`

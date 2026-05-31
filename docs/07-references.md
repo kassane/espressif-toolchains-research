@@ -170,15 +170,10 @@ work, not a dependency of the experiments.
 ## D / LDC on Xtensa (the espressif-fork build — docs/23)
 
 - **kassane/esp-idf-dlang** — <https://github.com/kassane/esp-idf-dlang> — the
-  canonical LDC 1.42-git build against `espressif/llvm-project` LLVM 21.1.3
-  (`xtensa-toolchain` release pinned in `scripts/setup.sh`). Drops every D-side
-  workaround documented in the pre-fork docs/19.
-- **kassane/dlang-mos-hello-world#1** —
-  <https://github.com/kassane/dlang-mos-hello-world/issues/1> — wontfix prior
-  art for the *frontend-side* D ABI bug pattern: LDC frontend treats `size_t`/
-  `ptrdiff_t` as 32-bit on a 16-bit MOS 6502 even though the datalayout says
-  16-bit pointers. Same family as our Xtensa `byval(%Point)` bug — fix has to
-  land in LDC's DMD ABI, not in any downstream LLVM fork.
+  canonical LDC 1.42.0 build against `espressif/llvm-project` LLVM 22.1.4
+  (`xtensa-toolchain` release pinned in `scripts/setup.sh`; 2026-05-30
+  maintainer re-upload). Drops every D-side workaround documented in the
+  pre-fork docs/19, plus closes the universal byval/sret frontend bug.
 - **ldc-developers/ldc #4919** —
   <https://github.com/ldc-developers/ldc/issues/4919> — "Missing default LLVM
   `cpu-features` in some targets". Fixed for esp32-s2/s3 on the espressif-fork

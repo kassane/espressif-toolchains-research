@@ -216,12 +216,9 @@ is newly reachable via `$LDC_LLVM_DIR`'s lld instead (docs/04). The bug
 was **frontend-side**, confirmed across both legacy LDC arms — the
 espressif-fork LDC at LLVM 21.1.3 and the upstream-22 LDC at LLVM 22.1.2
 produced byte-identical broken IR ([docs/23](23-ldc-espressif-fork.md)
-§(h)); the same family of narrow-target-blind frontend bug shows up on
-MOS 6502 too
-([kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1),
-wontfix). So the fix would need to land in LDC's DMD-ABI lowering, not in a
-downstream LLVM fork. The historical literal-pool link bug is **gone** on the
-fork — direct `ldc2 -c` works (§3).
+§(h)). The 2026-05-30 LDC 1.42.0 maintainer re-upload closes the
+universal byval/sret lowering at the DMD-ABI level. The historical
+literal-pool link bug is **gone** on the fork — direct `ldc2 -c` works (§3).
 
 **See also [docs/20](20-dlang-safety-features.md)** for LDC's exclusive features
 (`@fastmath`/`@section`/`@weak`/`@assumeUsed`/`@cold`/`@optStrategy`/`@naked`/

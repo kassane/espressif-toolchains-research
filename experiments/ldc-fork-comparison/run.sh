@@ -22,9 +22,6 @@
 #   (g) add_i32 codegen disasm — do both reach for compact .n forms now?
 #   (h) ABI in the IR: both still emit byval/sret for aggregates (frontend behavior,
 #       not backend) — proves runtime FAIL on point_dot/blob_sum is LDC-side.
-#       Cross-ref: kassane/dlang-mos-hello-world#1 ("wontfix") shows the same
-#       pattern on MOS 6502 — D's IR ignores narrow-arch constraints regardless
-#       of which LLVM is downstream.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/env.sh
@@ -144,5 +141,4 @@ for tag in fork upstream; do
     printf "           d_blob_sum has %s; d_make_point has %s  -- frontend behavior, unchanged\n" "$bs" "$mp"
 done
 echo "  Runtime: both still FAIL d_point_dot + d_blob_sum on Xtensa (scripts/run-qemu.sh)."
-echo "  D's by-value aggregate bug is in the LDC frontend, not the LLVM backend;"
-echo "  cf. kassane/dlang-mos-hello-world#1 (same family, MOS 6502, marked wontfix)."
+echo "  D's by-value aggregate bug is in the LDC frontend, not the LLVM backend."

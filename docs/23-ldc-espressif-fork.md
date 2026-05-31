@@ -63,13 +63,14 @@ the source of truth for everything below.
 | direct `ldc2 -c` -> `ld.lld -T xtensa.ld` | FAIL (`not aligned to 4 bytes` on `__muldf3` literal) | OK (274 084 B `.elf`, 0 undef) |
 | datalayout | `e-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-n32` | `e-m:e-p:32:32-v1:8:8-i64:64-i128:128-n32` (== clang/rust/zig) |
 | `add_i32` codegen (-Os) | 7 lines, no `.n` compact forms (35 % bigger; docs/22 §5) | byte-identical to clang (`mov.n`/`s32i.n`/`l32i.n`/`add.n`) |
-| `.text` per `lib_d.o` (esp32) | ~366 B (docs/06) | **489 B**¹ (measured under `$LDC_PE = -preview=all --edition=2025` on the canonical fork; was 533 B on an earlier flag set) |
+| `.text` per `lib_d.o` (esp32) | ~366 B (docs/06) | **516 B**¹ (canonical LDC 1.42.0 post-fix; was 489 B pre-fix on the 21.1.3 espressif-fork build) |
 | llvm-link datalayout warning | yes | gone |
 
-¹ The total grew slightly even though `add_i32` shrank: the espressif-21 backend
-selects a different set of compact `.n` forms for the byte-loop in `d_blob_sum`
-(24× `l8ui`+`add.n` instead of word-loads). Run `./scripts/analyze.sh esp32`
-for the up-to-date per-object size table.
+¹ The total grew post-fix: the canonical LDC 1.42.0 frontend now flattens
+aggregates to `[N x i32]` and unpacks bytes in-register (`srli`/`extui`/`and`)
+instead of the old byval/sret indirect byte loads — a few more instructions
+but qemu xtensa drops to 0 D failures. Run `./scripts/analyze.sh esp32` for
+the up-to-date per-object size table.
 
 The pre-bundled `etc/ldc2.conf/55-target-xtensa.conf` also defines a
 `xtensa-esp32-none-elf` triple alias that auto-applies `-mcpu=esp32`; we still
@@ -108,11 +109,7 @@ legacy-arm output:
 - blob_sum BY POINTER ==300              d ok  (300)   ← scalar arg is fine
 ```
 
-This is the same family of bug as
-[kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
-on MOS 6502 — D's frontend ignores narrow-target constraints (there it picks
-`i32` instead of `i16` for `size_t`; here it picks `byval` instead of `[N x i32]`).
-That issue is labelled **wontfix**; this one tracks in
+Tracked upstream in
 [ldc#4725](https://github.com/ldc-developers/ldc/issues/4725) plus the upstream
 DMD-ABI-config gap.
 
@@ -202,10 +199,10 @@ Five workarounds dropped (literal-pool re-assembly, `.cfi_*` strip, `-output-s`
 intermediate, `-mattr` fallback for s2/s3, LLVM-22 binutils dependency for
 canonical IR work). Codegen quality reaches clang-parity. The one finding that
 *didn't* flip — D's universal `byval`/`sret` aggregate lowering — is now
-isolated as a frontend bug, repeatably observable on either LLVM, and aligned
-with the same-family `wontfix` mos6502 issue. That makes it a real bug-report
-candidate against LDC's DMD ABI rather than something downstream toolchain
-maintainers can fix.
+isolated as a frontend bug, repeatably observable on either LLVM. That made
+it a real bug-report candidate against LDC's DMD ABI rather than something
+downstream toolchain maintainers could fix — and the 2026-05-30 canonical
+LDC 1.42.0 re-upload closes it.
 
 Closes the LDC slot in the docs/00 matrix and rewrites the LLVM-version-bound
 claims in docs/04/06/19/22.
