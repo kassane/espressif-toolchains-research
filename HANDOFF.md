@@ -403,6 +403,32 @@ output.
       layout in either direction. `llvm-nm` symbol-role table makes the
       distinction concrete. The PR-27 zero-cost `extern(C++) class Counter`
       was form (1) — DIFFERENT from form (2) used by the shim matrix.
+- [x] **RISC-V parity for zero-cost + TMP + esp32p4 vendor SIMD** (docs/27,
+      `experiments/{zero-cost,tmp-parity,simd}/run.sh`). Three follow-ups:
+      (1) zero-cost (docs/25) parameterized for esp32c3 (rv32imc) and
+      esp32p4 (rv32imafc); every monomorphization / inlining / static-vs-
+      dynamic / heap conclusion holds ISA-portably (riscv §b apply = 2
+      insn / 4 B beats xtensa's 3-4 / 8-10 B because no register windows;
+      riscv §c dynamic dispatch costs +14 insn / +24 B vs xtensa's +6 / +14).
+      (2) TMP (docs/26) parameterized for the same three targets; CTFE
+      `fact(5)→120` folds to `li a0, 0x78 ; ret` on riscv (2 insn / 6 B)
+      vs xtensa's `entry ; movi a2, 120 ; retw.n` (3 insn / 9 B) — byte-
+      identical across cpp/d/rs in each lane. (3) **esp32p4 vendor PIE/ESPV
+      SIMD added to experiments/simd/run.sh §7**. esp-clang 21.1.3 exposes
+      three vendor extensions: `+xespv` (ESPV 2.2, esp32p4 default — sparse
+      public docs), `+xespv1v` (ESPV 2.1, esp32p4eco4 only — 412 documented
+      mnemonics), `+xesploop` (zero-overhead loops). Mnemonic family `esp.*`
+      (lowercase-dotted analog of xtensa `EE.*`), 128-bit q0..q? + qacc/xacc
+      regs. **Cross-frontend byte-identical inline-asm encodings across
+      clang, zig, LDC, rustc** (all four share libLLVM's RISC-V assembler).
+      No intrinsic headers ship — `riscv_vector.h` requires standard V
+      which esp32p4 doesn't enable. ESPV 2.1 ↔ 2.2 are wire-incompatible
+      opcode tables — use `-mcpu=esp32p4eco4` for the documented mnemonic
+      surface. esp32c3 has no vendor SIMD (rejected the same way esp32 LX6
+      rejects EE.*). The 4-toolchain capability matrix: esp-clang accepts
+      `-mcpu=esp32p4/eco4` natively; LDC needs `-mattr=+...+xespv1v+xesploop`;
+      Zig accepts `-mcpu=esp32p4/eco4`; rustc needs `--target
+      riscv32imafc-unknown-none-elf -C target-cpu=esp32p4eco4`.
 
 ## How to resume
 
