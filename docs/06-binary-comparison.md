@@ -21,9 +21,10 @@ Re-derive with `./scripts/analyze.sh esp32` (writes
 715 to 375 bytes on the same source — the savings are concentrated in
 `blob_sum` / `make_blob`, where 0.16 had per-byte stack marshalling and 0.17
 loads/stores six full words. **D now leads the residual outlier list** — its
-`make_blob`/`blob_sum` byte loops inflate it (489 B sum), the rest is tight.
-The D figure is for the canonical espressif-fork LDC; the upstream-LLVM-22
-LDC produces a *smaller* `.text` (~366 B) but with non-compact codegen
+`make_blob`/`blob_sum` post-fix in-register byte unpacking inflate it
+(516 B sum; was 489 B pre-fix with broken byval indirection), the rest is
+tight. The D figure is for the canonical espressif-fork LDC; the upstream-
+LLVM-22 LDC produces a *smaller* `.text` (~366 B) but with non-compact codegen
 (docs/22) — the fork uses the same `.n` compact forms as clang, so its
 individual functions are tighter even though the total grew slightly from a
 different byte-loop shape.

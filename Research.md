@@ -133,13 +133,19 @@ in `a2`; Zig returns the aggregate by value in IR, but the LLVM backend lowers
 that to the *same* sret-pointer-in-`a2` convention. Zig just builds the result in
 its own frame and memcpys it to the caller's buffer (less efficient, same ABI).
 
-## 5. Where it leaks: by-value struct *arguments* on the defer-to-backend frontends
+## 5. Where it used to leak: by-value struct *arguments* (historical, now closed)
 
-This is where the "shared backend ⇒ shared ABI" implication leaks — on the two
-frontends (**Zig** and **D/LDC**) that hand aggregates to the LLVM backend
-instead of coercing them to the Xtensa C ABI in the frontend like clang/rust do.
-For Zig the trigger is **struct alignment, not size**, and it affects only
-by-value struct *arguments* (returns are fine); D is broader (§5.1).
+This is where the "shared backend ⇒ shared ABI" implication historically
+leaked — on the two frontends (**Zig** and **D/LDC**) that handed aggregates
+to the LLVM backend instead of coercing them to the Xtensa C ABI in the
+frontend like clang/rust do. For Zig the trigger was **struct alignment, not
+size**, affecting only by-value struct *arguments* (returns were fine); D
+was broader (§5.1). **Both bugs are closed on the canonical lane** — Zig
+0.17 (`$ZIG`) and LDC 1.42.0 (`$LDC2`, 2026-05-30 re-upload) — see docs/05
+§§"Zig 0.17 status" + "LDC 1.42 status"; the legacy lanes `$ZIG_016` /
+`$LDC2_UPSTREAM` still reproduce. The deep-dive section below is the
+detailed account; current state: TinyGo's byte-array case is the only
+remaining frontend ABI divergence.
 
 clang and rust **lower aggregates to the Xtensa C ABI in the frontend** — any
 ≤ 6-word struct is flattened to `[N x i32]` and passed in `a2..a7`, *regardless of
@@ -204,29 +210,28 @@ the C-ABI coercion in the frontend (ziglang/zig #5467, closed 2026-05-06).
 Full teardown: [docs/05](docs/05-struct-abi-deep-dive.md),
 [docs/09](docs/09-riscv.md), [docs/10](docs/10-cabi-completeness.md).
 
-### 5.1 D/LDC: the same root cause, broader
+### 5.1 D/LDC: same root cause, broader (closed 2026-05-30)
 
-D goes further than Zig: LDC marks **every** by-value aggregate `byval(ptr)` and
-**every** struct return `sret` — *explicitly indirect* in the IR — then defers to
-the backend, whose Xtensa lowering passes them in **memory**, not the C ABI's
-registers. So D diverges for *every* register-passed struct, not just
-under-aligned ones: on Xtensa both the align-4 `Point` (`point_dot`) **and** the
-align-1 `Blob` (`blob_sum`) fail, plus the 8-byte struct *return* (`make_point`,
-which clang returns in `a2:a3` but D returns via a hidden pointer). The only
-struct case D gets right is the >16-byte `sret` return — where the C ABI is
-*also* indirect. On RISC-V the asymmetry confirms the cause: D's small struct is
-passed as a real pointer and **faults**, while the large `Blob` *passes* (the
-RISC-V C ABI itself passes >16 B by reference, so D's `byval` matches). Host
-(x86_64 SysV) interop is perfect, so this is a backend-lowering issue, not a
-D-language one. Full teardown: [docs/19](docs/19-dlang-ldc.md).
+The pre-fix LDC 1.42-git went further than Zig 0.16: it marked **every**
+by-value aggregate `byval(ptr)` and **every** struct return `sret` — *explicitly
+indirect* in the IR — then deferred to the backend, whose Xtensa lowering passed
+them in **memory** not the C ABI's registers. So D diverged for *every* register-
+passed struct, not just under-aligned ones: on Xtensa both the align-4 `Point`
+(`point_dot`) **and** the align-1 `Blob` (`blob_sum`) failed, plus the 8-byte
+struct *return* (`make_point`, which clang returns in `a2:a3`). On RISC-V the
+asymmetry confirmed the cause: D's small struct passed as a real pointer and
+**faulted**, while the large `Blob` *passed* (the RISC-V C ABI itself passes
+>16 B by reference). Host (x86_64 SysV) interop was perfect, isolating the bug
+to LDC's DMD-ABI frontend lowering.
 
-**Confirmed at runtime.** The matrix runs on qemu (`scripts/run-qemu.sh`):
-on `qemu-system-xtensa` the align-1 `Blob` gives `zig FAIL (got≈242 want=300)` and
-D fails both `point_dot` and `blob_sum`; on `qemu-system-riscv32` the `Point`
-gives `zig FAIL (got=-2130706553 want=11)` (D's `point_dot` faults there, so it's
-gated) while `Blob` passes for both. Passing the same struct **by pointer** works
-for every FFI-matrix language. All match the disassembly. See
-[docs/08](docs/08-qemu-execution.md), [docs/19](docs/19-dlang-ldc.md).
+**Both gaps are closed on the canonical lane.** The 2026-05-30 LDC 1.42.0
+maintainer re-upload (LLVM 22.1.4) drops the universal byval/sret lowering and
+emits `[N x i32]` like clang; `d_point_dot` is now byte-identical to
+`c_point_dot` and qemu xtensa reports 0 D failures. The legacy break is
+preserved on `$LDC2_UPSTREAM` (LDC on upstream LLVM 22.1.2, no fix) as the
+regression-tracker baseline. Full teardown:
+[docs/05 §"LDC 1.42 status"](docs/05-struct-abi-deep-dive.md),
+[docs/19](docs/19-dlang-ldc.md), [docs/23](docs/23-ldc-espressif-fork.md).
 
 ## 6. Mixing LLVM IR across frontends — is it possible?
 

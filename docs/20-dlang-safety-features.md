@@ -316,9 +316,6 @@ track. **Implementations lag.** Probed at the shell against three rows:
   current default in this matrix.
 - `$ZIG_016 c++` (legacy Zig 0.16 bundle, **clang 21.1.0 / libc++ 21**) — the
   historical clang-21 row, kept here so the 21→22 deltas are explicit.
-- `$ZIG_MOS c++` (`kassane/zig-mos-bootstrap` v0.17.0-dev, **clang 22.0.0git /
-  libc++ 22**) — confirms upstream mainline matches the espressif bootstrap on
-  the C++26 surface.
 
 What each delivers on `-std=c++26 -fexperimental-library` (`safety.sh` §h):
 
@@ -334,10 +331,9 @@ What each delivers on `-std=c++26 -fexperimental-library` (`safety.sh` §h):
 | `<simd>` (P1928) / `<linalg>` (P1673) / `<hive>` (P0447) / `<contracts>` / `<generator>` | ✗ MISSING (libc++ 21 hasn't implemented them) |
 
 **Re-probed against the canonical `$ZIG c++` (Zig 0.17, clang 22.1.4,
-libc++ 22) and `$ZIG_MOS c++` (v0.17.0-dev, clang 22.0.0git, libc++ 22).**
-Both LLVM-22 bundles deliver the same C++26 surface. Only one delta moves
-relative to the 0.16/clang-21 column: **P2686R5 (constexpr decomposition
-declarations) now compiles cleanly** on clang 22 — the
+libc++ 22).** Only one delta moves relative to the 0.16/clang-21 column:
+**P2686R5 (constexpr decomposition declarations) now compiles cleanly**
+on clang 22 — the
 `constexpr auto [a,b] = P{1,2};` and `pre/post`/`[[pre:]]` contracts repros
 from `safety.sh` §h flip from `"cannot be declared 'constexpr'"` to rc=0.
 The libc++ 22 ships `<ranges>`/`<format>` cleanly but `<simd>`/`<linalg>`/
@@ -371,8 +367,8 @@ is the other one (`docs/21` §2 row 2). Probed directly at the shell with
 Two findings worth pinning. **First**, both C++ producers in the matrix
 (esp-clang 21.1.3 and esp-g++ 15.2.0) **agree** on every C++26-frontier
 feature: P2686R5, Contracts, Reflection, Pattern Matching are all
-rejected by both. The single-feature delta v0.17.0-dev (P2686 on clang 22)
-doesn't apply on the GCC side — esp-g++ stays on the regression. **Second**,
+rejected by both. The single-feature delta on clang 22 (P2686) doesn't
+apply on the GCC side — esp-g++ stays on the regression. **Second**,
 the C++23 hosted-library headers (`<print>`/`<format>`/`<flat_map>`/`<execution>`/
 `<generator>`/`<stacktrace>`/`<spanstream>`/`<syncstream>`) **parse** under
 hosted mode but are blocked under `-ffreestanding` by libstdc++'s

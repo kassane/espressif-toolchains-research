@@ -81,10 +81,8 @@ windowed `entry` instruction decodes as garbage.
    clang, qemu xtensa drops to 0 failures, and `d_point_dot`'s disasm is
    byte-identical to `c_point_dot` (docs/05 §"LDC 1.42 status"). The
    legacy break is preserved on `$LDC2_UPSTREAM` for the regression
-   tracker (`experiments/ldc-fork-comparison/run.sh`). Same family as
-   [kassane/dlang-mos-hello-world#1](https://github.com/kassane/dlang-mos-hello-world/issues/1)
-   on MOS 6502 (wontfix; that target doesn't have the new frontend
-   pass yet). **Zig had the same family of bug on 0.16 (LLVM 21.1.0),
+   tracker (`experiments/ldc-fork-comparison/run.sh`).
+   **Zig had the same family of bug on 0.16 (LLVM 21.1.0),
    closed by `$ZIG` 0.17 (LLVM 22.1.4)** — the frontend now flattens to
    `[N x i32]` matching clang, qemu `zig_blob_sum` passes on xtensa AND
    `zig_point_dot` passes on riscv (docs/05 §"Zig 0.17 status").
