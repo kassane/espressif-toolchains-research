@@ -54,20 +54,15 @@ of docs/19's frontend-bug analysis: D is correct exactly when the C ABI is
 
 ## Why (the IR tells it)
 
-| `point_dot(Point, Point)` arg | IR | machine |
-|-------------------------------|----|---------|
-| clang | `i32 ([2 x i32], [2 x i32])` | Point A in `a0,a1`; B in `a2,a3` |
-| rust  | `i32 ([2 x i32], [2 x i32])` | same as clang |
-| **zig 0.17 / D/LDC 1.42.0 (canonical)** | `i32 ([2 x i32], [2 x i32])` | same as clang — both lanes now emit the C-ABI shape |
-| zig 0.16 (`$ZIG_016` legacy) | `i32 ([2 x i64], [2 x i64])` | A in `a0,a1`; **B in `a4,a5`** — the pre-0.17 break (`zig_point_dot FAIL`) |
-| LDC 1.42-git on LLVM 21.1.3 (legacy) / `$LDC2_UPSTREAM` | `i32 (byval ptr, byval ptr)` | both args pointer-passed; reads from caller's frame — the pre-2026-05-30 D break |
-
-Zig lowers the 8-byte `extern struct { x: i32, y: i32 }` to **`[2 x i64]`** (16
-bytes — each field widened) on RISC-V. So Zig reserves `a0..a3` for the first
-`Point` and reads the second from `a4,a5`, while clang's driver placed it in
-`a2,a3`. The bytes are read from the wrong registers → garbage. (Zig's
-`make_point` *return* `{i32,i32}` and the large-struct `blob_sum` *by-reference*
-`ptr` are both correct — it is specifically the small by-value struct *argument*.)
+The canonical `point_dot(Point, Point)` IR shapes per frontend (clang vs
+the historical Zig 0.16 `[2 x i64]` mis-lowering vs the pre-2026-05-30 LDC
+`byval ptr` mis-lowering vs the canonical post-fix forms) are tabulated in
+[docs/05 §"Zig 0.17 status"](05-struct-abi-deep-dive.md). On RISC-V the
+specific breakage was that Zig 0.16 widened each `i32` field to `i64`, so
+the second `Point` arg landed in `a4,a5` instead of `a2,a3` — clang's
+caller placed it in `a2,a3`, the bytes were read from the wrong registers.
+Zig 0.17 flattens to `[2 x i32]` like clang; both lanes now emit the C-ABI
+shape and the riscv `zig_point_dot FAIL` is gone from qemu.
 
 ## The corrected cross-architecture picture
 

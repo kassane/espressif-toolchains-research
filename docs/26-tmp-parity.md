@@ -369,45 +369,8 @@ This is the user's PR-27 follow-up note. D's `extern(C++) class` and
 `extern(C++, class) struct` are NOT the same form played twice — they cover
 OPPOSITE sides of the C++ FFI surface, plus there's a third form for POD
 layouts. `experiments/tmp-parity/run.sh` §h compiles a tiny D module exercising
-all three roles and dumps the resulting `llvm-nm` table:
-
-```
-T  _ZN9ProducerC3incEv          ← D DEFINES the method; C++ side can call it
-T  _ZN9ProducerC3getEv          ← D DEFINES
-R  _D9ffi_roles9ProducerC6__vtblZ ← vtable LIVES in D's object
-U  _ZN11consumer_ns9ConsumerC3incEv  ← D DECLARES only; expects a C++ definition
-U  _ZN11consumer_ns9ConsumerC3getEv  ← D DECLARES only
-T  _ZN9ConsumerS9double_itEv    ← D struct method, no vtable (POD layout)
-T  d_producer_role              ← D call site exercising the producer form
-T  d_consumer_role              ← D call site exercising the consumer form
-T  d_value_role                 ← D struct returned by value
-```
-
-The three forms in D source:
-
-```d
-// (1) D PRODUCES a class with vtable callable from C++.
-extern(C++) class ProducerC {
-    int v;
-    void inc()  { v += 1; }
-    int  get()  { return v; }
-}
-
-// (2) D CONSUMES a C++ class — declarations only; bodies + vtable supplied by C++.
-extern(C++, "consumer_ns") {
-    extern(C++, class) struct ConsumerC {
-        int v;
-        void inc();
-        int  get();
-    }
-}
-
-// (3) D PRODUCES a value-type. No vtable. Byte-identical ABI to C++ struct.
-extern(C++) struct ConsumerS {
-    int v;
-    int double_it() { return v + v; }
-}
-```
+all three roles and dumps the resulting `llvm-nm` symbol-role table (the
+T/U/R role conventions are explained in docs/21 §2 for the shim-pattern case).
 
 The decision tree:
 

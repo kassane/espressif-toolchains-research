@@ -130,27 +130,17 @@ The practical IR-merge path: compile to bitcode (`clang -flto`, `rustc
   the matching LLVM-22 `ld.lld` still rejects the post-21 modules from a
   21.1.3 input. So cross-cluster IR analysis works, full LTO doesn't.
 
-> **Two LLVM clusters now (post-2026-05-30 LDC re-upload)**: the **21.1.3
-> cluster** is now just **esp-clang + rust** (both 21.1.3) — the canonical
-> LDC moved out when the maintainer republished the
-> `kassane/esp-idf-dlang` tarball on LLVM 22.1.4 (docs/05 §"LDC 1.42
-> status"). The **22.x cluster** now contains **canonical LDC 1.42.0
-> (22.1.4) + zig 0.17 (22.1.4) + `$LDC2_UPSTREAM` (22.1.2) + `$LDC_LLVM_DIR`
-> binutils (22.1.2)** — the LLVM-22 binutils can `llvm-link` modules
-> across 21.1.3 ↔ 22.x (forward-compatible), but `ld.lld` LTO needs the
-> caller and callee on the SAME cluster.
+> **Two LLVM clusters** — full map and `$LLD` policy in CLAUDE.md gotcha
+> #4. Brief: 21.1.3 cluster = **esp-clang + rust**; 22.x cluster = **canonical
+> LDC 1.42.0 (22.1.4) + zig 0.17 (22.1.4) + `$LDC2_UPSTREAM` (22.1.2) +
+> `$LDC_LLVM_DIR` binutils (22.1.2)**. `llvm-link` is forward-compatible
+> across both, but `ld.lld` LTO needs caller + callee on the SAME cluster.
+> Net since the 2026-05-30 LDC re-upload (docs/23): clang ↔ rust LTO
+> works; clang ↔ D LTO now FAILS (D moved to LLVM-22); D ↔ zig LTO is
+> newly reachable via the LLVM-22 lld. TinyGo (LLVM 20.1.1) outside both.
 >
-> Net effect of the swap: **clang ↔ rust LTO still works** (same 21.1.3,
-> nothing changed there); **clang ↔ D LTO** that *used to* work via
-> esp-clang's 21.1.3 ld.lld now FAILS (`Invalid record`, the same
-> failure clang ↔ zig had since PR #18); **D ↔ zig LTO** is *newly
-> reachable* via the LLVM-22 lld (use `$LDC_LLVM_DIR/bin/ld.lld` or
-> `$LLD` itself, since `$LLD = $ZIG ld.lld` resolves to LLD 22.1.4 — see
-> CLAUDE gotcha #4 + PR #24). TinyGo (LLVM 20.1.1) sits outside both
-> clusters as before.
->
-> **$LLD (= `$ZIG ld.lld`, LLD 22.1.4) is the canonical linker for every
-> `.sh` in the repo** (PR #24). Two intentional LTO probes — `rust-zig/
+> **$LLD = `$ZIG ld.lld` (LLD 22.1.4)** is the canonical linker for every
+> `.sh` in the repo (PR #24). Two intentional LTO probes — `rust-zig/
 > run.sh §c` and `dlang/run.sh §LTO` — keep bare `ld.lld` to resolve via
 > PATH to esp-clang's 21.1.3 LLD, where the cluster-boundary `Invalid
 > record` failure mode is the experiment. Observed side effect of the LLD

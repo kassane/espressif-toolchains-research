@@ -123,21 +123,14 @@ CLAUDE.md          orientation for future automated sessions
 - **One frontend mis-handles by-value struct *arguments*** on the canonical
   lane (Rust/clang/gcc/Zig 0.17/LDC 1.42.0 all correct): **TinyGo** lowers
   `struct{[N]uint8}` as `[N x i8]` byte-per-register (docs/24 §e), so byte-
-  array aggregates round-trip incorrectly on Xtensa. Historically there were
-  three outliers — **Zig 0.16** stack-spilled under-aligned (`align(1)`)
-  structs on Xtensa and mis-lowered a small `{i32,i32}` to `[2 x i64]` on
-  RISC-V; **the previous LDC 1.42-git (LLVM 21.1.3)** marked *every*
-  aggregate `byval`/`sret`, so it diverged more broadly across `point_dot`
-  (align-4), `blob_sum`, small-struct *returns*, AND C-style bitfields.
-  Both are now history on the canonical lane: Zig 0.17 (`$ZIG`) flattens
-  to `[N x i32]` like clang (docs/05 §"Zig 0.17 status"), and the
-  2026-05-30 LDC 1.42.0 maintainer re-upload (LLVM 22.1.4) drops the
-  universal byval/sret lowering — `d_point_dot` is now byte-identical to
-  `c_point_dot`, qemu xtensa reports 0 D failures (docs/05 §"LDC 1.42
-  status", docs/23). The legacy break is preserved on `$LDC2_UPSTREAM`
-  (LDC on upstream LLVM 22.1.2, pre-fix) for the regression tracker. Struct returns ≤reg-size, scalars,
-  pointers and callbacks are fine everywhere; **pass structs by pointer**
-  across a Zig, D, or TinyGo-byte-array boundary.
+  array aggregates round-trip incorrectly on Xtensa. Two historical outliers
+  (Zig 0.16 align-1 + small `{i32,i32}`, and the previous LDC 1.42-git's
+  universal `byval/sret` lowering) are closed on the canonical `$ZIG` /
+  `$LDC2` lanes; reproducers preserved on `$ZIG_016` / `$LDC2_UPSTREAM`.
+  Full bug-fix narrative + IR shapes in docs/05 §"Zig 0.17 status" +
+  §"LDC 1.42 status". Struct returns ≤reg-size, scalars, pointers, and
+  callbacks are fine everywhere; **pass structs by pointer** across a Zig,
+  D, or TinyGo-byte-array boundary.
 - **Confirmed at runtime on qemu** (both `qemu-system-xtensa` and
   `qemu-system-riscv32`): Xtensa → `zig blob_sum FAIL` + `d point_dot`/`d blob_sum
   FAIL`; RISC-V → `zig point_dot FAIL` (D's small struct gated, TinyGo
