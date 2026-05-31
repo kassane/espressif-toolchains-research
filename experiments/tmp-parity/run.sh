@@ -16,19 +16,52 @@
 # body reduces to a single `ret i32 N` (= N folded at compile time) or whether
 # it carries a runtime call.
 #
-# Compile-target: xtensa-esp-elf -mcpu=esp32 -Os. Same as scripts/build-ffi.sh.
+# Compile-targets (the TMP frontend is identical across targets; the only
+# diff is the post-IR Xtensa vs RISC-V assembly the constants land in):
+#   $1 = esp32       (xtensa LX6,    default — historical baseline)
+#        esp32c3     (RISC-V rv32imc, single-core)
+#        esp32p4     (RISC-V rv32imafc, +vendor xespv/xesploop)
+# Matches scripts/build-ffi.sh's per-target setup.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/env.sh
-B=build/tmp-parity; mkdir -p "$B"
+TARGET="${1:-esp32}"
+case "$TARGET" in
+    esp32|esp32s2|esp32s3)
+        ARCH=xtensa; CT="--target=xtensa-esp-elf -mcpu=$TARGET"
+        LT="-mtriple=xtensa-esp-elf -mcpu=$TARGET"
+        ZT="-target xtensa-freestanding-none -mcpu=$TARGET"
+        RS_TARGET="xtensa-$TARGET-none-elf"
+        DUMP_FLAGS="--mcpu=$TARGET"
+        CTFE_RE='movi.*120|l32r'  # xtensa: movi a2, 120 (or l32r pool load)
+        ;;
+    esp32c3)
+        ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=esp32c3"
+        LT="-mtriple=riscv32-unknown-none-elf -mattr=+m,+c"
+        ZT="-target riscv32-freestanding-none -mcpu=esp32c3"
+        RS_TARGET="riscv32imc-unknown-none-elf"
+        DUMP_FLAGS=""  # riscv: llvm-objdump auto-detects from ELF
+        CTFE_RE='li.*120|li.*0x78'  # riscv: li a0, 0x78 (= 120)
+        ;;
+    esp32p4)
+        ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=esp32p4"
+        LT="-mtriple=riscv32-unknown-none-elf -mattr=+m,+a,+f,+c"
+        ZT="-target riscv32-freestanding-none -mcpu=esp32p4"
+        RS_TARGET="riscv32imafc-unknown-none-elf"
+        DUMP_FLAGS=""
+        CTFE_RE='li.*120|li.*0x78'
+        ;;
+    *)
+        echo "usage: $0 {esp32|esp32s2|esp32s3|esp32c3|esp32p4}"; exit 1
+        ;;
+esac
+B="build/tmp-parity-$TARGET"; mkdir -p "$B"
 D=experiments/tmp-parity
-CT="--target=xtensa-esp-elf -mcpu=esp32"
-LT="-mtriple=xtensa-esp-elf -mcpu=esp32"
 NM="$ESP_CLANG_DIR/llvm-nm"
 DUMP="$ESP_CLANG_DIR/llvm-objdump"
 
-echo "== Compiling three TMP probes for esp32 -Os =="
+echo "== Compiling three TMP probes for $TARGET -Os ($ARCH) =="
 
 # C++ (esp-clang 21.1.3, -std=c++26)
 "$CLANGXX" $CT -ffreestanding -fno-exceptions -fno-rtti -std=c++26 -Os \
@@ -39,9 +72,9 @@ echo "== Compiling three TMP probes for esp32 -Os =="
 
 # Rust (rustc 1.95-nightly esp, build-std=core)
 ( cd "$D/rs" && RUSTC="$RUSTC" "$CARGO" rustc --release \
-    -Z build-std=core --target xtensa-esp32-none-elf \
+    -Z build-std=core --target "$RS_TARGET" \
     -- --emit=obj -C panic=abort >/dev/null 2>&1 )
-RS_OBJ=$(find "$D/rs/target/xtensa-esp32-none-elf/release/deps" -name 'tmp_parity_rs-*.o' | head -1)
+RS_OBJ=$(find "$D/rs/target/$RS_TARGET/release/deps" -name 'tmp_parity_rs-*.o' | head -1)
 cp "$RS_OBJ" "$B/rs_tmp.o"
 
 cpp_sz=$(wc -c < "$B/cpp_tmp.o");  d_sz=$(wc -c < "$B/d_tmp.o");  rs_sz=$(wc -c < "$B/rs_tmp.o")
@@ -49,10 +82,9 @@ printf "  cpp_tmp.o = %5d B   d_tmp.o = %5d B   rs_tmp.o = %5d B\n" "$cpp_sz" "$
 
 # Helper: extract the disasm body of a symbol and check whether it folded to
 # `ret <const>` (= CTFE / constant propagation succeeded).
-folded() { # obj symbol expected_const_substring
-    local body="$("$DUMP" -d --mcpu=esp32 --disassemble-symbols="$2" "$1" 2>/dev/null)"
-    if printf '%s' "$body" | grep -qE "movi.*$3|l32r"; then
-        # check if the literal value or l32r-loaded constant matches
+folded() { # obj symbol
+    local body="$("$DUMP" -d $DUMP_FLAGS --disassemble-symbols="$2" "$1" 2>/dev/null)"
+    if printf '%s' "$body" | grep -qE "$CTFE_RE"; then
         printf "yes"
     else
         printf "?"
@@ -61,7 +93,7 @@ folded() { # obj symbol expected_const_substring
 
 # Helper: ret-body length (counts instructions; folded fns are typically 2: movi + ret)
 insn_count() { # obj symbol
-    "$DUMP" -d --mcpu=esp32 --disassemble-symbols="$2" "$1" 2>/dev/null \
+    "$DUMP" -d $DUMP_FLAGS --disassemble-symbols="$2" "$1" 2>/dev/null \
         | awk '/^[[:space:]]+[0-9a-f]+:[[:space:]]+[0-9a-f]/{n++} END{print n+0}'
 }
 
@@ -125,9 +157,9 @@ for lang in cpp d rs; do
         d)   obj="$B/d_tmp.o";   sym="get_fact5" ;;
         rs)  obj="$B/rs_tmp.o";  sym="get_fact5_rs" ;;
     esac
-    body=$("$DUMP" -d --mcpu=esp32 --disassemble-symbols="$sym" "$obj" 2>/dev/null \
+    body=$("$DUMP" -d $DUMP_FLAGS --disassemble-symbols="$sym" "$obj" 2>/dev/null \
            | awk '/^[[:space:]]+[0-9a-f]+:/{print}' | head -5)
-    n=$(printf '%s' "$body" | wc -l)
+    n=$(printf '%s\n' "$body" | grep -c '.')
     printf "    %-3s %s  (%d insn)\n" "$lang" "$sym" "$n"
     printf '%s\n' "$body" | sed 's/^/         /'
 done
@@ -154,7 +186,7 @@ for lang in cpp d rs; do
         d)   obj="$B/d_tmp.o";   sym="variadic_42" ;;
         rs)  obj="$B/rs_tmp.o";  sym="variadic_42_rs" ;;
     esac
-    body=$("$DUMP" -d --mcpu=esp32 --disassemble-symbols="$sym" "$obj" 2>/dev/null \
+    body=$("$DUMP" -d $DUMP_FLAGS --disassemble-symbols="$sym" "$obj" 2>/dev/null \
            | awk '/^[[:space:]]+[0-9a-f]+:/{print}' | head -5)
     printf "    %-3s %s\n" "$lang" "$sym"
     printf '%s\n' "$body" | sed 's/^/         /'
@@ -224,7 +256,7 @@ echo "  Reading the table:"
 echo "    'T _ZN9ProducerC3incEv'                 = D defines the method; C++ can call it."
 echo "    'U _ZN11consumer_ns9ConsumerC3incEv'    = D declares only; expects a C++ definition."
 echo "    'T _ZN9ConsumerS9double_itEv'           = POD struct method, no vtable."
-echo "    'T d_value_role'                        = D struct returned by value (Xtensa a2/a3)."
+echo "    'T d_value_role'                        = D struct returned by value (regs a2/a3 on xtensa, a0/a1 on riscv)."
 echo "    'R _D9ffi_roles9ProducerC6__vtblZ'      = vtable lives in D's object."
 echo ""
 echo "  Implication for FFI design (mirrors docs/21):"
