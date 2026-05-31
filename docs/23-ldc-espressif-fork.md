@@ -77,11 +77,11 @@ The pre-bundled `etc/ldc2.conf/55-target-xtensa.conf` also defines a
 spell `-mtriple=xtensa-esp-elf -mcpu=...` explicitly so the same invocation
 drives both LDCs in the comparison.
 
-## What didn't flip — frontend-driven, still broken
+## What used to not flip — frontend-driven, now closed
 
-LDC's frontend marks **every by-value aggregate** as `byval(...)` (args) or
-`sret(...)` (returns) regardless of size, alignment, or target — visible in the
-IR for both LDCs:
+LDC's legacy frontend (pre-2026-05-30) marked **every by-value aggregate** as
+`byval(...)` (args) or `sret(...)` (returns) regardless of size, alignment,
+or target — visible in the IR for both LDCs at the time:
 
 ```
 fork     d_point_dot: (ptr byval(%lib_d.Point) %a, ptr byval(%lib_d.Point) %b)

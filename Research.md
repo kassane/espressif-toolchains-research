@@ -194,15 +194,15 @@ frontend now flattens aggregates to `[N x i32]` like clang, so zig drops to
 **375 B** — about 1.8× clang, the residual being a 220 B `.eh_frame` zig
 still emits by default.
 
-Root cause: Zig's experimental ESP targets don't implement the C-ABI aggregate
-coercion clang/rust do; they defer to LLVM's default lowering. This was **not
-Xtensa-only** — RISC-V (ESP32-C3) had a *different* Zig 0.16 struct-arg bug:
-the small `{i32,i32}` `Point` was mis-lowered to `[2 x i64]` (wrong registers),
-even though the large `[24]u8` was fine there (by reference). The RISC-V case
-reproduced on
-*upstream* Zig too (`pip install ziglang`), so it was an upstream Zig frontend
-bug, not the espressif fork. **Zig 0.17 closed both gaps** (xtensa align-1 +
-riscv `[2 x i64]`); the canonical `$ZIG` (0.17, LLVM 22.1.4) emits `[N x i32]`
+Root cause: pre-0.17 Zig's experimental ESP targets didn't implement the
+C-ABI aggregate coercion clang/rust do; they deferred to LLVM's default
+lowering. This was **not Xtensa-only** — RISC-V (ESP32-C3) had a *different*
+Zig 0.16 struct-arg bug: the small `{i32,i32}` `Point` was mis-lowered to
+`[2 x i64]` (wrong registers), even though the large `[24]u8` was fine
+there (by reference). The RISC-V case reproduced on *upstream* Zig too
+(`pip install ziglang`), so it was an upstream Zig frontend bug, not the
+espressif fork. **Zig 0.17 closed both gaps** (xtensa align-1 + riscv
+`[2 x i64]`); the canonical `$ZIG` (0.17, LLVM 22.1.4) emits `[N x i32]`
 like clang on both arches. Rust, clang and gcc remain correct on both. The
 legacy `$ZIG_016` lane (0.16 / LLVM 21.1.0) still reproduces the historical
 break. Root cause was Zig's deferral to the LLVM default; 0.17 implements

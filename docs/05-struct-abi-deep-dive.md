@@ -134,8 +134,9 @@ On the legacy `$ZIG_016` lane, a clang/rust/gcc ↔ zig call with an
 **under-aligned by-value struct argument** reads the bytes from the wrong place
 ⇒ silent corruption on hardware. Word-aligned structs are safe. (The host test
 in doc 03 passes regardless because x86_64 SysV memory-passes these structs in
-a way both sides agree on.) Canonical zig 0.17 closes this — the bytes-from-
-wrong-place hazard is now D-only on Xtensa.
+a way both sides agree on.) Canonical zig 0.17 + canonical LDC 1.42.0 both
+close this — on the canonical lane the bytes-from-wrong-place hazard is now
+TinyGo-only (byte-array fields, docs/24 §e).
 
 ## Struct *returns* are fine even when under-aligned
 

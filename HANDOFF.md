@@ -222,10 +222,11 @@ output.
 - [x] **Execute** the Xtensa images on qemu. The espressif qemu fork
       (`esp-develop-9.2.2-20260417`) is downloaded; the bare-metal harness
       (`experiments/qemu-run`, `scripts/run-qemu.sh`) **runs the full FFI matrix
-      on `-machine sim -cpu dc233c`** and reproduces the docs/05 prediction at
-      runtime: scalars pass for all 5 languages; the align-1 `blob_sum` by value
-      gives `zig FAIL` (and `d FAIL` — D also misses the align-4 `point_dot`,
-      docs/19) — the ABI bugs, live; by-pointer passes for all.
+      on `-machine sim -cpu dc233c`** and reproduced the docs/05 prediction at
+      runtime: on the legacy lanes the align-1 `blob_sum` gave `zig FAIL` and
+      `d FAIL` (with D also missing the align-4 `point_dot`); on the canonical
+      lane (`$ZIG` 0.17 + `$LDC2` 1.42.0) all by-value cases pass and qemu
+      xtensa reports 0 failures. By-pointer always passes everywhere.
       (Bring-up: XEA2 window handlers + VECBASE, `PS.INTLEVEL=15`, and a
       div-free `putdec` to dodge dc233c's missing `mul32high`.) docs/08.
       Remaining nicety: a full `-machine esp32` + ROM + flash-image run to use the
