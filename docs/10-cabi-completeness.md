@@ -142,8 +142,9 @@ espressif LLVM 22.1.4):
   "did #5467's landing rewrite the C-ABI lowering for Xtensa, or only
   enable codegen?"): **YES, it rewrote the lowering**. Re-running
   `experiments/abi-structs/sweep.sh` against the canonical `$ZIG`
-  (`kassane/zig-espressif-bootstrap` `zig-0.17.0-relsafe-…-baseline`,
-  bundled LLVM 22.1.4) on every Xtensa core shows REGISTERS in every Zig row
+  (`kassane/zig-espressif-bootstrap` `zig-relsafe-…-baseline` under the
+  `0.17.0-xtensa-dev` tag, bundled LLVM 22.1.4) on every Xtensa core shows
+  REGISTERS in every Zig row
   (was STACK for align-1 byte arrays on 0.16). The qemu harness on both
   xtensa and riscv flips Zig from FAIL to ok for the affected cases. Full
   account in docs/05 §"Zig 0.17 status". The legacy `$ZIG_016` lane

@@ -14,7 +14,7 @@ mkdir -p "$TC" "$DL"
 # struct-by-value ABI bug (docs/05 + docs/09) that 0.16 carried. The 0.16
 # baseline is still downloaded so experiments/abi-structs/sweep.sh + run-qemu
 # can demonstrate the gap reproducing on the older LLVM line.
-ZIG_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa-dev/zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz"
+ZIG_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.17.0-xtensa-dev/zig-relsafe-x86_64-linux-musl-baseline.tar.xz"
 ZIG_016_URL="https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa/zig-relsafe-x86_64-linux-musl-baseline.tar.xz"
 CLANG_URL="https://github.com/espressif/llvm-project/releases/download/esp-21.1.3_20260408/clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz"
 RUST_URL="https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz"

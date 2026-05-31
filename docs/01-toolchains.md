@@ -12,7 +12,7 @@ the comparison.
 
 | # | Component | Repo / tag | Asset | Size |
 |---|-----------|-----------|-------|------|
-| 1 | Zig (canonical) | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa-dev` | `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` | 76 MB |
+| 1 | Zig (canonical) | `kassane/zig-espressif-bootstrap` @ `0.17.0-xtensa-dev` | `zig-relsafe-x86_64-linux-musl-baseline.tar.xz` | 76 MB |
 | 1b | Zig 0.16 (legacy, `$ZIG_016`) | `kassane/zig-espressif-bootstrap` @ `0.16.0-xtensa` | `zig-relsafe-x86_64-linux-musl-baseline.tar.xz` | 75 MB |
 | 2 | clang/LLVM | `espressif/llvm-project` @ `esp-21.1.3_20260408` | `clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz` | 398 MB |
 | 3 | Rust | `esp-rs/rust-build` @ `v1.95.0.0` | `rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz` (+ `rust-src-1.95.0.0.tar.xz`) | 168 MB |
