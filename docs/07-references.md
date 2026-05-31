@@ -78,8 +78,8 @@ work, not a dependency of the experiments.
 - **kassane/zig-espressif-bootstrap (xtensa)** —
   <https://github.com/kassane/zig-espressif-bootstrap/blob/xtensa/README.md> —
   the canonical `$ZIG`: Zig 0.17.0 + Espressif LLVM 22.1.4 (asset
-  `zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` under the
-  `0.16.0-xtensa-dev` tag). The README's 7 patches all target
+  `zig-relsafe-x86_64-linux-musl-baseline.tar.xz` under the
+  `0.17.0-xtensa-dev` tag). The README's 7 patches all target
   **LLVM/LLD/Clang/zlib — none touch Zig `src/`**, so it builds an upstream
   Zig commit unmodified; the now-fixed struct-ABI gap therefore lived in
   upstream Zig 0.16, not the fork.

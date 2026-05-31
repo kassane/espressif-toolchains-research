@@ -243,8 +243,8 @@ at the shell; see "Zig 0.17 status" below). See [docs/17](17-rust-zig-interop.md
 ## Zig 0.17 status — the bug is fixed in the canonical baseline
 
 The canonical `$ZIG` is the **`kassane/zig-espressif-bootstrap` 0.17 release**
-(`zig-0.17.0-relsafe-x86_64-linux-musl-baseline.tar.xz` under the
-`0.16.0-xtensa-dev` tag, bundled clang/LLVM **22.1.4**). It closes both
+(`zig-relsafe-x86_64-linux-musl-baseline.tar.xz` under the
+`0.17.0-xtensa-dev` tag, bundled clang/LLVM **22.1.4**). It closes both
 struct-arg gaps relative to the legacy `$ZIG_016` lane:
 
 - **Xtensa `zig_blob_sum`** (24-byte `[u8;24]`, align-1): qemu went from

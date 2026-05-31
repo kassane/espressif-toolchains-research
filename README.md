@@ -33,7 +33,7 @@ the detailed evidence.
 |------|-----------|---------|---------|
 | C/C++ (clang) | [espressif/llvm-project](https://github.com/espressif/llvm-project) `esp-21.1.3_20260408` | clang/LLVM **21.1.3** | LLVM Xtensa |
 | Rust | [esp-rs/rust-build](https://github.com/esp-rs/rust-build) `v1.95.0.0` | rustc 1.95.0-nightly, LLVM **21.1.3** | LLVM Xtensa |
-| Zig | [kassane/zig-espressif-bootstrap](https://github.com/kassane/zig-espressif-bootstrap) `0.16.0-xtensa-dev` (canonical; the `0.16.0-xtensa` tag is the `$ZIG_016` legacy lane) | **Zig 0.17.0-xtensa**, bundled clang/LLVM **22.1.4** | LLVM Xtensa |
+| Zig | [kassane/zig-espressif-bootstrap](https://github.com/kassane/zig-espressif-bootstrap) `0.17.0-xtensa-dev` (canonical; the `0.16.0-xtensa` tag is the `$ZIG_016` legacy lane) | **Zig 0.17.0-xtensa**, bundled clang/LLVM **22.1.4** | LLVM Xtensa |
 | D | [kassane/esp-idf-dlang](https://github.com/kassane/esp-idf-dlang/releases/tag/xtensa-toolchain) `xtensa-toolchain` (`-betterC`) | **LDC 1.42.0**, espressif/llvm-project **LLVM 22.1.4** (2026-05-30 maintainer re-upload bumped both — docs/05 §"LDC 1.42 status", docs/23) | LLVM Xtensa (espressif fork) |
 | Go | [tinygo-org/tinygo](https://github.com/tinygo-org/tinygo/releases/tag/v0.41.1) `v0.41.1` | TinyGo 0.41.1, bundled **LLVM 20.1.1** | LLVM Xtensa (tinygo-org fork; esp32/s3/c3 — no s2) |
 | C/C++ (gcc) | [espressif/crosstool-NG](https://github.com/espressif/crosstool-NG) `esp-15.2.0_20251204` | gcc **15.2.0** | GCC Xtensa (control) |
