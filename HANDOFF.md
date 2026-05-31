@@ -7,16 +7,11 @@ output.
 ## Done
 
 - [x] Pinned + scripted setup of all **five** toolchains (`scripts/setup.sh`).
-      Versions confirmed: clang/LLVM 21.1.3, rustc 1.95-nightly/LLVM 21.1.3,
-      **zig 0.17.0-xtensa / bundled clang/LLVM 22.1.4** (canonical `$ZIG`; the
-      legacy 0.16.0/LLVM 21.1.0 lane `$ZIG_016` is kept for the docs/05
-      struct-bug reproducer), gcc 15.2.0, **LDC 1.42.0 on espressif LLVM
-      22.1.4** (D; canonical fork build — 2026-05-30 maintainer re-upload
-      bumped both the release tag and the bundled LLVM, AND dropped the
-      universal byval/sret aggregate lowering; docs/05 §"LDC 1.42 status",
-      docs/23). The upstream LLVM-22 LDC (`$LDC2_UPSTREAM`, LDC 1.42-git on
-      LLVM 22.1.2) stays for the side-by-side comparison + as the
-      regression-tracker baseline for the historical byval/sret bug.
+      Full version table + env-var semantics in CLAUDE.md; canonical lanes:
+      esp-clang 21.1.3, rustc 1.95-nightly (LLVM 21.1.3), `$ZIG` 0.17.0-xtensa
+      (LLVM 22.1.4), `$LDC2` 1.42.0 (espressif LLVM 22.1.4), gcc 15.2.0.
+      Legacy lanes `$ZIG_016` + `$LDC2_UPSTREAM` kept for the struct-ABI bug
+      reproducers (docs/05 §"Zig 0.17 status" + §"LDC 1.42 status").
 - [x] Confirmed the shared backend: identical CPU feature sets and identical
       `target datalayout` across clang/rust/zig (docs 02, 04).
 - [x] FFI matrix (`experiments/ffi-matrix`): one C-ABI contract, 5 implementations
@@ -68,37 +63,21 @@ output.
       match (native `s32c1i`). Object FFI links; **cross-language LTO** fails
       across the LLVM-21/LLVM-22 cluster split (21.1.3 rust vs 22.1.4 zig
       bitcode; docs/04 §"Two LLVM clusters").
-- [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D added
-      to the FFI matrix + qemu harness). The canonical LDC is **LDC 1.42.0 on
-      espressif/llvm-project LLVM 22.1.4** (kassane/esp-idf-dlang, 2026-05-30
-      maintainer re-upload; docs/23) — same backend family as clang/rust at
-      the espressif fork, but at a different LLVM point release. `-betterC` =
-      freestanding. **Headline (historical):** the previous LDC 1.42-git on
-      LLVM 21.1.3 marked **every** by-value aggregate `byval`/`sret` (indirect)
-      and deferred to the backend, so it diverged from the register-based
-      Xtensa C ABI more broadly than Zig — `point_dot` (align-4) AND `blob_sum`
-      (align-1) both FAILED on Xtensa; on RISC-V the small struct even
-      *faulted* while the large one PASSED. **Headline (canonical, post-
-      2026-05-30):** the LDC 1.42.0 frontend drops the universal byval/sret
-      lowering and emits `[N x i32]` like clang. `d_point_dot` disasm is
-      byte-identical to `c_point_dot` (`mull/mull/add.n/retw.n`); `d_make_point`
-      is just `entry/retw.n`. **qemu xtensa drops from 2 D failures to 0**.
-      The legacy break is preserved on `$LDC2_UPSTREAM` (LDC on upstream LLVM
-      22.1.2, no aggregate-flattening fix) for the regression tracker
-      (`experiments/ldc-fork-comparison/run.sh`). The bug was **frontend-side**
-      — confirmed across both legacy LDC arms (fork-21.1.3 + upstream-22.1.2
-      produced byte-identical broken IR). Scalars at parity; links into the
-      one ELF with the four FFI-matrix peers (0 undef). Rich C/C++ FFI:
-      byte-identical Itanium mangling (`extern(C)`/`extern(C++[,"ns"])`/ref),
-      `-HC` C++-header gen with a verified C++→D round-trip. **Cross-language
-      LTO**: `clang ↔ rust` still works (LLVM-21 cluster), `clang ↔ D` LTO
-      via esp-clang's 21.1.3 lld now **FAILS** (`Invalid record`) since D
-      moved to LLVM-22; `D ↔ zig` LTO is newly reachable via `$LDC_LLVM_DIR`'s
-      lld (docs/04 §"Two LLVM clusters"). Known issues: ldc #5091 (ICE
-      EH+opt); ldc #4919 (cpu-feature defaults — fixed for esp32-s2/s3 on
-      the fork). **`$LLD`** (= `$ZIG ld.lld`, LLD 22.1.4, PR #24) is the
-      canonical linker for every `.sh` in the repo; gotcha #4 host-LLVM-18
-      risk is mitigated.
+- [x] **D / LDC as a 5th frontend** (docs/19, `experiments/dlang/run.sh`; D
+      added to the FFI matrix + qemu harness). Canonical LDC 1.42.0 on
+      espressif LLVM 22.1.4 (2026-05-30 maintainer re-upload, docs/23). The
+      historical universal `byval`/`sret` aggregate lowering closed at the
+      same time — `d_point_dot` now byte-identical to `c_point_dot`, qemu
+      xtensa drops to 0 D failures; legacy break reproduces on
+      `$LDC2_UPSTREAM` (docs/05 §"LDC 1.42 status"). Scalars at parity;
+      links into the one ELF with the four FFI-matrix peers (0 undef). Rich
+      C/C++ FFI: byte-identical Itanium mangling
+      (`extern(C)`/`extern(C++[,"ns"])`/ref), `-HC` C++-header gen with a
+      verified C++→D round-trip. Cross-language LTO follows the
+      LLVM-21/22 cluster split (docs/04 §"Two LLVM clusters"): clang↔rust
+      works, clang↔D fails since D moved to 22.x, D↔zig newly reachable.
+      Known issues: ldc #5091 (ICE EH+opt); ldc #4919 (cpu-feature
+      defaults — fixed for esp32-s2/s3 on the fork).
 - [x] **LDC espressif-fork comparison** (docs/23, `experiments/ldc-fork-comparison`).
       Side-by-side both LDCs on the same `lib_d.d` for esp32. The fork drops 5
       workarounds (literal-pool re-assembly, `.cfi_*` strip, `-output-s` step,
@@ -374,61 +353,38 @@ output.
       (#137 `cent` rejected, #270 no ICE on forced FP, #278 wide stack-arg
       stores — D joins gcc/zig). docs/00-23 final.
 - [x] **Zero-cost abstraction parity D × C++ × Rust on esp32 -Os** (docs/25,
-      `experiments/zero-cost/run.sh`). Stroustrup's "what you do use, you
-      couldn't hand code any better" probed against the three monomorphizing
-      LLVM frontends. Monomorphized generics / lambdas / static dispatch are
-      byte-identical to the C hand-loop modulo a frame-pointer policy (clang
-      keeps `mov.n a7, a1` at -Os, LDC + rustc don't). Dynamic dispatch (C++
-      virtual / Rust `dyn Trait`) is NOT zero-cost: +2-3 insns per call (extra
-      `l32i` for vtable read). D class in -betterC needs hand-rolled malloc +
-      placement; identical machine code to C++ `new T(args)` and Rust
-      `Box::new` (10-11 insns / 24-26 B) — no language overhead, just no GC
-      to emit the malloc+emplace for you. D `struct` (4 insns / 9 B) is the
-      canonical embedded answer.
+      `experiments/zero-cost/run.sh`). Monomorphized generics / lambdas /
+      static dispatch are byte-identical to the C hand-loop modulo a
+      frame-pointer policy. Dynamic dispatch (C++ virtual / Rust `dyn
+      Trait`) costs +2-3 insns / call. D class in -betterC needs hand-
+      rolled malloc + placement; identical machine code to C++ `new T(args)`
+      and Rust `Box::new`. D `struct` (4 insns / 9 B) is the canonical
+      embedded answer.
 - [x] **TMP feature surface parity D × C++ × Rust** (docs/26,
-      `experiments/tmp-parity/run.sh`). Twelve template-metaprogramming
-      capabilities probed × 3 languages: parameter forms (type / NTTP /
-      template-template / string NTTP), constraints (concepts / SFINAE /
-      trait bounds), full + partial specialization, compile-time branching
-      (`static if` / `if constexpr` / trait dispatch), token-level identifier
-      synthesis (D `mixin` / C++ X-macros / Rust nightly), CTFE, in-language
-      reflection (D `__traits` / C++ P2996 future / Rust proc-macro-only),
-      variadic. D supports 11/12 in-language with no host build step; C++ 10
-      (no in-language reflection, no identifier synthesis); stable Rust 6
-      (closes ~3 on nightly; the rest need proc-macros at 50-100 MB per
-      consumer). **Plus** the docs/26 §h disentanglement of D's three
-      `extern(C++)` FFI forms: `class` = D PRODUCES vtable; `extern(C++,ns)
-      class struct` = D CONSUMES (Itanium-mangled call sites only, body
-      supplied by C++ — the docs/21 shim pattern); plain `struct` = POD
-      layout in either direction. `llvm-nm` symbol-role table makes the
-      distinction concrete. The PR-27 zero-cost `extern(C++) class Counter`
-      was form (1) — DIFFERENT from form (2) used by the shim matrix.
-- [x] **RISC-V parity for zero-cost + TMP + esp32p4 vendor SIMD** (docs/27,
-      `experiments/{zero-cost,tmp-parity,simd}/run.sh`). Three follow-ups:
-      (1) zero-cost (docs/25) parameterized for esp32c3 (rv32imc) and
-      esp32p4 (rv32imafc); every monomorphization / inlining / static-vs-
-      dynamic / heap conclusion holds ISA-portably (riscv §b apply = 2
-      insn / 4 B beats xtensa's 3-4 / 8-10 B because no register windows;
-      riscv §c dynamic dispatch costs +14 insn / +24 B vs xtensa's +6 / +14).
-      (2) TMP (docs/26) parameterized for the same three targets; CTFE
-      `fact(5)→120` folds to `li a0, 0x78 ; ret` on riscv (2 insn / 6 B)
-      vs xtensa's `entry ; movi a2, 120 ; retw.n` (3 insn / 9 B) — byte-
-      identical across cpp/d/rs in each lane. (3) **esp32p4 vendor PIE/ESPV
-      SIMD added to experiments/simd/run.sh §7**. esp-clang 21.1.3 exposes
-      three vendor extensions: `+xespv` (ESPV 2.2, esp32p4 default — sparse
-      public docs), `+xespv1v` (ESPV 2.1, esp32p4eco4 only — 412 documented
-      mnemonics), `+xesploop` (zero-overhead loops). Mnemonic family `esp.*`
-      (lowercase-dotted analog of xtensa `EE.*`), 128-bit q0..q? + qacc/xacc
-      regs. **Cross-frontend byte-identical inline-asm encodings across
-      clang, zig, LDC, rustc** (all four share libLLVM's RISC-V assembler).
-      No intrinsic headers ship — `riscv_vector.h` requires standard V
-      which esp32p4 doesn't enable. ESPV 2.1 ↔ 2.2 are wire-incompatible
-      opcode tables — use `-mcpu=esp32p4eco4` for the documented mnemonic
-      surface. esp32c3 has no vendor SIMD (rejected the same way esp32 LX6
-      rejects EE.*). The 4-toolchain capability matrix: esp-clang accepts
-      `-mcpu=esp32p4/eco4` natively; LDC needs `-mattr=+...+xespv1v+xesploop`;
-      Zig accepts `-mcpu=esp32p4/eco4`; rustc needs `--target
-      riscv32imafc-unknown-none-elf -C target-cpu=esp32p4eco4`.
+      `experiments/tmp-parity/run.sh`). Twelve TMP capabilities × 3
+      languages. D supports 11/12 in-language; C++ 10/12 (no in-language
+      reflection, no identifier synthesis); stable Rust 6/12 (proc-macros
+      cover ~3 more at ~50-100 MB per consumer crate). Plus the docs/26
+      §h disentanglement of D's three `extern(C++)` FFI forms — the PR-27
+      zero-cost `extern(C++) class Counter` was form (1) PRODUCER (D
+      emits vtable), DIFFERENT from form (2) CONSUMER used by the docs/21
+      shim matrix.
+- [x] **RISC-V parity for zero-cost + TMP + esp32p4 vendor SIMD** (folded
+      back into docs/09 / docs/16 / docs/25 / docs/26 — no docs/27).
+      `experiments/{zero-cost,tmp-parity,simd}/run.sh` parameterized for
+      esp32c3 (rv32imc) and esp32p4 (rv32imafc); every monomorphization /
+      inlining / static-vs-dynamic / heap / TMP conclusion holds ISA-
+      portably (riscv leaf functions 1-2 insn tighter than xtensa thanks to
+      no register windows). **esp32p4 vendor PIE/ESPV SIMD added to
+      experiments/simd/run.sh §7** — three vendor extensions (`+xespv` ESPV
+      2.2 / `+xespv1v` ESPV 2.1 / `+xesploop`); `esp.*` mnemonic family,
+      128-bit q0..q? + qacc/xacc regs; **byte-identical inline-asm
+      encodings across clang/zig/LDC/rustc** (shared libLLVM RISC-V
+      assembler). ESPV 2.1 ↔ 2.2 wire-incompatible; use `-mcpu=esp32p4eco4`
+      for the 412 documented mnemonics. esp32c3 has no vendor SIMD (rejected
+      like esp32 LX6 rejects EE.*). Toolchain matrix in docs/09 §"Four-
+      frontend toolchain matrix"; zero-cost RISC-V variant in docs/25; TMP
+      RISC-V variant in docs/26; esp32p4 SIMD section in docs/16.
 
 ## How to resume
 

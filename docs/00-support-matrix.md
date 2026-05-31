@@ -4,18 +4,10 @@ At-a-glance comparison for **Espressif Xtensa (ESP32 / S2 / S3)** and the
 RISC-V outlier **ESP32-C3**, distilled from the experiments in this repo.
 Legend: ✓ works / correct · ✗ broken · — n/a.
 
-> **LDC mirror RESTORED (2026-05-30) with a different tarball — see docs/23
-> banner**: the maintainer republished the canonical D toolchain on LLVM
-> 22.1.4 (was 21.1.3). The universal D byval/sret aggregate ABI bug
-> documented below is **closed** on the new canonical; the LDC mirror outage
-> note below is the *previous* state and is retained for the record.
->
-> **(Previous note, 2026-05-28 → 2026-05-30):** the canonical D toolchain's
-> upstream (`kassane/esp-idf-dlang`) isn't fetchable. `scripts/setup.sh`
-> auto-falls back to the upstream LDC (LLVM 22.1.2) — re-enabling docs/23's
-> workarounds for fresh installs. See HANDOFF.md §"Known outages". The matrix
-> below describes the canonical-fork state; runtime reality may match the
-> fallback.
+> **LDC canonical: 1.42.0 on espressif LLVM 22.1.4** (2026-05-30 maintainer
+> re-upload — full narrative in docs/23). The universal D byval/sret
+> aggregate ABI bug documented in §"ABI & FFI correctness" below is
+> **closed** on the canonical lane; reproducers remain on `$LDC2_UPSTREAM`.
 
 ## Identity & availability
 
@@ -80,26 +72,14 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 > `tinygo_scanCurrentStack`) or accept the full runtime — docs/24 §d.
 > ³ The legacy `$ZIG_016` lane mis-lowers RISC-V `{i32,i32}` to `[2 x i64]`
 > (`zig_point_dot FAIL got=-2130706553` on riscv qemu); xtensa was already
-> fine on 0.16. Zig 0.17 (`$ZIG` canonical) closes the riscv gap —
-> docs/05/09/17.
-> ⁴ Zig 0.17 (`$ZIG` canonical) flattens align-1 aggregates to `[N x i32]`
-> like clang and passes the by-value blob_sum (`xtensa zig_blob_sum ok 300`).
-> The legacy `$ZIG_016` lane reproduces the original docs/05 break:
-> stack-spill via `movsp` for the align-1 aggregate, `zig_blob_sum FAIL
-> got=409 want=300` at qemu. Swap with `ZIG=$ZIG_016 ./scripts/build-ffi.sh
-> esp32`.
+> fine on 0.16. Zig 0.17 (`$ZIG` canonical) closes the riscv gap.
+> ⁴ Zig 0.17 closes the align-1 `[N x i32]` aggregate bug; legacy
+> `$ZIG_016` reproduces. Full IR + qemu in docs/05 §"Zig 0.17 status".
 > ⁵ LDC 1.42.0 (the 2026-05-30 maintainer re-upload on LLVM 22.1.4) closes
-> the universal D `byval`/`sret` aggregate ABI bug that LDC 1.42-git on LLVM
-> 21.1.3 carried. The frontend now lowers aggregates to `[N x i32]` like
-> clang, so `d_point_dot`/`d_blob_sum` pass byte-identically to clang's
-> register-passing convention; `d_make_point` returns in registers via the
-> windowed ABI's small-struct-return slot. Disasm: `d_point_dot` reads from
-> `a2/a3/a4/a5` (matches clang `c_point_dot`); `d_make_point` is just
-> `entry/retw.n`. qemu xtensa drops to **0 failures**; qemu riscv stays at
-> 0. Docs/05 §"LDC 1.42 status", docs/19, docs/23. The old `$LDC2_UPSTREAM`
-> arm of the fork-vs-upstream comparison (the pre-fix LDC on upstream-LLVM
-> 22.1.2) still reproduces the broken IR; that's the regression-tracker
-> baseline now, not the canonical.
+> the universal D `byval`/`sret` aggregate ABI bug — `d_point_dot` is
+> byte-identical to `c_point_dot`, qemu xtensa drops to 0 D failures.
+> Reproducer on `$LDC2_UPSTREAM`. Full account in docs/05 §"LDC 1.42
+> status" + docs/19 + docs/23.
 >
 > One outlier on the canonical lane. **TinyGo** still owns the byte-array
 > hole: a `struct{[24]uint8}` lowers as `[24 x i8]` byte-per-register, not

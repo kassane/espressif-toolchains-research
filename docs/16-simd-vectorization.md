@@ -1,21 +1,29 @@
-# 16 — SIMD & vectorization on Xtensa
+# 16 — SIMD & vectorization on Xtensa + RISC-V
 
-Where ESP Xtensa stands on SIMD, autovectorization, and the inline-asm path.
-Reproduce with `experiments/simd/run.sh`.
+Where the ESP family stands on SIMD: the **xtensa s3 EE.\* PIE** unit and the
+**RISC-V esp32p4 vendor ESPV** unit. Autovectorization, explicit vector types,
+and the inline-asm path across all six toolchains. Reproduce with
+`experiments/simd/run.sh`.
 
 ## TL;DR
 
-- **Only ESP32-S3 has a SIMD unit** — the 128-bit `EE.*` "PIE" extension
-  (q0–q7). ESP32 (LX6) and ESP32-S2 have **no** SIMD (`EE.*` is rejected:
-  *"instruction use requires an option to be enabled"*).
-- **No autovectorization, anywhere.** Neither LLVM (clang / rust / zig) nor GCC
-  vectorizes to the S3 unit. Vectorizable loops compile to **scalar** code;
-  explicit vector types (`__attribute__((vector_size))`, Zig `@Vector`) are
-  **scalarized** (16× scalar ops). The LLVM Xtensa backend has no codegen-usable
-  vector register class for q0–q7, so the loop/SLP vectorizer has nothing to
-  target.
-- **Inline assembly is the only way** to use S3 SIMD — and all three toolchains
-  (clang, gcc, zig) assemble `EE.*` fine.
+- **Two ESP chips have a SIMD unit**: xtensa esp32s3 (`EE.*` 128-bit PIE,
+  q0-q7) and riscv esp32p4 (`esp.*` 128-bit ESPV, q0..q? + qacc/xacc). esp32
+  (LX6), esp32s2, esp32c3 have **none**. The two units share a remarkable
+  amount of design: same width, same q-register family, same "vld → vop →
+  vst" idiomatic kernel shape. The ISAs differ but the *capability* is
+  parallel.
+- **No autovectorization, on either unit.** Neither LLVM (clang / rust /
+  zig / LDC) nor GCC vectorizes to the S3 or P4 vector unit. Vectorizable
+  loops scalarize; explicit vector types (`__attribute__((vector_size))`,
+  Zig `@Vector`, Rust `core::simd`, D `__vector`) scalarize to 16× scalar
+  ops. The LLVM Xtensa AND RISC-V vendor backends have no codegen-usable
+  vector register class or cost model for the q regs, so the loop/SLP
+  vectorizer has nothing to target.
+- **Inline assembly is the only way** to use either vector unit — and
+  every LLVM frontend (clang / zig / LDC / rust) and gcc (xtensa only)
+  assembles the mnemonics cleanly. **Cross-frontend encodings are
+  byte-identical** because they share libLLVM's per-arch assembler.
 
 ## Autovectorization (esp32s3, `-O3` / `-opt=2`) — all six scalarize
 
@@ -173,3 +181,147 @@ on v0.41.1 — neither autovectorized nor reachable, the strictest "no S3 SIMD"
 of any toolchain here. The 324 `ee.*` instructions that show up in a
 `tinygo build -opt=0` linked ELF are from the TinyGo runtime's picolibc /
 startup code, not from user Go.
+
+## ESP32-P4 RISC-V vendor SIMD (ESPV / Xespv / Xesploop)
+
+The riscv twin of the s3 EE.* story. `experiments/simd/run.sh §7` exercises
+it, reproducing the same autovec / explicit-type / inline-asm trichotomy.
+
+### What the extensions actually are
+
+`clang --target=riscv32-esp-elf --print-enabled-extensions -mcpu=esp32p4`:
+
+| extension | version | enabled on | role |
+|---|---|---|---|
+| `Xespv` | 2.2 | esp32p4 (default) | ESPV PIE 128-bit vector ops |
+| `Xespv1v` | 2.1 | esp32p4eco4 only | ESPV PIE older revision |
+| `Xesploop` | 1.0 | both | zero-overhead hardware loops (analog of xtensa LOOP/LOOPGTZ) |
+| `Xespdsp` | 2.1 | neither default | DSP, opt-in via `-march=...xespdsp` |
+
+The ISA string emitted for esp32p4:
+
+```
+rv32i2p1_m2p0_a2p1_f2p2_c2p0_b1p0_zicsr2p0_zifencei2p0_zmmul1p0_zaamo1p0
+_zalrsc1p0_zca1p0_zcb1p0_zcf1p0_zcmt1p0_zba1p0_zbb1p0_zbc1p0_zbs1p0
+_xesploop1p0_xespv2p2
+```
+
+So esp32p4 is rv32imafc + B (zba/zbb/zbc/zbs) + extensive Zc compressed
+extensions + the two vendor extensions. ABI is ilp32f. Vector regs are
+**q0..q?**, accumulators **qacc** and **xacc** — same conceptual model as
+xtensa s3 EE.*, all 128-bit wide.
+
+### Mnemonics
+
+`esp.*` family (lowercase, dotted) — riscv analog of xtensa `EE.*`.
+Subfamilies (412 mnemonics total in `libLLVM.so.21.1` strings for
+ESPV 2.1 / esp32p4eco4):
+
+| subfamily | examples |
+|---|---|
+| vector load/store | `esp.vld.128.{ip,xp}`, `esp.vst.128.{ip,xp}`, `esp.vldbc.{8,16,32}.{ip,xp}` (broadcast), `esp.vldext.{s,u}{8,16}.{ip,xp}` (load-extend) |
+| vector ALU | `esp.vadd.{s,u}{8,16,32}`, `esp.vsub`, `esp.vmul`, `esp.vmax/vmin`, `esp.vclamp`, `esp.vrelu`/`vprelu`, `esp.vsadds`/`vssubs` (saturating), `esp.vsl/vsr` (shifts) |
+| complex / DSP | `esp.cmul.{s,u}{8,16}`, `esp.cmulas`, `esp.macs16x{1,2}`, `esp.macs32`, `esp.muls32` |
+| FFT (the standout) | `esp.fft.ams.s16.*`, `esp.fft.bitrev`, `esp.fft.cmul.s16.*`, `esp.fft.r2bf.s16` (radix-2 butterfly), `esp.fft.vst.r32.decp` |
+| accumulator / state | `esp.zero.q`, `esp.zero.qacc`, `esp.ldqa.{s,u}{8,16}.128.{ip,xp}`, `esp.ld.qacc.{l,h}.{l,h}.128.ip` |
+| hardware loops | `esp.lp.setup`, `esp.lp.setupi`, `esp.lp.endi`, `esp.lp.count` |
+
+ESPV 2.2 spellings are not yet publicly documented; the mainstream esp32p4
+chip uses 2.2, the eco4 variant uses 2.1. **The two opcode tables are
+wire-incompatible** — assembling `esp.vadd.s8 q2, q0, q0` against
+`-mcpu=esp32p4` errors with `'Espressif ESPV 2.1' required`, while
+`-mcpu=esp32p4eco4` accepts it. Use `-mcpu=esp32p4eco4` for any inline-asm
+work today.
+
+### Autovec + explicit vector types — same null result as xtensa s3
+
+```
+== 7.1 autovec on rv32imafc: vadd.c -O3 -> esp.* count    0
+== 7.2 explicit vector types  -> scalarized:
+        clang vector_size(16) esp.*=0  (scalar add x16)
+        zig @Vector esp.*=0
+```
+
+No LLVM cost model exists for ESPV; the autovectorizer doesn't know the
+PIE instructions are useful. Same situation as xtensa s3: `core::simd`,
+`@Vector(16, u8)`, `int8_t __attribute__((vector_size(16)))`, and D's
+`__vector(byte[16])` all scalarize. Only inline asm reaches the q-regs.
+
+### Inline asm cross-frontend parity — byte-identical
+
+Same five-instruction kernel (vld×2 → vadd → vst → ret), four LLVM
+frontends. Source `experiments/simd/esp.c`:
+
+```c
+void esp_add(signed char* d, const signed char* a, const signed char* b){
+  __asm__ volatile(
+    "esp.vld.128.ip q0, %1, 0\n"
+    "esp.vld.128.ip q1, %2, 0\n"
+    "esp.vadd.s8    q2, q0, q1\n"
+    "esp.vst.128.ip q2, %0, 0\n"
+    : : "r"(d), "r"(a), "r"(b) : "memory");
+}
+```
+
+Encoding output from `experiments/simd/run.sh §7.3`:
+
+```
+clang 0201a03b | 0202243b | 065f 06a0 283b | 8201 | 8082
+zig   0201a03b | 0202243b | 065f 06a0 283b | 8201 | 8082
+d     0201a03b | 0202243b | 065f 06a0 283b | 8201 | 8082
+rs    0201a03b | 0202243b | 065f 06a0 283b | 8201 | 8082
+```
+
+Byte-identical across clang / zig / LDC / rust. The libLLVM RISC-V
+assembler is shared across all four frontends, so inline-asm encodings
+match by construction — same parity result the xtensa s3 EE.* block
+produced.
+
+The disassembler is incomplete in LLVM 21's RISC-V pretty-printer: the
+third encoding `065f 06a0 283b` (the 6-byte `esp.vadd.s8 q2, q0, q1`)
+renders as `<unknown>`, and the fourth `8201` (which is `esp.vst.128.ip
+q2, %0, 0`) renders as `c.srli64 a2`. These are pretty-printer bugs, not
+codegen issues; the bytes are correct (verified by hand-assembling against
+the ESPV 2.1 opcode table) and all frontends agree on them.
+
+### No intrinsic headers
+
+```
+$ find /home/user/toolchains/esp-clang/lib/clang -name "esp_pie*" -o -name "*xespv*"
+(empty)
+$ grep -l "xespv\|esp\.vld" /home/user/toolchains/esp-clang/lib/clang/21/include/*.h
+(empty)
+```
+
+esp-clang ships generic riscv intrinsic headers (`riscv_vector.h`,
+`riscv_bitmanip.h`, `riscv_corev_alu.h`, `riscv_crypto.h`, vendor
+`andes_vector.h`, `sifive_vector.h`) but **no esp32p4 / esp_pie / xespv
+header**. `riscv_vector.h` can't be used either: its bodies gate on
+`__riscv_v_intrinsic` + the standard `V` / `Zve*` feature, and `vsetvli`
+rejects with `'V' / 'Zve32x' required` on esp32p4. esp32p4 defines
+`__riscv_xespv=2002000` macro but no header consumes it.
+
+**Implication**: `asm volatile("esp.*")` is the ONLY emittable path today
+for esp32p4 PIE. Same situation xtensa s3 EE.* was in before public helper
+macros appeared. A vendor-supplied `esp_pie.h` would be the cleanest fix.
+
+### esp32c3 has no SIMD
+
+```
+== 7.5 esp.* on esp32c3 -> assembler rejects:
+    'instruction requires the following: Espressif ESPV 2.1/2.2'
+   → matches xtensa: vendor SIMD only on the chip that has the unit.
+```
+
+Same selectivity as the EE.* probe on esp32 (LX6 has no SIMD; only s3 does).
+The matrix is symmetric: vendor SIMD is per-chip, not per-architecture.
+
+### TinyGo coverage
+
+TinyGo v0.41.1 ships an `esp32p4` device-tree register definition file
+(`device/esp/esp32p4.go`) — peripheral SVD bindings only, no ESPV asm
+emission. TinyGo bundles LLVM 20.1.1 which predates esp-clang's 21.1.3
+RISC-V vendor extension support; even if you tried `import "esp32p4"`
+through TinyGo's `device/esp` package, the only access is to MMIO
+registers, not the vector unit. TinyGo remains outside the SIMD probe matrix
+for the same reason it's outside the FFI matrix (docs/24).

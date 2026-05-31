@@ -369,45 +369,8 @@ This is the user's PR-27 follow-up note. D's `extern(C++) class` and
 `extern(C++, class) struct` are NOT the same form played twice — they cover
 OPPOSITE sides of the C++ FFI surface, plus there's a third form for POD
 layouts. `experiments/tmp-parity/run.sh` §h compiles a tiny D module exercising
-all three roles and dumps the resulting `llvm-nm` table:
-
-```
-T  _ZN9ProducerC3incEv          ← D DEFINES the method; C++ side can call it
-T  _ZN9ProducerC3getEv          ← D DEFINES
-R  _D9ffi_roles9ProducerC6__vtblZ ← vtable LIVES in D's object
-U  _ZN11consumer_ns9ConsumerC3incEv  ← D DECLARES only; expects a C++ definition
-U  _ZN11consumer_ns9ConsumerC3getEv  ← D DECLARES only
-T  _ZN9ConsumerS9double_itEv    ← D struct method, no vtable (POD layout)
-T  d_producer_role              ← D call site exercising the producer form
-T  d_consumer_role              ← D call site exercising the consumer form
-T  d_value_role                 ← D struct returned by value
-```
-
-The three forms in D source:
-
-```d
-// (1) D PRODUCES a class with vtable callable from C++.
-extern(C++) class ProducerC {
-    int v;
-    void inc()  { v += 1; }
-    int  get()  { return v; }
-}
-
-// (2) D CONSUMES a C++ class — declarations only; bodies + vtable supplied by C++.
-extern(C++, "consumer_ns") {
-    extern(C++, class) struct ConsumerC {
-        int v;
-        void inc();
-        int  get();
-    }
-}
-
-// (3) D PRODUCES a value-type. No vtable. Byte-identical ABI to C++ struct.
-extern(C++) struct ConsumerS {
-    int v;
-    int double_it() { return v + v; }
-}
-```
+all three roles and dumps the resulting `llvm-nm` symbol-role table (the
+T/U/R role conventions are explained in docs/21 §2 for the shim-pattern case).
 
 The decision tree:
 
@@ -467,23 +430,60 @@ that — this doc's contribution is the language-level capability comparison
 
 ```bash
 source scripts/env.sh
-experiments/tmp-parity/run.sh
+experiments/tmp-parity/run.sh {esp32|esp32c3|esp32p4}
 ```
 
 Sources are at `experiments/tmp-parity/{cpp,d,rs}/tmp.{cpp,d,rs}`. The FFI-role
-demo in §h is generated inline by the script into `build/tmp-parity/`.
+demo in §h is generated inline by the script into `build/tmp-parity-<cpu>/`.
 
 Toolchain versions exercised: esp-clang 21.1.3 (LLVM 21.1.3), LDC 1.42.0
 (espressif LLVM 22.1.4, 2026-05-30 maintainer re-upload — docs/23), rustc
 1.95-nightly (LLVM 21.1.3). All three produce equivalent IR for every
 capability they share.
 
+## RISC-V variant (esp32c3 + esp32p4)
+
+The full 12-capability matrix is target-independent — the TMP front-end work
+is upstream of backend selection. All `cpp:✓ d:✓ rs:...` cells from the table
+above reproduce identically on the two riscv targets. Concrete CTFE evidence:
+
+```
+== (e) Compile-time computation (fact(5) → 120) — esp32c3 ==
+  cpp get_fact5_cpp  (2 insn)
+                0: 07800513     	li	a0, 0x78
+                4: 8082         	ret
+  d   get_fact5     (2 insn)
+                0: 07800513     	li	a0, 0x78
+                4: 8082         	ret
+  rs  get_fact5_rs  (2 insn)
+                0: 07800513     	li	a0, 0x78
+                4: 8082         	ret
+
+== (g) Variadic (static_sum(10,20,12) → 42) ==
+  cpp variadic_42_cpp:  li a0, 0x2a ; ret
+  d   variadic_42:      li a0, 0x2a ; ret
+  rs  variadic_42_rs:   li a0, 0x2a ; ret
+```
+
+Byte-identical across the three frontends. The same body on xtensa is 3
+instructions (`entry ; movi a2, 120 ; retw.n`) because of the
+register-window prologue/epilogue. On riscv there's no entry/retw, just
+`li ; ret`. *Every leaf function shrinks by 1-2 insns vs xtensa* — a
+systemic ABI win, not a TMP-specific one.
+
+esp32p4 (rv32imafc) is identical to esp32c3 (rv32imc) for these probes
+because none exercise the +a / +f / +b / vendor extensions. The §h
+extern(C++) symbol-role table reproduces verbatim on riscv too — Itanium
+mangling is ISA-independent.
+
 ## Related docs
 
 - docs/21 — embedded TMP FFI, the *symbol-level* contract that makes the
   language-level TMP comparison this doc covers relevant in practice.
 - docs/25 — zero-cost abstractions (the monomorphization sub-question of
-  TMP). Covers §a only of this doc's twelve capabilities.
+  TMP). Covers §a only of this doc's twelve capabilities. RISC-V variant
+  in [docs/25 §"RISC-V variant"](25-zero-cost.md).
+- docs/16 — SIMD / vectorization on xtensa s3 + riscv esp32p4 vendor SIMD.
 - docs/19 — D / LDC deep-dive; the TMP catalog reference for the D column.
 - docs/20 — D safety features; the `-preview=safer` flag that gates §e's
   CTFE probes (D file uses `@safe` on `fact`, etc.).
