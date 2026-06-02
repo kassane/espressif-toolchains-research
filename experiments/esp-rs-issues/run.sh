@@ -44,12 +44,24 @@ echo "   #278 ubyte-callback disasm (1 reg arg, sanity probe):"
 llvm-objdump -d --mcpu=esp32 --disassemble-symbols=d_issue278_emit_byte_call "$B/pd.o" 2>/dev/null \
     | awk '/<d_issue278_emit_byte_call>:/{p=1} p{print "      "$0; if(/retw/)exit}'
 
-echo "== Runtime miscompile tests on qemu-system-xtensa: #161 + #177 =="
+echo "== Runtime miscompile tests on qemu-system-xtensa: #161 + #177 + #278 =="
 RT=experiments/esp-rs-issues/runtime; QR=experiments/qemu-run; RB=build/esp-rs-rt; mkdir -p "$RB"
 RTLIB="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/libclang_rt.builtins.a"
 ( cd "$RT" && RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target xtensa-esp32-none-elf >/dev/null 2>&1 )
 "$CLANG" $CTX -ffreestanding -Os -I"$QR" -c "$RT/rt_main.c" -o "$RB/rt_main.o"
 "$CLANG" $CTX -ffreestanding -Os -c "$QR/start.S" -o "$RB/start.o"
+# #278 frontend callers in their own TUs (so xmain can't inline + constant-
+# propagate the literal args into widened s32i stores, sidestepping the bug).
+# Callee in rt_callee.c is built by clang with FULL u32 params (the "third-
+# party C library" stand-in); each caller declares it with NARROW types
+# (u8/u16) so the call-site codegen emits the per-frontend store width.
+"$CLANG" $CTX -ffreestanding -Os -c "$RT/rt_callee.c" -o "$RB/rt_callee.o"
+"$CLANG" $CTX -ffreestanding -Os -c "$RT/rt_clang.c"  -o "$RB/rt_clang.o"
+XTENSA_GNU_CONFIG="$(xtensa_cfg esp32)" "$GCC" -ffreestanding -Os -c "$RT/rt_gcc.c" -o "$RB/rt_gcc.o"
+"$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -femit-bin="$RB/rt_zig.o" "$RT/rt_zig.zig"
+"$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -Os -c "$RT/rt_d.d" -of="$RB/rt_d.o"
 cp "$RT/target/xtensa-esp32-none-elf/release/librt.a" "$RB/"
-$LLD -T "$QR/sim.ld" -o "$RB/rt.elf" "$RB/start.o" "$RB/rt_main.o" --start-group "$RB/librt.a" "$RTLIB" --end-group
+$LLD -T "$QR/sim.ld" -o "$RB/rt.elf" "$RB/start.o" "$RB/rt_main.o" \
+    "$RB/rt_callee.o" "$RB/rt_clang.o" "$RB/rt_gcc.o" "$RB/rt_zig.o" "$RB/rt_d.o" \
+    --start-group "$RB/librt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$RB/rt.elf" || true
