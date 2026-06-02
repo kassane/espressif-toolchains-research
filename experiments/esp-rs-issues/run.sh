@@ -58,10 +58,42 @@ RTLIB="$ESP_CLANG_DIR/../lib/clang-runtimes/xtensa-esp-unknown-elf/esp32/lib/lib
 "$CLANG" $CTX -ffreestanding -Os -c "$RT/rt_callee.c" -o "$RB/rt_callee.o"
 "$CLANG" $CTX -ffreestanding -Os -c "$RT/rt_clang.c"  -o "$RB/rt_clang.o"
 XTENSA_GNU_CONFIG="$(xtensa_cfg esp32)" "$GCC" -ffreestanding -Os -c "$RT/rt_gcc.c" -o "$RB/rt_gcc.o"
+# zig cc: clang 22.1.4 (Zig 0.17 bundle), drop-in replacement for esp-clang
+# 21.1.3 on the same Xtensa backend. -lunwind requested at link time; here
+# we just compile to .o, but the flag carries through the driver to record
+# the libunwind dependency on the resulting object's .note (no-op for -c).
+"$ZIG" cc --target=xtensa-freestanding-none -mcpu=esp32 -ffreestanding -Os -lunwind -c "$RT/rt_zigcc.c" -o "$RB/rt_zigcc.o"
 "$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -femit-bin="$RB/rt_zig.o" "$RT/rt_zig.zig"
 "$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -Os -c "$RT/rt_d.d" -of="$RB/rt_d.o"
+# Legacy lanes: $ZIG_016 (Zig 0.16 / LLVM 21.1.0) and $LDC2_UPSTREAM (LDC
+# 1.42-git on upstream LLVM 22.1.2, pre-2026-05-30 fork fix). Verifies
+# whether the narrow-vs-wide stack-arg-store policy is version-dependent.
+"$ZIG_016" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseSmall -femit-bin="$RB/rt_zig016.o" "$RT/rt_zig016.zig"
+"$LDC2_UPSTREAM" -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -Os -output-s -of="$RB/rt_d_up.s" "$RT/rt_d_up.d"
+sed -E -i '/^[[:space:]]*\.cfi_/d' "$RB/rt_d_up.s"
+"$CLANG" $CTX -c "$RB/rt_d_up.s" -o "$RB/rt_d_up.o"
 cp "$RT/target/xtensa-esp32-none-elf/release/librt.a" "$RB/"
 $LLD -T "$QR/sim.ld" -o "$RB/rt.elf" "$RB/start.o" "$RB/rt_main.o" \
     "$RB/rt_callee.o" "$RB/rt_clang.o" "$RB/rt_gcc.o" "$RB/rt_zig.o" "$RB/rt_d.o" \
+    "$RB/rt_zig016.o" "$RB/rt_d_up.o" "$RB/rt_zigcc.o" \
     --start-group "$RB/librt.a" "$RTLIB" --end-group
 timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$RB/rt.elf" || true
+
+# Alternative link path: zig cc as the linker driver (instead of bare $LLD)
+# with -lunwind from zig's bundled libunwind. Verifies that zig cc can act as
+# a drop-in replacement for esp-clang on the entire link step too — useful
+# for matrix consumers who don't want to depend on the esp-clang prefix at
+# all. Strips .eh_frame from objects that emit it (zig/D/zigcc default;
+# sim.ld doesn't place it).
+echo "== Alt link path: zig cc -nostdlib -Wl,-T,sim.ld (replaces esp-clang + bare LLD) =="
+for o in rt_zig.o rt_d.o rt_zig016.o rt_zigcc.o; do
+    "$ESP_CLANG_DIR/llvm-objcopy" --remove-section=.eh_frame --remove-section=.eh_frame_hdr "$RB/$o" "$RB/${o%.o}_noeh.o"
+done
+"$ZIG" cc --target=xtensa-freestanding-none -mcpu=esp32 -nostdlib -nodefaultlibs \
+    -Wl,-T,"$QR/sim.ld" \
+    -o "$RB/rt_zigcc_link.elf" \
+    "$RB/start.o" "$RB/rt_main.o" \
+    "$RB/rt_callee.o" "$RB/rt_clang.o" "$RB/rt_gcc.o" "$RB/rt_zig_noeh.o" "$RB/rt_d_noeh.o" \
+    "$RB/rt_zig016_noeh.o" "$RB/rt_d_up.o" "$RB/rt_zigcc_noeh.o" \
+    -Wl,--start-group "$RB/librt.a" "$RTLIB" -Wl,--end-group 2>&1 | head -5
+timeout 12 "$TC/qemu/qemu/bin/qemu-system-xtensa" -machine sim -cpu dc233c -semihosting -nographic -monitor none -kernel "$RB/rt_zigcc_link.elf" || true
