@@ -56,6 +56,16 @@ extern unsigned zig_issue278_callm(unsigned char a, unsigned short b,
 extern unsigned d_issue278_callm(unsigned char a, unsigned short b,
                                  unsigned char c, unsigned short d,
                                  unsigned char e);
+/* Legacy lanes for the same probe. */
+extern unsigned zig016_issue278_callm(unsigned char a, unsigned short b,
+                                      unsigned char c, unsigned short d,
+                                      unsigned char e);
+extern unsigned d_upstream_issue278_callm(unsigned char a, unsigned short b,
+                                          unsigned char c, unsigned short d,
+                                          unsigned char e);
+extern unsigned zigcc_issue278_callm(unsigned char a, unsigned short b,
+                                     unsigned char c, unsigned short d,
+                                     unsigned char e);
 static void putdec(long v){ static const unsigned long pw[10]={1000000000UL,100000000UL,10000000UL,1000000UL,100000UL,10000UL,1000UL,100UL,10UL,1UL};
   unsigned long u=v<0?-(unsigned long)v:(unsigned long)v; if(v<0)puts_("-"); char b[12]; int i=0,st=0;
   for(int k=0;k<10;k++){int d=0; while(u>=pw[k]){u-=pw[k];d++;} if(d||st||k==9){b[i++]=(char)('0'+d);st=1;}} b[i]=0; puts_(b); }
@@ -86,6 +96,13 @@ int xmain(void){
     puts_("  zig_issue278_callm   = "); putdec(zs); puts_(zs==150?"  ok\n":"  FAIL (#278 reproduces)\n");
     unsigned ds = d_issue278_callm(10, 20, 30, 40, 50);
     puts_("  d_issue278_callm     = "); putdec(ds); puts_(ds==150?"  ok\n":"  FAIL (#278 reproduces)\n");
+    /* Legacy lanes (Zig 0.16 / LLVM 21.1.0; LDC 1.42-git upstream / LLVM 22.1.2). */
+    unsigned z16 = zig016_issue278_callm(10, 20, 30, 40, 50);
+    puts_("  zig016_issue278_callm = "); putdec(z16); puts_(z16==150?"  ok\n":"  FAIL (#278 reproduces)\n");
+    unsigned dup = d_upstream_issue278_callm(10, 20, 30, 40, 50);
+    puts_("  d_upstream_callm      = "); putdec(dup); puts_(dup==150?"  ok\n":"  FAIL (#278 reproduces)\n");
+    unsigned zcc = zigcc_issue278_callm(10, 20, 30, 40, 50);
+    puts_("  zigcc_issue278_callm  = "); putdec(zcc); puts_(zcc==150?"  ok\n":"  FAIL (#278 reproduces)\n");
 
     sys_exit((c==100 && r==100 && ci==1 && ri==1)?0:1); return 0;
 }

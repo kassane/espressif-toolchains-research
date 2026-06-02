@@ -75,16 +75,41 @@ the literals into widened stores; that's the same scenario as a real
 binding crate sitting in its own `.rlib`.
 
 ```
-clang_issue278_callm = 134,152,086  FAIL (#278 reproduces)
-gcc_issue278_callm   = 150           ok
-rs_issue278_callm    = 3,159,446     FAIL (#278 reproduces)
-zig_issue278_callm   = 150           ok
-d_issue278_callm     = 150           ok
+clang_issue278_callm   = 134,152,086  FAIL (esp-clang 21.1.3)
+gcc_issue278_callm     = 150           ok    (esp-gcc 15.2.0)
+rs_issue278_callm      = 3,159,446     FAIL (rustc 1.95-nightly / LLVM 21.1.3)
+zig_issue278_callm     = 150           ok    (Zig 0.17 / LLVM 22.1.4)
+d_issue278_callm       = 150           ok    (LDC 1.42.0 / LLVM 22.1.4)
+zig016_issue278_callm  = 150           ok    (Zig 0.16 / LLVM 21.1.0 legacy)
+d_upstream_callm       = 150           ok    (LDC 1.42-git / LLVM 22.1.2 upstream)
+zigcc_issue278_callm   = 3,159,446     FAIL (zig cc — clang 22.1.4)
 ```
 
-So the bug isn't actually Rust-specific — **clang and Rust both silently
-corrupt**, while gcc, zig, and D/LDC widen the stores and produce the
-correct result. The mismatch is only between the caller's *narrow* and the
+So the bug isn't Rust-specific — **clang and Rust both silently corrupt**,
+while gcc, Zig, and LDC (in *every* version probed) widen the stores and
+produce the correct result. Cross-version notes:
+
+- **Both clang lanes** (esp-clang 21.1.3 AND `zig cc` clang 22.1.4) emit
+  the same 6× `s8i` + 4× `s16i` pattern — byte-identical. The narrow-store
+  policy is in clang's Xtensa lowering regardless of LLVM 21 vs 22 cluster.
+  And the runtime values byte-match too: rustc and `zig cc` produce the
+  exact same 3,159,446 corrupt sum (same stack-frame upper bytes).
+- **Both Zig lanes** (0.16 on LLVM 21.1.0 AND 0.17 on LLVM 22.1.4) widen.
+  Version-independent.
+- **Both LDC lanes** (canonical fork on LLVM 22.1.4 AND upstream-git on
+  LLVM 22.1.2) widen. The 2026-05-30 byval/sret fix didn't affect this.
+
+So the narrow-vs-wide policy is **per-frontend** (set in each frontend's
+TargetInfo/ABI lowering), not per-LLVM-version — the LLVM-21 → LLVM-22
+cluster shift (docs/04) doesn't change the result here.
+
+**`zig cc` as drop-in for esp-clang.** The same `run.sh` step also exercises
+`zig cc -nostdlib -nodefaultlibs -Wl,-T,sim.ld` (+ `-lunwind`) as the
+*linker driver*, replacing the bare `$LLD` invocation. The resulting ELF
+runs byte-identically on qemu (same 8-frontend results table above). So
+the entire C side of the matrix — both compile AND link — can be served
+by `zig cc`, removing the dependency on the esp-clang prefix for
+consumers who already have Zig 0.17 in their build. The mismatch is only between the caller's *narrow* and the
 callee's *widened-read* expectations, both legal on their own. **Safe FFI
 rule**: declare such ABI-critical params as `u32` on both sides (the
 issue's own workaround), or keep ≤ 6 args so nothing is stack-passed.
