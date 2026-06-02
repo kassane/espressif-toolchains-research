@@ -32,11 +32,28 @@ cat > "$B/m.zig" <<'EOF'
 extern fn fm(i32,i32,i32,i32,i32,i32,u8,u16,u8,u16,u8) callconv(.c) u32;
 export fn callm(a:u8,b:u16,c:u8,d:u16,e:u8) u32 { return fm(1,2,3,4,5,6,a,b,c,d,e); }
 EOF
-widths(){ llvm-objdump -d --mcpu=esp32 --disassemble-symbols=callm "$1" 2>/dev/null | grep -oE 's(8|16|32)i' | sort | uniq -c | tr '\n' ' '; }
-"$CLANG" $CTX -ffreestanding -O2 -c "$B/m.c" -o "$B/mc.o"; echo "  clang caller stores: $(widths "$B/mc.o")"
-XTENSA_GNU_CONFIG="$(xtensa_cfg esp32)" "$GCC" -ffreestanding -O2 -c "$B/m.c" -o "$B/mg.o"; echo "  gcc   caller stores: $(widths "$B/mg.o")"
-"$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseFast -femit-bin="$B/mz.o" "$B/m.zig"; echo "  zig   caller stores: $(widths "$B/mz.o")"
-echo "  => rust/clang use narrow s8i/s16i; gcc/zig use wide s32i; offsets are 4-byte slots in all (docs/14)"
+widths(){ # obj symbol
+    llvm-objdump -d --mcpu=esp32 --disassemble-symbols="$2" "$1" 2>/dev/null | grep -oE 's(8|16|32)i' | sort | uniq -c | tr '\n' ' '
+}
+"$CLANG" $CTX -ffreestanding -O2 -c "$B/m.c" -o "$B/mc.o"; echo "  clang caller stores: $(widths "$B/mc.o" callm)"
+XTENSA_GNU_CONFIG="$(xtensa_cfg esp32)" "$GCC" -ffreestanding -O2 -c "$B/m.c" -o "$B/mg.o"; echo "  gcc   caller stores: $(widths "$B/mg.o" callm)"
+"$ZIG" build-obj -target xtensa-freestanding-none -mcpu=esp32 -O ReleaseFast -femit-bin="$B/mz.o" "$B/m.zig"; echo "  zig   caller stores: $(widths "$B/mz.o" callm)"
+# Rust caller (rs_issue278_callm in experiments/esp-rs-issues/lib.rs)
+( cd experiments/esp-rs-issues && CARGO_TARGET_DIR="$PWD/../../$B/i278" \
+    RUSTC="$RUSTC" "$CARGO" build --release -Z build-std=core --target xtensa-esp32-none-elf >/dev/null 2>&1 )
+RS_LIB="$B/i278/xtensa-esp32-none-elf/release/libesp_rs_issues.a"
+[ -f "$RS_LIB" ] && echo "  rust  caller stores: $(widths "$RS_LIB" rs_issue278_callm)"
+# D caller (d_issue278_callm in ports.d, compiled by run.sh §b — re-build here so we don't depend on order)
+"$LDC2" -mtriple=xtensa-esp-elf -mcpu=esp32 $LDC_PE -betterC -Os --function-sections -c experiments/esp-rs-issues/ports.d -of="$B/md.o" 2>/dev/null
+echo "  D/LDC caller stores: $(widths "$B/md.o" d_issue278_callm)"
+echo "  Per-frontend caller policy as observed on current toolchain:"
+echo "    - clang / rust : narrow s8i + s16i stores (per upstream report)"
+echo "    - gcc / zig / D: widened s32i stores (matches the Xtensa ABI guidance)"
+echo "    Slot OFFSETS are 4-byte-stepped in every frontend; the symptom only"
+echo "    manifests if the callee reads its narrow arg as a *full word* and"
+echo "    sees the upper bytes (which the narrow store leaves undefined). #278's"
+echo "    own repro was a C callee reading u32 from the slot. Workaround: declare"
+echo "    such params as u32 on both sides. See docs/14."
 
 echo "===== #243: size_of::<Self>() in release (xtensa-esp32s3-none-elf) — SIGSEGV? ====="
 mkdir -p "$B/i243"
