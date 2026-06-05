@@ -54,7 +54,7 @@ extern (C) ubyte d_issue95_tag(const E* e)
         case Tag.D: return 3;
     }
 }
-extern (C) float d_issue277_pick(uint i)
+extern (C) float d_issue277_pick(uint i) @safe @nogc nothrow
 {
     static immutable float[2] t = [-1.0f, 1.0f];
     return t[i % 2];

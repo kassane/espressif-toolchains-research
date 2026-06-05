@@ -99,7 +99,7 @@ for spec in \
     al="${r%%|*}"
     # Sources
     printf '#include <stdint.h>\ntypedef struct{%s;}T;\nextern uint32_t ext(T);\nuint32_t caller(T x){return ext(x);}\n' "$cty" > "$B/s.c"
-    printf 'const T=extern struct{x:%s};\nextern fn ext(T) callconv(.c) u32;\nexport fn caller(v:T) u32 { return ext(v); }\n' "$zty" > "$B/s.zig"
+    printf 'const T=extern struct{x:%s};\nextern fn ext(T) callconv(.c) u32;\nexport fn caller(v:T) callconv(.c) u32 { return ext(v); }\n' "$zty" > "$B/s.zig"
     printf 'extern(C) struct T { %s; }\nextern(C) uint ext(T);\nextern(C) uint caller(T x) { return ext(x); }\n' "$dty" > "$B/s.d"
     # Compile each
     "$CLANG" $CT -ffreestanding -O2 -c "$B/s.c" -o "$B/s_c.o" 2>/dev/null
@@ -138,7 +138,7 @@ for bspec in \
     dbf="${rest%%|*}"; rest="${rest#*|}"
     al="${rest%%|*}"
     printf '#include <stdint.h>\ntypedef struct { %s; } T;\nextern uint32_t ext(T);\nuint32_t caller(T x) { return ext(x); }\n' "$cbf" > "$B/s.c"
-    printf 'const T = %s;\nextern fn ext(T) callconv(.c) u32;\nexport fn caller(v: T) u32 { return ext(v); }\n' "$zsstr" > "$B/s.zig"
+    printf 'const T = %s;\nextern fn ext(T) callconv(.c) u32;\nexport fn caller(v: T) callconv(.c) u32 { return ext(v); }\n' "$zsstr" > "$B/s.zig"
     printf 'extern(C) struct T { %s; }\nextern(C) uint ext(T);\nextern(C) uint caller(T x) { return ext(x); }\n' "$dbf" > "$B/s.d"
     "$CLANG" $CT -ffreestanding -O2 -c "$B/s.c" -o "$B/s_c.o" 2>/dev/null
     eval "$G" "$GCC" -ffreestanding -O2 -c "$B/s.c" -o "$B/s_gcc.o" 2>/dev/null
