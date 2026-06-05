@@ -313,6 +313,37 @@ macros appeared. A vendor-supplied `esp_pie.h` would be the cleanest fix.
 Same selectivity as the EE.* probe on esp32 (LX6 has no SIMD; only s3 does).
 The matrix is symmetric: vendor SIMD is per-chip, not per-architecture.
 
+### esp32s31 — same ESPV 2.2 vendor SIMD as esp32p4
+
+Announced March 2026, ESP32-S31 is Espressif's converged RISC-V SoC: P4-class
+HP core IP + S3-class peripherals (USB / LCD / camera / JPEG codec) + WiFi 6
+(802.11ax) + Bluetooth 5.4 + 802.15.4 (Thread/Zigbee/Matter) + **Gigabit
+Ethernet**. At the LLVM level (commit
+[c50ef2b](https://github.com/espressif/llvm-project/commit/c50ef2b)
+"[RISCV] Define Espressif CPUs", 2026-03-02) the s31 RISCVProcessorModel is
+**identical to esp32p4**: same `FeatureEspL5 + FeatureVendorXespv (ESPV 2.2)
++ FeatureVendorXesploop`. Codegen output uses the same instruction set, but
+TuneFeature heuristics differ — `experiments/simd/run.sh §8.1` shows s31
+emits Zba `sh{1,2,3}add` fusion where p4 emits `slli + add` pairs (both
+legal on either CPU since the B extension is enabled on both; the choice is
+a scheduler heuristic).
+
+The same `experiments/simd/esp.c` / `.zig` / `.d` probes work unchanged on
+`-mcpu=esp32s31`: vld/vst encodings are byte-identical across clang / zig /
+LDC frontends; `esp.vadd.s8` still requires ESPV 2.1 (`esp32p4eco4`) — the
+ESPV 2.2 mnemonic gap (§7.4) extends to s31 unchanged.
+
+Toolchain matrix for esp32s31:
+
+| frontend | flag |
+|---|---|
+| esp-clang 21.1.3 | `--target=riscv32-esp-elf -mcpu=esp32s31` |
+| Zig 0.17.0-xtensa | `-target riscv32-freestanding-none -mcpu=esp32s31` |
+| LDC 1.42.0 | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32s31` |
+| rustc 1.95-nightly | `--target riscv32imafc-unknown-none-elf -C target-cpu=esp32s31` |
+| esp-gcc (riscv) | `-march=rv32imafc_b_xesploop_xespv -mabi=ilp32f` (no `-mcpu` form yet; riscv-esp-elf-gcc 15.2.0 not in this repo's setup) |
+| TinyGo 0.41.1 | ✗ — bundled LLVM 20.1.1 predates the s31 ProcessorModel |
+
 ### TinyGo coverage
 
 TinyGo v0.41.1 ships an `esp32p4` device-tree register definition file
