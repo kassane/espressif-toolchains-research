@@ -36,15 +36,15 @@ case "$TARGET" in
         RS_TARGET="riscv32imc-unknown-none-elf"
         DUMP_FLAGS=""
         ;;
-    esp32p4)
-        ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=esp32p4"
-        ZT="-target riscv32-freestanding-none -mcpu=esp32p4"
-        LT="-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4"
+    esp32p4|esp32s31)
+        ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=$TARGET"
+        ZT="-target riscv32-freestanding-none -mcpu=$TARGET"
+        LT="-mtriple=riscv32-unknown-none-elf -mcpu=$TARGET"
         RS_TARGET="riscv32imafc-unknown-none-elf"
         DUMP_FLAGS=""
         ;;
     *)
-        echo "usage: $0 {esp32|esp32s2|esp32s3|esp32c3|esp32p4}"; exit 1
+        echo "usage: $0 {esp32|esp32s2|esp32s3|esp32c3|esp32p4|esp32s31}"; exit 1
         ;;
 esac
 B="build/zero-cost-$TARGET"; mkdir -p "$B"

@@ -44,16 +44,16 @@ case "$TARGET" in
         DUMP_FLAGS=""  # riscv: llvm-objdump auto-detects from ELF
         CTFE_RE='li.*120|li.*0x78'  # riscv: li a0, 0x78 (= 120)
         ;;
-    esp32p4)
-        ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=esp32p4"
-        LT="-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4"
-        ZT="-target riscv32-freestanding-none -mcpu=esp32p4"
+    esp32p4|esp32s31)
+        ARCH=riscv; CT="--target=riscv32-esp-elf -mcpu=$TARGET"
+        LT="-mtriple=riscv32-unknown-none-elf -mcpu=$TARGET"
+        ZT="-target riscv32-freestanding-none -mcpu=$TARGET"
         RS_TARGET="riscv32imafc-unknown-none-elf"
         DUMP_FLAGS=""
         CTFE_RE='li.*120|li.*0x78'
         ;;
     *)
-        echo "usage: $0 {esp32|esp32s2|esp32s3|esp32c3|esp32p4}"; exit 1
+        echo "usage: $0 {esp32|esp32s2|esp32s3|esp32c3|esp32p4|esp32s31}"; exit 1
         ;;
 esac
 B="build/tmp-parity-$TARGET"; mkdir -p "$B"

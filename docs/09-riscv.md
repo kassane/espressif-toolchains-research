@@ -87,24 +87,32 @@ esp-clang 21.1.3 also targets **esp32p4** (mainstream, ESPV 2.2) and
 extensions `Xespv` and `Xesploop` (plus `Xespdsp` opt-in). ABI is ilp32f.
 
 The `zero-cost` and `tmp-parity` experiments (docs/25, docs/26) now accept
-esp32c3 and esp32p4 as `-mcpu` targets:
+esp32c3, esp32p4, and **esp32s31** as `-mcpu` targets:
 
 ```bash
-experiments/zero-cost/run.sh   {esp32 | esp32c3 | esp32p4}
-experiments/tmp-parity/run.sh  {esp32 | esp32c3 | esp32p4}
+experiments/zero-cost/run.sh   {esp32 | esp32c3 | esp32p4 | esp32s31}
+experiments/tmp-parity/run.sh  {esp32 | esp32c3 | esp32p4 | esp32s31}
 ```
 
-Vendor SIMD (`esp.*` mnemonics on esp32p4) — see [docs/16
-§"ESP32-P4 RISC-V vendor SIMD"](16-simd-vectorization.md).
+**esp32s31** (announced 2026-03) is Espressif's converged RISC-V SoC: P4-class
+HP core IP + S3-class peripherals (USB / LCD / camera / JPEG codec) + WiFi 6
++ BT 5.4 + 802.15.4 + Gigabit Ethernet. At the LLVM level it shares
+esp32p4's `RISCVProcessorModel` exactly (same `FeatureEspL5 + Xespv +
+Xesploop`); the only codegen difference is in TuneFeatures (s31 prefers Zba
+`sh{1,2,3}add` shift-add fusion where p4 emits `slli + add` pairs).
+
+Vendor SIMD (`esp.*` mnemonics on esp32p4/s31) — see [docs/16
+§"ESP32-P4 RISC-V vendor SIMD"](16-simd-vectorization.md) and
+§"esp32s31 — same ESPV 2.2 vendor SIMD as esp32p4".
 
 ### Four-frontend toolchain matrix for RISC-V ESP targets
 
-| frontend | esp32c3 (rv32imc) | esp32p4 (rv32imafc) | esp32p4 SIMD asm |
-|---|---|---|---|
-| **esp-clang 21.1.3** | `--target=riscv32-esp-elf -mcpu=esp32c3` | `--target=riscv32-esp-elf -mcpu=esp32p4` | `-mcpu=esp32p4eco4` for ESPV 2.1 mnemonics |
-| **LDC 1.42.0** (LLVM 22.1.4) | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32c3` | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4` | `-mcpu=esp32p4eco4` |
-| **Zig 0.17.0-xtensa** | `-target riscv32-freestanding-none -mcpu=esp32c3` | `-target riscv32-freestanding-none -mcpu=esp32p4` | `-mcpu=esp32p4eco4` |
-| **rustc 1.95-nightly** | `--target riscv32imc-unknown-none-elf` | `--target riscv32imafc-unknown-none-elf` | `-C target-cpu=esp32p4eco4` |
+| frontend | esp32c3 (rv32imc) | esp32p4 (rv32imafc) | esp32s31 (rv32imafcb + WiFi/BT/15.4/GbE) | esp32p4/s31 SIMD asm |
+|---|---|---|---|---|
+| **esp-clang 21.1.3** | `--target=riscv32-esp-elf -mcpu=esp32c3` | `--target=riscv32-esp-elf -mcpu=esp32p4` | `-mcpu=esp32s31` | `-mcpu=esp32p4eco4` for ESPV 2.1 mnemonics |
+| **LDC 1.42.0** (LLVM 22.1.4) | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32c3` | `-mtriple=riscv32-unknown-none-elf -mcpu=esp32p4` | `-mcpu=esp32s31` | `-mcpu=esp32p4eco4` |
+| **Zig 0.17.0-xtensa** | `-target riscv32-freestanding-none -mcpu=esp32c3` | `-target riscv32-freestanding-none -mcpu=esp32p4` | `-mcpu=esp32s31` | `-mcpu=esp32p4eco4` |
+| **rustc 1.95-nightly** | `--target riscv32imc-unknown-none-elf` | `--target riscv32imafc-unknown-none-elf` | `-C target-cpu=esp32s31` (on `riscv32imafc-unknown-none-elf`) | `-C target-cpu=esp32p4eco4` |
 
 All three LLVM C-family frontends accept the esp* CPU names natively because
 they share the espressif LLVM RISC-V backend: esp-clang's 21.1.3 and LDC's

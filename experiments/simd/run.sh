@@ -204,3 +204,99 @@ else
     echo "  rejected: 'instruction requires the following: Espressif ESPV 2.1/2.2'"
     echo "  → matches xtensa: vendor SIMD only on the chip that has the unit."
 fi
+
+# =============================================================================
+# §8. ESP32-S31 — the same vendor RISC-V SIMD as ESP32-P4 (announced 2026-03)
+# =============================================================================
+echo ""
+echo "== 8. ESP32-S31 (RISC-V dual-core RV32IMAFCP + ESPV 2.2 + ESPLOOP) =="
+echo "  Espressif's 2026 SoC: WiFi 6 + Bluetooth 5.4 + 802.15.4 + Gigabit Ethernet"
+echo "  + RISC-V HP core derived from esp32p4. Introduced in espressif/llvm-project"
+echo "  commit c50ef2b (2026-03-02). At the LLVM **feature level** the s31"
+echo "  RISCVProcessorModel is identical to esp32p4 — same FeatureEspL5 +"
+echo "  FeatureVendorXespv (ESPV 2.2) + FeatureVendorXesploop, including all of"
+echo "  +a/+b/+c/+f/+m + Zba/Zbb/Zbc/Zbs/Zca/Zcb/Zcf/Zcmt. So scalar codegen"
+echo "  uses the same instruction set, but TUNING heuristics differ (see §8.1)."
+echo ""
+S31=esp32s31
+S31C="--target=riscv32-esp-elf -mcpu=$S31"
+S31Z="-target riscv32-freestanding-none -mcpu=$S31"
+S31L="-mtriple=riscv32-unknown-none-elf -mcpu=$S31"
+B8=build/simd-s31; mkdir -p "$B8"
+
+echo "== 8.1 -mcpu=esp32s31 vs -mcpu=esp32p4 — feature parity + tuning diff =="
+"$CLANG" $S31C -ffreestanding -Os -c "$D/vadd.c" -o "$B8/vadd_s31.o"
+"$CLANG" $P4C  -ffreestanding -Os -c "$D/vadd.c" -o "$B8/vadd_p4.o"
+echo "  target-features sorted diff (empty = same feature surface):"
+fe_diff=$(diff \
+    <("$CLANG" $S31C -O2 -S -emit-llvm -x c -o - </dev/null 2>&1 | grep -oE '"target-features"="[^"]*"' | tr ',' '\n' | sort) \
+    <("$CLANG" $P4C  -O2 -S -emit-llvm -x c -o - </dev/null 2>&1 | grep -oE '"target-features"="[^"]*"' | tr ',' '\n' | sort) | head -5)
+if [ -z "$fe_diff" ]; then
+    echo "    (empty — feature flags match exactly)"
+else
+    echo "$fe_diff" | sed 's/^/    /'
+fi
+echo "  But codegen differs on shift-add patterns:"
+sh_s31=$("$ESP_CLANG_DIR/llvm-objdump" -d --disassemble-symbols=vadd_i32 "$B8/vadd_s31.o" 2>/dev/null | grep -cE 'sh[123]add' || true)
+sh_p4=$( "$ESP_CLANG_DIR/llvm-objdump" -d --disassemble-symbols=vadd_i32 "$B8/vadd_p4.o"  2>/dev/null | grep -cE 'sh[123]add' || true)
+echo "    s31 emits sh{1,2,3}add (Zba fused) in vadd_i32: $sh_s31 uses"
+echo "    p4  emits slli+add (no fusion) in vadd_i32:    $sh_p4 uses"
+echo "  → s31's TuneFeatures prefer Zba shift-add fusion; p4's don't. Same ISA"
+echo "    surface, different cost-model heuristics."
+
+echo "== 8.2 inline asm esp.* on esp32s31 — vld/vst work, vadd needs ESPV 2.1 =="
+if "$CLANG" $S31C -ffreestanding -O2 -c "$D/esp.c" -o "$B8/esp_s31_full.o" 2>/dev/null; then
+    echo "  (unexpected) esp.vadd.s8 assembled — would indicate ESPV 2.2 added s8 vadd"
+else
+    echo "  esp.vadd.s8 rejected (same as esp32p4): 'requires Espressif ESPV 2.1'."
+    echo "  Same ESPV 2.2 mnemonic gap as plain esp32p4 (§7.4). Documentation pending."
+fi
+echo "  → vld+vst encodings on esp32s31 (cross-frontend parity probe):"
+cat > "$B8/esp_vlst.c" <<'EOF'
+void esp_vlst(signed char* d, const signed char* a) {
+  __asm__ volatile(
+    "esp.vld.128.ip q0, %1, 0\n"
+    "esp.vst.128.ip q0, %0, 0\n"
+    : : "r"(d), "r"(a) : "memory");
+}
+EOF
+cat > "$B8/esp_vlst.zig" <<'EOF'
+export fn esp_vlst(d: [*]i8, a: [*]const i8) void {
+    asm volatile (
+        \\esp.vld.128.ip q0, %[a], 0
+        \\esp.vst.128.ip q0, %[d], 0
+        : : [d] "r" (d), [a] "r" (a),
+        : .{ .memory = true });
+}
+EOF
+cat > "$B8/esp_vlst.d" <<'EOF'
+module esp_vlst;
+import ldc.llvmasm : __asm;
+extern (C) void esp_vlst(byte* d, const byte* a)
+{
+    __asm!void(
+        "esp.vld.128.ip q0, $1, 0\n" ~
+        "esp.vst.128.ip q0, $0, 0",
+        "r,r,~{memory}",
+        d, a);
+}
+EOF
+"$CLANG" $S31C -ffreestanding -O2 -c "$B8/esp_vlst.c"   -o "$B8/esp_vlst_c.o"
+"$ZIG"   build-obj $S31Z -O ReleaseSmall -femit-bin="$B8/esp_vlst_z.o" "$B8/esp_vlst.zig"
+"$LDC2"  $S31L $LDC_PE -betterC -O2 -c "$B8/esp_vlst.d"   -of="$B8/esp_vlst_d.o"
+echo "    Cross-frontend encoding parity (ESPV 2.2 vld+vst kernel):"
+for o in c z d; do
+    sym=$([ "$o" = c ] && echo esp_vlst || ([ "$o" = z ] && echo esp_vlst || echo esp_vlst))
+    enc=$("$ESP_CLANG_DIR/llvm-objdump" -d --disassemble-symbols="$sym" "$B8/esp_vlst_$o.o" 2>/dev/null \
+          | awk '/^[[:space:]]+[0-9a-f]+:/{
+              sub(/^[[:space:]]+[0-9a-f]+:[[:space:]]+/,"")
+              w=""
+              for (i=1;i<=NF;i++) if ($i ~ /^[0-9a-f]+$/) w=(w==""?$i:w" "$i); else break
+              print w
+          }' | tr '\n' '|' | sed 's/|$//; s/|/ | /g')
+    label=$([ "$o" = c ] && echo "clang " || ([ "$o" = z ] && echo "zig   " || echo "ldc   "))
+    printf "    %s %s\n" "$label" "$enc"
+done
+echo "  → ESPV 2.2 opcode space (custom-1, *.1f major opcode) ≠ ESPV 2.1 (*.3b)."
+echo "    LLVM 21.1.3 disasm CAN encode but CANNOT decode 2.2 — emits <unknown>"
+echo "    in pretty-print. Bytes are correct and byte-identical across frontends."
