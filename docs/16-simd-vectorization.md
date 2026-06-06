@@ -92,7 +92,7 @@ instructions, operands routed to `a2/a3/a4`, with q-register clobbers accepted.
 Same path in Rust (`experiments/simd/rs`), with two nightly caveats:
 
 ```rust
-#![feature(asm_experimental_arch)]   // Xtensa asm! is experimental → required
+#![feature(asm_experimental_arch)]   // Xtensa asm! upstreamed in rust-lang/rust#147302 (merged 2026-06-05) — still nightly-gated per stability policy
 core::arch::asm!(
     "ee.vld.128.ip q0, {a}, 0",
     "ee.vld.128.ip q1, {b}, 0",
@@ -124,8 +124,9 @@ on Xtensa the *only* clobber signal C/clang exposes to LLVM for q-regs is
 | Rust 1.95-nightly | `out("q0") _` rejected: *"unknown register"* (esp-rs/rust#265 + PR #272 draft, not merged) | **no** until #272 lands |
 
 The Zig clobber fields live in `$ZIG_DIR/lib/std/lang/assembly.zig`'s
-`pub const Clobbers = switch (cpu.arch)` block — Xtensa branch starts at
-line 852 (`.xtensa, .xtensaeb`); q0..q7 are at lines 930-937 alongside
+`pub const Clobbers = switch (cpu.arch)` block. In the patched file
+(applied automatically by `scripts/setup.sh`): Xtensa branch starts at
+line 883 (`.xtensa, .xtensaeb`); q0..q7 are at lines 961-968 alongside
 a0..a15, b0..b15, f0..f15, MAC16 (acchi/acclo/m0..m3), and control regs
 (sar/lbeg/lend/ps/...). The Clobbers struct was *renamed from
 `std.builtin.Clobbers` to `std.lang.assembly.Clobbers`* in Zig 0.17 (the
@@ -146,15 +147,18 @@ qacc_l: bool = false, qacc_h: bool = false, qacc: bool = false,
 xacc: bool = false,
 ```
 
-Patching the bundled `$ZIG/lib/std/lang/assembly.zig` in place with the
-kassane HEAD version takes the file from 3199 lines → 3230 lines and
-lets `experiments/simd/esp.zig` declare `.{ .memory = true, .q0 = true,
+`scripts/setup.sh` patches the bundled
+`$ZIG/lib/std/lang/assembly.zig` in place with the kassane HEAD version
+automatically on every setup run (the patch is idempotent + reuses the
+`fetch()` helper's `-fsSL --retry` semantics). The patched file takes
+the bundled tarball from 3199 → 3230 lines and lets
+`experiments/simd/esp.zig` declare `.{ .memory = true, .q0 = true,
 .q1 = true, .q2 = true }` on the RISC-V SIMD probe. Verified: the
 patched build emits the SAME byte-identical ESPV 2.1 encoding
 (`0201a03b | 0202243b | 065f 06a0 283b | 8201 | 8082`) as the
 `.memory`-only form — the codegen impact is on the register allocator,
-not the assembled bytes. Will reach end-users once a fresh `$ZIG`
-tarball ships with this change in lib/std.
+not the assembled bytes. The auto-patch will become a no-op once a
+fresh `$ZIG` tarball ships with the kassane HEAD `assembly.zig`.
 
 **LDC parity update (2026-06)**: `experiments/simd/ee.d` now uses
 `"r,r,r,~{memory},~{q0},~{q1},~{q2}"` (was `"r,r,r,~{memory}"`) — the LDC
@@ -290,12 +294,17 @@ ESPV 2.1 / esp32p4eco4):
 | accumulator / state | `esp.zero.q`, `esp.zero.qacc`, `esp.ldqa.{s,u}{8,16}.128.{ip,xp}`, `esp.ld.qacc.{l,h}.{l,h}.128.ip` |
 | hardware loops | `esp.lp.setup`, `esp.lp.setupi`, `esp.lp.endi`, `esp.lp.count` |
 
-ESPV 2.2 spellings are not yet publicly documented; the mainstream esp32p4
-chip uses 2.2, the eco4 variant uses 2.1. **The two opcode tables are
-wire-incompatible** — assembling `esp.vadd.s8 q2, q0, q0` against
-`-mcpu=esp32p4` errors with `'Espressif ESPV 2.1' required`, while
-`-mcpu=esp32p4eco4` accepts it. Use `-mcpu=esp32p4eco4` for any inline-asm
-work today.
+ESPV 2.2 spellings are now public — `espressif/llvm-project` commit
+`8108e99` (2026-04-23 on `release/esp_22.x`) added a complete ESPV 2.2
+`RISCVInstrInfoESPV.td` + `IntrinsicsRISCVESPV.td` + matching
+`xespv2p2-valid.s` test file. **But the bundled `$ZIG` and `$LDC2` both
+ship LLVM 22.1.4**, which predates `8108e99` — empirically `esp.vadd.s8`
+against `-mcpu=esp32p4` still rejects with `'Espressif ESPV 2.1' required`
+on the canonical lane. The two opcode tables are wire-incompatible and
+end in different RISC-V major-opcode spaces (ESPV 2.1 = `0b0001011`
+custom-0; ESPV 2.2 = `0b0011111` custom-1). Use `-mcpu=esp32p4eco4` for
+inline-asm work today; switch to plain `-mcpu=esp32p4` once the bundled
+LLVM reaches 22.1.5+.
 
 ### Autovec + explicit vector types — same null result as xtensa s3
 
