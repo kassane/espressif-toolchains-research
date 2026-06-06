@@ -135,7 +135,7 @@ old path remains aliased one release for deprecation).
 $ZIG bundle's `assembly.zig` (the 2026-05-29 `0.17.0-xtensa-dev` tarball)
 ships with `.riscv32, .riscv32be, ...` defining the standard RVV `v0..v31`
 but no ESPV q-regs. **The kassane/zig xtensa-branch HEAD has added them**
-at lines 841-857 of the file as 11 vendor fields:
+at lines 841-857 of the file as 12 vendor fields:
 
 ```zig
 // ESP32-P4 (xespv/xespdsp): 128-bit vector registers Q0–Q7

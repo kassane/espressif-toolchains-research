@@ -105,10 +105,21 @@ fi
 # source; bundled tarball lag)".
 ASM_ZIG="$TC/zig-0.17-espressif/lib/std/lang/assembly.zig"
 ASM_URL="https://raw.githubusercontent.com/kassane/zig/xtensa/lib/std/lang/assembly.zig"
-if [ -f "$ASM_ZIG" ] && ! grep -q "ESP32-P4 (xespv/xespdsp)" "$ASM_ZIG"; then
+# Idempotency: check for the q0 field in the RISC-V Clobbers section (robust
+# against future comment-style changes upstream — the field name itself is
+# the ABI surface, comments aren't).
+if [ -f "$ASM_ZIG" ] && ! grep -qE '^\s+q0: bool = false,.*xespv|ESP32-P4 \(xespv' "$ASM_ZIG"; then
     echo "patching $ASM_ZIG with kassane/zig xtensa HEAD (adds RISC-V ESPV q-regs)"
-    cp "$ASM_ZIG" "$ASM_ZIG.orig"
-    curl -sL "$ASM_URL" -o "$ASM_ZIG"
+    cp -p "$ASM_ZIG" "$ASM_ZIG.orig"
+    # -f fails on HTTP errors (mirrors the fetch() helper above); --retry guards
+    # against transient network drops; the temp-file dance leaves $ASM_ZIG
+    # untouched if curl fails — recovering automatically on the next run.
+    if curl -fsSL --retry 4 --retry-delay 2 "$ASM_URL" -o "$ASM_ZIG.new"; then
+        mv "$ASM_ZIG.new" "$ASM_ZIG"
+    else
+        echo "WARNING: assembly.zig patch download failed; keeping unpatched original."
+        rm -f "$ASM_ZIG.new"
+    fi
 fi
 extract "$DL/zig-016-xtensa.tar.xz" "zig-relsafe-x86_64-linux-musl-baseline"
 extract "$DL/clang-xtensa.tar.xz" "esp-clang"

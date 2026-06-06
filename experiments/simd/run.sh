@@ -158,6 +158,15 @@ echo "  zig @Vector esp.*=$(espn "$B4/zvec.o") (scalar)"
 
 echo "== 7.3 inline asm esp.* (the only emittable PIE path on esp32p4) =="
 "$CLANG" $P4C -ffreestanding -O2 -c "$D/esp.c" -o "$B4/esp_clang.o"
+# esp.zig declares q-reg clobbers (.q0/.q1/.q2 = true) that require the
+# patched assembly.zig (kassane/zig xtensa HEAD); see scripts/setup.sh.
+# Pre-flight check so the failure mode points at the fix.
+ZIG_ASM="$(dirname "$ZIG")/lib/std/lang/assembly.zig"
+if ! grep -qE '(ESP32-P4 \(xespv|^\s+q0: bool = false,)' "$ZIG_ASM"; then
+    echo "ERROR: \$ZIG/lib/std/lang/assembly.zig lacks RISC-V ESPV q-reg fields."
+    echo "       Re-run scripts/setup.sh to apply the kassane/zig HEAD patch."
+    exit 1
+fi
 "$ZIG" build-obj $P4Z -O ReleaseSmall -femit-bin="$B4/esp_zig.o" "$D/esp.zig"
 "$LDC2" $P4L $LDC_PE -betterC -O2 -c "$D/esp.d" -of="$B4/esp_d.o"
 ( cd "$D/rs" && RUSTC="$RUSTC" "$CARGO" rustc --release \
