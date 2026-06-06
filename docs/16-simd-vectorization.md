@@ -131,17 +131,30 @@ a0..a15, b0..b15, f0..f15, MAC16 (acchi/acclo/m0..m3), and control regs
 `std.builtin.Clobbers` to `std.lang.assembly.Clobbers`* in Zig 0.17 (the
 old path remains aliased one release for deprecation).
 
-**RISC-V ESPV gap (closing soon)**: the bundled `$ZIG` 0.17.0-xtensa-dev's
-`.riscv32, .riscv32be, ...` branch (lines 646-827) defines the standard RVV
-`v0..v31` registers but does **not** yet have q-regs for Espressif ESPV.
-**The kassane/zig xtensa-branch HEAD has already added them** at lines
-779-801 — `q0..q7` (gated `// ESP32-P4 (xespv/xespdsp)`), `qacc_l`,
-`qacc_h`, `qacc` (gated `// ESP32-P4 (xespv): 512-bit QACC accumulator`),
-and `xacc` (gated `// ESP32-P4 (xespdsp): 40-bit XACC accumulator`). This
-will reach the bundled `$ZIG` on the next tarball cut. Until then, on
-esp32p4 / esp32s31 the q-reg clobber path is unreachable via the Zig
-struct surface; only `.memory = true` applies, and `experiments/simd/
-esp.zig` reflects that current constraint.
+**RISC-V ESPV gap (closed in source; bundled tarball lag)**: the canonical
+$ZIG bundle's `assembly.zig` (the 2026-05-29 `0.17.0-xtensa-dev` tarball)
+ships with `.riscv32, .riscv32be, ...` defining the standard RVV `v0..v31`
+but no ESPV q-regs. **The kassane/zig xtensa-branch HEAD has added them**
+at lines 841-857 of the file as 11 vendor fields:
+
+```zig
+// ESP32-P4 (xespv/xespdsp): 128-bit vector registers Q0–Q7
+q0..q7: bool = false,
+// ESP32-P4 (xespv): 512-bit QACC accumulator and sub-registers
+qacc_l: bool = false, qacc_h: bool = false, qacc: bool = false,
+// ESP32-P4 (xespdsp): 40-bit XACC accumulator
+xacc: bool = false,
+```
+
+Patching the bundled `$ZIG/lib/std/lang/assembly.zig` in place with the
+kassane HEAD version takes the file from 3199 lines → 3230 lines and
+lets `experiments/simd/esp.zig` declare `.{ .memory = true, .q0 = true,
+.q1 = true, .q2 = true }` on the RISC-V SIMD probe. Verified: the
+patched build emits the SAME byte-identical ESPV 2.1 encoding
+(`0201a03b | 0202243b | 065f 06a0 283b | 8201 | 8082`) as the
+`.memory`-only form — the codegen impact is on the register allocator,
+not the assembled bytes. Will reach end-users once a fresh `$ZIG`
+tarball ships with this change in lib/std.
 
 **LDC parity update (2026-06)**: `experiments/simd/ee.d` now uses
 `"r,r,r,~{memory},~{q0},~{q1},~{q2}"` (was `"r,r,r,~{memory}"`) — the LDC
