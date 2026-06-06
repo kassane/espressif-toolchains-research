@@ -229,7 +229,7 @@ at the shell; see "Zig 0.17 status" below). See [docs/17](17-rust-zig-interop.md
 ## Cost & mitigation
 
 - Code-size symptom on the legacy `$ZIG_016` lane: Zig's 9-function lib was
-  **715 B** of `.text` vs clang **223 B** / gcc **201 B** (real `.text`,
+  **715 B** of `.text` vs clang **219 B** / gcc **201 B** (real `.text`,
   `llvm-size -A`; the often-quoted 647 B counted zig's default `.eh_frame` —
   docs/15) — the bloat was the byte-by-byte stack marshalling above. **Zig
   0.17 (`$ZIG` canonical) regenerates the same `.text` shape as clang**, so

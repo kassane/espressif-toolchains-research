@@ -172,7 +172,7 @@ work, not a dependency of the experiments.
 
 ## D / LDC on Xtensa (the espressif-fork build — docs/23)
 
-- **kassane/esp-idf-dlang** — was at
+- **kassane/esp-idf-dlang** (repo deleted 2026-06) — was at
   <https://github.com/kassane/esp-idf-dlang> — the canonical LDC 1.42.0
   build against `espressif/llvm-project` LLVM 22.1.4 (`xtensa-toolchain`
   release; 2026-05-30 maintainer re-upload). **Repo now returns 404**
