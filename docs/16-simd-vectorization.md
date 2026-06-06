@@ -131,11 +131,17 @@ a0..a15, b0..b15, f0..f15, MAC16 (acchi/acclo/m0..m3), and control regs
 `std.builtin.Clobbers` to `std.lang.assembly.Clobbers`* in Zig 0.17 (the
 old path remains aliased one release for deprecation).
 
-**RISC-V ESPV gap**: the same file's `.riscv32, .riscv32be, ...` branch
-(lines 646-827) defines the standard RVV `v0..v31` registers but has **no
-q-regs for Espressif ESPV**. So on esp32p4 / esp32s31 the q-reg clobber
-path is unreachable via the Zig struct surface; only `.memory = true`
-applies. `experiments/simd/esp.zig` reflects this constraint.
+**RISC-V ESPV gap (closing soon)**: the bundled `$ZIG` 0.17.0-xtensa-dev's
+`.riscv32, .riscv32be, ...` branch (lines 646-827) defines the standard RVV
+`v0..v31` registers but does **not** yet have q-regs for Espressif ESPV.
+**The kassane/zig xtensa-branch HEAD has already added them** at lines
+779-801 — `q0..q7` (gated `// ESP32-P4 (xespv/xespdsp)`), `qacc_l`,
+`qacc_h`, `qacc` (gated `// ESP32-P4 (xespv): 512-bit QACC accumulator`),
+and `xacc` (gated `// ESP32-P4 (xespdsp): 40-bit XACC accumulator`). This
+will reach the bundled `$ZIG` on the next tarball cut. Until then, on
+esp32p4 / esp32s31 the q-reg clobber path is unreachable via the Zig
+struct surface; only `.memory = true` applies, and `experiments/simd/
+esp.zig` reflects that current constraint.
 
 **LDC parity update (2026-06)**: `experiments/simd/ee.d` now uses
 `"r,r,r,~{memory},~{q0},~{q1},~{q2}"` (was `"r,r,r,~{memory}"`) — the LDC
