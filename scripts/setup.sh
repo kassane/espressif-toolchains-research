@@ -97,6 +97,19 @@ if [ ! -x "$TC/zig-0.17-espressif/zig" ]; then
     mkdir -p "$TC/zig-0.17-espressif"
     tar xf "$DL/zig-0.17-espressif.tar.xz" -C "$TC/zig-0.17-espressif" --strip-components=1
 fi
+# Patch in the newer std/lang/assembly.zig from kassane/zig xtensa branch HEAD.
+# The 2026-05-29 0.17.0-xtensa-dev tarball ships with no RISC-V ESPV q-reg
+# clobber fields; the HEAD has them at lines 841-857 (q0..q7 + qacc_l/h/qacc +
+# xacc, gated `// ESP32-P4 (xespv/xespdsp)`). Required by experiments/simd/
+# esp.zig's q-reg clobber list. See docs/16 §"RISC-V ESPV gap (closed in
+# source; bundled tarball lag)".
+ASM_ZIG="$TC/zig-0.17-espressif/lib/std/lang/assembly.zig"
+ASM_URL="https://raw.githubusercontent.com/kassane/zig/xtensa/lib/std/lang/assembly.zig"
+if [ -f "$ASM_ZIG" ] && ! grep -q "ESP32-P4 (xespv/xespdsp)" "$ASM_ZIG"; then
+    echo "patching $ASM_ZIG with kassane/zig xtensa HEAD (adds RISC-V ESPV q-regs)"
+    cp "$ASM_ZIG" "$ASM_ZIG.orig"
+    curl -sL "$ASM_URL" -o "$ASM_ZIG"
+fi
 extract "$DL/zig-016-xtensa.tar.xz" "zig-relsafe-x86_64-linux-musl-baseline"
 extract "$DL/clang-xtensa.tar.xz" "esp-clang"
 extract "$DL/gcc-xtensa.tar.xz"   "xtensa-esp-elf"
