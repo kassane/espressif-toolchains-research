@@ -22,7 +22,7 @@ output.
 - [x] ABI verified from disassembly: windowed `entry`/`retw.n`, args `a2..a7`,
       callbacks `callx8` — identical clang/rust/zig/gcc (doc 03).
 - [x] LLVM IR comparison: clang/rust lower aggregates to the C ABI in-frontend;
-      zig defers to the backend (doc 04).
+      Zig 0.16 deferred to the backend (closed by 0.17 — doc 04, doc 05).
 - [x] **Headline finding** — by-value struct **arguments** are ABI-incompatible
       with Zig on Xtensa for **under-aligned** (`align(1)`) structs (alignment-,
       not size-driven; proven at the call site). NOTE: also broken differently on
