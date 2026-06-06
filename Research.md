@@ -183,10 +183,13 @@ behaviour is preserved on `$LDC2_UPSTREAM`.
 
 So the earlier intuition "small OK / large broken" was a confound: `Point` (8 B)
 is `{i32,i32}` (align 4) and `Blob` (24 B) is `[24]u8` (align 1). At the call
-site, clang stages the words in `a10..a15`; Zig does `movsp` to grow the stack and
-spills the under-aligned struct to memory → a clang/rust/gcc ↔ zig call reads the
-bytes from the wrong place ⇒ silent corruption on hardware. (The host test passes
-only because x86_64 SysV memory-passes these structs where both agree.) Code-size
+site, clang stages the words in `a10..a15`; Zig 0.16 did `movsp` to grow the
+stack and spilled the under-aligned struct to memory → a clang/rust/gcc ↔ zig
+call read the bytes from the wrong place ⇒ silent corruption on hardware.
+(The host test passed regardless because x86_64 SysV memory-passes these
+structs where both agree.) Zig 0.17 closes the bug by flattening to
+`[N x i32]` like clang; `$ZIG_016` still reproduces the historical break.
+Code-size
 symptom (legacy `$ZIG_016` lane, where the bug reproduces): Zig's 9-function
 lib was **715 B** of `.text` vs clang **219 B** / gcc **201 B** (real `.text`
 via `llvm-size -A`; docs/06/15). On the canonical 0.17 lane (`$ZIG`), the

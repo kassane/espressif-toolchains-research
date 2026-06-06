@@ -98,10 +98,12 @@ work, not a dependency of the experiments.
   another aggregate-argument ABI mismatch vs clang/gcc/rust. **CLOSED via
   PR #19018**; left here as resolved prior art for the same family.
 
-> Our specific finding — Zig stack-spilling **`align(1)` by-value struct
-> arguments on Xtensa** that clang/rust/gcc flatten to `[N x i32]` in `a2..a7`
-> — does not appear to be separately reported. #22515 is the only still-open
-> nearest existing report (non-Xtensa, not alignment-triggered).
+> Our specific finding — Zig 0.16 stack-spilling **`align(1)` by-value
+> struct arguments on Xtensa** that clang/rust/gcc flatten to `[N x i32]`
+> in `a2..a7` — was not separately reported; it landed as part of
+> ziglang/zig **#5467** (umbrella Xtensa support, closed 2026-05-06 in
+> 0.17.0). #22515 is the only still-open nearest related report
+> (non-Xtensa, not alignment-triggered, same defer-to-LLVM root cause).
 
 ## Rust on Xtensa (esp-rs — a *fork*, not upstream)
 

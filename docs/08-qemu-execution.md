@@ -75,13 +75,18 @@ total failures: 3
 ```
 
 This is the docs/05 + docs/19 predictions confirmed **at runtime on an emulated
-Xtensa core**: scalars interoperate across every FFI-matrix language; the align-1 `Blob`
-by value is **misread by Zig** (`409 ≠ 300` — stack-spilled under-aligned struct
-while the **clang** driver passed it in registers). **D/LDC** fails *both* the
-align-4 `Point` (`point_dot`) and `blob_sum` — it marks every aggregate
-`byval`/`sret`, so it diverges more broadly than Zig (docs/19). **rust** and
-**gcc**-built C agree with clang on every row, so they're not visibly distinct
-in the output table. Passing the same struct **by pointer** works for all.
+Xtensa core**: scalars interoperate across every FFI-matrix language. The
+output above is the **legacy-lane** capture (`$ZIG_016` + `$LDC2_UPSTREAM`)
+preserved here as the bug-demonstration baseline; the align-1 `Blob` by value
+was **misread by Zig** (`409 ≠ 300` — stack-spilled under-aligned struct while
+the **clang** driver passed it in registers), and **D/LDC** failed *both* the
+align-4 `Point` (`point_dot`) and `blob_sum` because the pre-fix DMD-ABI
+lowering marked every aggregate `byval`/`sret`, diverging more broadly than
+Zig (docs/19). **rust** and **gcc**-built C agreed with clang on every row,
+so they're not visibly distinct in the output table. Passing the same struct
+**by pointer** worked for all. On the canonical lane (`$ZIG` 0.17 + `$LDC2`
+1.42.0, post-2026-05-30 re-upload) qemu reports **0 D failures and 0 Zig
+failures** — every by-value case the legacy lanes failed now passes.
 (The `got=` values on the FAIL rows are whatever stale data sat in the stack
 slots, so they vary run-to-run; the *mismatch* is the point.) Static
 disassembly (docs/05, docs/19) and live execution agree.
