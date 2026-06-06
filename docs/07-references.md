@@ -95,12 +95,13 @@ work, not a dependency of the experiments.
   *close prior art*: Zig stack-spills an aggregate parameter that the C ABI passes
   in registers (SystemV/x86-64). Same class of bug, different target.
 - **ziglang/zig #18916** — <https://github.com/ziglang/zig/issues/18916> —
-  another aggregate-argument ABI mismatch vs clang/gcc/rust.
+  another aggregate-argument ABI mismatch vs clang/gcc/rust. **CLOSED via
+  PR #19018**; left here as resolved prior art for the same family.
 
 > Our specific finding — Zig stack-spilling **`align(1)` by-value struct
 > arguments on Xtensa** that clang/rust/gcc flatten to `[N x i32]` in `a2..a7`
-> — does not appear to be separately reported. #22515/#18916 are the nearest
-> existing reports (non-Xtensa, not alignment-triggered).
+> — does not appear to be separately reported. #22515 is the only still-open
+> nearest existing report (non-Xtensa, not alignment-triggered).
 
 ## Rust on Xtensa (esp-rs — a *fork*, not upstream)
 
@@ -169,11 +170,19 @@ work, not a dependency of the experiments.
 
 ## D / LDC on Xtensa (the espressif-fork build — docs/23)
 
-- **kassane/esp-idf-dlang** — <https://github.com/kassane/esp-idf-dlang> — the
-  canonical LDC 1.42.0 build against `espressif/llvm-project` LLVM 22.1.4
-  (`xtensa-toolchain` release pinned in `scripts/setup.sh`; 2026-05-30
-  maintainer re-upload). Drops every D-side workaround documented in the
-  pre-fork docs/19, plus closes the universal byval/sret frontend bug.
+- **kassane/esp-idf-dlang** — was at
+  <https://github.com/kassane/esp-idf-dlang> — the canonical LDC 1.42.0
+  build against `espressif/llvm-project` LLVM 22.1.4 (`xtensa-toolchain`
+  release; 2026-05-30 maintainer re-upload). **Repo now returns 404**
+  (deleted, 2026-06 audit) — no replacement mirror is published by kassane
+  yet (none of their other repos host the bundle). `scripts/setup.sh`
+  handles the outage by falling back to `$LDC2_UPSTREAM` if the pinned
+  URL is unreachable; existing installs keep working from the cached
+  tarball in `/home/user/dl/ldc-esp.tar.xz` (sha256
+  `c2cd9f5bdd1caa80233cebc7b3d61243366b1b1a8780af019d0dbfb80becb548`).
+  Once the binary state was right (closes the universal byval/sret
+  frontend bug, drops every D-side workaround documented in pre-fork
+  docs/19), the outage is a distribution issue, not a code-state issue.
 - **ldc-developers/ldc #4919** —
   <https://github.com/ldc-developers/ldc/issues/4919> — "Missing default LLVM
   `cpu-features` in some targets". Fixed for esp32-s2/s3 on the espressif-fork

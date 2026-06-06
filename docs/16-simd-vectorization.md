@@ -108,6 +108,54 @@ xtensa `asm!`, so you can't write `out(qreg) _` to let the compiler allocate or
 declare them clobbered (this is exactly esp-rs/rust **#265**). In practice the
 compiler never *uses* q regs, so hardcoding q0–q2 is safe.
 
+### Cross-frontend inline-asm clobber matrix
+
+The four LLVM frontends differ sharply on how (or whether) they can declare
+PIE q-registers as clobbered. This matters: the LLVM register allocator
+won't avoid reuse of a q-register unless the constraint string says so, and
+on Xtensa the *only* clobber signal C/clang exposes to LLVM for q-regs is
+`memory` — clang has no q-register class at the constraint-parser level.
+
+| frontend | idiomatic form | does the q clobber reach LLVM? |
+|---|---|---|
+| C / esp-clang 21.1.3 | `: : : "memory"` only — `~{q0}` rejected at parse: *"unknown register name 'q0'"* | **no** |
+| Zig 0.17 | `: .{ .memory = true, .q0 = true, .q1 = true, .q2 = true }` (`std.lang.assembly.Clobbers`) | **yes** — lowers to `~{q0},~{q1},~{q2}` in IR |
+| D / LDC 1.42.0 | raw LLVM constraint string: `"r,r,r,~{memory},~{q0},~{q1},~{q2}"` | **yes** — pass-through (no validation) |
+| Rust 1.95-nightly | `out("q0") _` rejected: *"unknown register"* (esp-rs/rust#265 + PR #272 draft, not merged) | **no** until #272 lands |
+
+The Zig clobber fields live in `$ZIG_DIR/lib/std/lang/assembly.zig`'s
+`pub const Clobbers = switch (cpu.arch)` block — Xtensa branch starts at
+line 852 (`.xtensa, .xtensaeb`); q0..q7 are at lines 930-937 alongside
+a0..a15, b0..b15, f0..f15, MAC16 (acchi/acclo/m0..m3), and control regs
+(sar/lbeg/lend/ps/...). The Clobbers struct was *renamed from
+`std.builtin.Clobbers` to `std.lang.assembly.Clobbers`* in Zig 0.17 (the
+old path remains aliased one release for deprecation).
+
+**RISC-V ESPV gap**: the same file's `.riscv32, .riscv32be, ...` branch
+(lines 646-827) defines the standard RVV `v0..v31` registers but has **no
+q-regs for Espressif ESPV**. So on esp32p4 / esp32s31 the q-reg clobber
+path is unreachable via the Zig struct surface; only `.memory = true`
+applies. `experiments/simd/esp.zig` reflects this constraint.
+
+**LDC parity update (2026-06)**: `experiments/simd/ee.d` now uses
+`"r,r,r,~{memory},~{q0},~{q1},~{q2}"` (was `"r,r,r,~{memory}"`) — the LDC
+side previously left the q-reg clobbers off for parity with the C version,
+but that under-constrained the register allocator. Zig had it right; D now
+matches.
+
+**rustc status**: esp-rs/rust **#265** (q-reg register class) is still
+open. Tracking PR **#272** ("Expose SIMD q register class") sits in draft
+as of 2026-06-05 — adds `xtensa_reg::qreg` plus an LLVM submodule pointer
+bump. Once #272 merges, the Rust side can write `out("q0") _, out("q1") _`
+and the asm template `q0`/`q1` references become allocator-managed.
+
+**Upstream Xtensa asm! milestone**: `rust-lang/rust#147302` ("asm! support
+for the Xtensa architecture", MabezDev) **merged 2026-06-05**. Xtensa
+inline-asm is now a non-fork upstream Rust feature; the `esp-rs/rust`
+patches on this front become rebase-clean. `#![feature(asm_experimental_arch)]`
+will continue to be required until #147302 graduates from "experimental
+arch", per the upstream policy.
+
 ## C++26 `<simd>` (P1928) — not yet a path
 
 The natural seventh row in the parity table would be C++26's
