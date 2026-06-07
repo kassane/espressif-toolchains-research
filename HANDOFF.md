@@ -258,6 +258,33 @@ The commit IS the audit log entry — a real, attributable engineering
 event. The history of `toolchains.lock` is the history of toolchain
 drift in this repo.
 
+## Load-bearing green (anti false-green discipline)
+
+`experiments-audit.md` catalogues every experiment by claim, verification
+mechanism, and whether a mechanically-runnable mutation flips the green to
+red. Rows are classified Strong / Medium / Weak; the four Weak rows
+(atomics-orders, zero-cost, compiler-parity, dlang tmpffi) are deliberate
+WIP, **not** silent passes — the audit calls them out so the reader knows
+where the green is decorative vs. mechanical.
+
+`experiments/qemu-run/negative-controls.sh` is the wrapper that drives the
+guarantee:
+
+```
+experiments/qemu-run/negative-controls.sh canonical xtensa  # 0 failures
+experiments/qemu-run/negative-controls.sh canonical riscv   # 0 failures
+experiments/qemu-run/negative-controls.sh zig016    xtensa  # zig blob_sum FAIL (docs/05)
+experiments/qemu-run/negative-controls.sh zig016    riscv   # zig point_dot FAIL (docs/09)
+experiments/qemu-run/negative-controls.sh ldc_upstream xtensa  # byval/sret evidence
+experiments/qemu-run/negative-controls.sh all
+```
+
+If the legacy lane stops failing, the canonical green has lost its
+negative control — investigate before silently accepting. The historical
+`$ZIG_016` / `$LDC2_UPSTREAM` breaks are the load-bearing mutation source
+for the canonical lane's success claim; without them, "0 failures on
+qemu" is just unverified text.
+
 ## Not done / next steps
 
 - [x] **Execute** the Xtensa images on qemu. The espressif qemu fork
