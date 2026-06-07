@@ -1,0 +1,50 @@
+# toolchains.lock — content-addressed pinning for every toolchain artifact
+# scripts/setup.sh downloads. Format (whitespace-separated columns):
+#
+#   name  sha256  size_bytes  resolved_tag  url
+#
+# `name` matches the local cache filename in $DL/. setup.sh's fetch() verifies
+# sha256 after each download; mismatch aborts with a clear message.
+#
+# Why content-addressed: the 2026-05-30 esp-idf-dlang re-upload reused the
+# same release tag (`xtensa-toolchain`) but bumped LDC's version (1.42-git →
+# 1.42.0) AND its LLVM (21.1.3 → 22.1.4) — silently moving the toolchain from
+# the LLVM-21 cluster to the LLVM-22 cluster (changing which cross-language
+# LTO pairs link). Tag-pinning didn't catch it; hash-pinning does. See
+# HANDOFF.md §"Lock-file motivation".
+#
+# Update procedure when a fork bumps a tag:
+#   1. Delete the cached tarball:   rm $DL/<name>
+#   2. Re-run setup.sh — it fetches the new bytes and aborts on mismatch.
+#   3. Recompute sha256:            sha256sum $DL/<name>
+#   4. Update the row below in a SINGLE commit titled
+#      "toolchains.lock: <name> bumped (<old-version> → <new-version>)".
+#      The commit IS the audit log entry — a real engineering event.
+
+# === canonical lane (required for default setup.sh) =========================
+zig-0.17-espressif.tar.xz   97ba5be0fdebc5e7cd8d64246b43bf96f442bbe9271c94e9e083b46c3ffb39c3   78970936    0.17.0-xtensa-dev       https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.17.0-xtensa-dev/zig-relsafe-x86_64-linux-musl-baseline.tar.xz
+clang-xtensa.tar.xz         6e62bf1973b57b5388aad281ce1463e953e70b3d8df74ef4668c70f31fbeda63   416927952   esp-21.1.3_20260408     https://github.com/espressif/llvm-project/releases/download/esp-21.1.3_20260408/clang-esp-21.1.3_20260408-x86_64-linux-gnu.tar.xz
+rust-xtensa.tar.xz          aad2fb24baeab6ad61c41f002f136fe0b416ef39a501d29750ab66c18a699433   176114708   v1.95.0.0               https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-1.95.0.0-x86_64-unknown-linux-gnu.tar.xz
+rust-src.tar.xz             708bee337ac2d41c0e861af93047bffec91a052fbcb4957925d840a41f327717   4151808     v1.95.0.0               https://github.com/esp-rs/rust-build/releases/download/v1.95.0.0/rust-src-1.95.0.0.tar.xz
+gcc-xtensa.tar.xz           3d50f5cd5f173acfd524e07c1cd69bc99585731a415ca2e5bce879997fe602b8   180530004   esp-15.2.0_20251204     https://github.com/espressif/crosstool-NG/releases/download/esp-15.2.0_20251204/xtensa-esp-elf-15.2.0_20251204-x86_64-linux-gnu.tar.xz
+ldc-esp.tar.xz              c2cd9f5bdd1caa80233cebc7b3d61243366b1b1a8780af019d0dbfb80becb548   80494260    xtensa-toolchain        https://github.com/kassane/esp-idf-dlang/releases/download/xtensa-toolchain/ldc2-v1.42.0-espressif-linux-musl-static.tar.xz
+tinygo.tar.gz               e156d1d93a376eef639a4143d13be07e8c463fb6cf2d7d447698ed4474d23e91   179419437   v0.41.1                 https://github.com/tinygo-org/tinygo/releases/download/v0.41.1/tinygo0.41.1.linux-amd64.tar.gz
+
+# === legacy/regression lane (canonical fetches it too; needed for $ZIG_016) ===
+zig-016-xtensa.tar.xz       9e3dcef9d6f6d552df641a12addc9e443a69b7cbdad85492ec677acd55b7de9b   77947100    0.16.0-xtensa           https://github.com/kassane/zig-espressif-bootstrap/releases/download/0.16.0-xtensa/zig-relsafe-x86_64-linux-musl-baseline.tar.xz
+
+# === opt-in: LDC_UPSTREAM=1 (LLVM-22 fork-comparison baseline, docs/23) =====
+ldc-upstream.tar.xz         d0c4adabefd78c5de0fb8780227f497a8d243644a844272e3962a02f55b22899   149317364   CI (c8305d0a)           https://github.com/ldc-developers/ldc/releases/download/CI/ldc2-c8305d0a-linux-x86_64.tar.xz
+
+# === opt-in: LLVM22=1 (matching binutils for $LDC2_UPSTREAM, docs/04) =======
+llvm22-ldc.tar.zst          34055fbb895ca0ab209b58a605e61ba2cd2460bacf0f4b5aef2bd37a70790da9   425176240   ldc-v22.1.2             https://github.com/ldc-developers/llvm-project/releases/download/ldc-v22.1.2/llvm-22.1.2-linux-x86_64.tar.zst
+
+# === opt-in: QEMU=1 (qemu-system-{xtensa,riscv32} for run-qemu.sh) ==========
+qemu-xtensa.tar.xz          0eecb2a34a5586c0e59110f77b9343b7b336e82fdb0e1a30e1dc1bab8a547e35   15619396    esp-develop-9.2.2-20260417  https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+qemu-riscv.tar.xz           547f03e04701a92cbb699f7f7d015adc1f5b5ef93cbb94c0dd9b7107e2d84e77   16842920    esp-develop-9.2.2-20260417  https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+
+# === historical / regression-tracker (NOT downloaded by setup.sh) ===========
+# The pre-2026-05-30 LDC fork build (LDC 1.42-git on LLVM 21.1.3 — kept by
+# docs/23 §"What didn't flip" as the byval/sret regression-tracker baseline,
+# never auto-fetched).
+ldc-esp-OLD.tar.xz          0e99b893bb64ae0e6f6c888afd196cc9088a629dde1f57779f1b9ee888291211   50455204    xtensa-toolchain (pre-2026-05-30)  -

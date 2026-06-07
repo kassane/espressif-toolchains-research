@@ -217,6 +217,47 @@ output.
   the record):** the
   auto-fallback in `env.sh` is the operational path.
 
+## Lock-file motivation (the cautionary case this repo lived)
+
+The `toolchains.lock` file at repo root pins **sha256 + size + url + resolved
+tag** for every artifact `scripts/setup.sh` downloads. The motivation isn't
+hypothetical:
+
+On **2026-05-30** the `kassane/esp-idf-dlang` maintainer republished the
+`xtensa-toolchain` GitHub release. Same repo, same release tag, **different
+bytes**: the LDC version bumped (1.42-git → 1.42.0) AND its bundled LLVM
+bumped (21.1.3 → 22.1.4). The 21→22 LLVM bump silently moved the canonical
+LDC from the **LLVM-21 cluster** (where it could LTO with esp-clang + rust)
+to the **LLVM-22 cluster** (where it now LTOs with zig 0.17 + `$LDC2_UPSTREAM`
++ `$LDC_LLVM_DIR` instead — see CLAUDE.md gotcha #4 + docs/04 §"Two LLVM
+clusters"). The artifact also acquired the `[N x i32]` aggregate-flattening
+frontend fix, closing the universal byval/sret bug docs/05 + docs/19 +
+docs/23 had documented.
+
+**Tag-pinning cannot catch this kind of drift.** The release tag was stable
+across the bump — only the bytes changed. Hash-pinning catches it
+immediately: if `setup.sh` ever downloads bytes whose sha256 doesn't match
+`toolchains.lock`, it aborts loudly with the actual hash + a note pointing
+the user at the bump procedure. The same protection covers the other six
+artifacts (espressif/llvm-project, esp-rs/rust-build, zig-espressif-bootstrap
+canonical + legacy, espressif/crosstool-NG, ldc-developers/ldc CI,
+ldc-developers/llvm-project binutils, tinygo, espressif/qemu xtensa +
+riscv32).
+
+**Deliberate re-pin procedure** when a fork legitimately bumps:
+
+```
+1. rm $DL/<name>                       # drop the cached artifact
+2. ./scripts/setup.sh                  # re-fetches; aborts on mismatch
+3. sha256sum $DL/<name>                # compute the new hash
+4. Edit toolchains.lock; commit:
+   "toolchains.lock: <name> bumped (<old-version> → <new-version>)"
+```
+
+The commit IS the audit log entry — a real, attributable engineering
+event. The history of `toolchains.lock` is the history of toolchain
+drift in this repo.
+
 ## Not done / next steps
 
 - [x] **Execute** the Xtensa images on qemu. The espressif qemu fork

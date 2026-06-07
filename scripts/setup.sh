@@ -47,13 +47,41 @@ QEMU_XT_URL="$QEMU_BASE/qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-li
 QEMU_RV_URL="$QEMU_BASE/qemu-riscv32-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz"
 
 fetch() { # url outfile
-    [ -f "$2" ] && { echo "have $(basename "$2")"; return; }
+    [ -f "$2" ] && { echo "have $(basename "$2")"; verify_sha "$2"; return; }
     echo "downloading $(basename "$2")"
     curl -fsSL --retry 4 --retry-delay 2 -o "$2" "$1"
     case "$2" in
         *.tar.xz) xz -t "$2" ;;
         *.tar.gz) gunzip -t "$2" ;;
     esac
+    verify_sha "$2"
+}
+
+# verify_sha — content-addressed verification against toolchains.lock at repo
+# root. The lock file is the audit log: any artifact bumping its bytes must
+# come through an explicit lock-file commit ("toolchains.lock: <name> bumped").
+# Tag-pinning didn't catch the 2026-05-30 esp-idf-dlang re-upload that
+# silently bumped LDC's LLVM cluster; hash-pinning does. Aborts loudly on
+# mismatch so silent toolchain drift becomes impossible.
+LOCK_FILE="${LOCK_FILE:-$(dirname "$0")/../toolchains.lock}"
+verify_sha() { # path
+    local name expected got
+    name="$(basename "$1")"
+    expected=$(awk -v n="$name" '$1==n {print $2; exit}' "$LOCK_FILE" 2>/dev/null)
+    if [ -z "$expected" ]; then
+        echo "WARNING: $name not in toolchains.lock — skipping hash check"
+        return 0
+    fi
+    got=$(sha256sum "$1" | awk '{print $1}')
+    if [ "$got" != "$expected" ]; then
+        echo "FATAL: sha256 mismatch for $name"
+        echo "  expected: $expected (from $LOCK_FILE)"
+        echo "  got:      $got"
+        echo "  If this is an intentional upgrade, update toolchains.lock in a"
+        echo "  dedicated commit titled 'toolchains.lock: $name bumped (...)'."
+        exit 1
+    fi
+    echo "  sha256 OK: $name"
 }
 
 fetch "$ZIG_URL"      "$DL/zig-0.17-espressif.tar.xz"
