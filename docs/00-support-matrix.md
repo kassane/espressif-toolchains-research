@@ -132,6 +132,42 @@ Legend: ✓ works / correct · ✗ broken · — n/a.
 | u128 / `__int128` | ✓ native | ✓ native | **✗** `cent`/`ucent` formally obsoleted ("use core.int128.Cent", needs druntime) | ✗ rejected on xtensa | ✗ rejected on xtensa | ✗ no native |
 | `-fno-omit-frame-pointer` on register-heavy fn | rustc + `compiler_builtins` ICE (esp-rs #270) — Rust-specific | ✓ | ✓ no ICE (`-fp=all`) | ✓ no ICE | ✓ | ✓ |
 
+## How the gaps closed (taxonomy)
+
+Each row is a historical FFI/ABI break tracked in this repo, classified by
+HOW it reached its current state. Categories:
+
+- **pure-composition** — closed by composing existing artifacts differently
+  (e.g., shipping a parallel binutils tarball alongside esp-clang). No
+  source rebuild, no patch.
+- **runtime-rebuild** — closed by rebuilding the tool with different options
+  from unmodified sources (e.g., `-Z build-std=core` for Rust).
+- **callconv/frontend-patch** — closed by a patch to the frontend's
+  calling-convention / aggregate lowering (Zig PR #5467, LDC 1.42.0's
+  aggregate-flattening pass).
+- **fork-patch** — closed by patches carried in a maintained out-of-tree
+  fork that are not in the upstream tool (espressif-fork LDC's Xtensa MC
+  layer + s2/s3 cpu defaults).
+- **open** — not yet closed; reproducer documented, fix path identified or
+  the gap is flagged as out-of-FFI-matrix.
+
+| # | gap | first observed | canonical-lane status | how closed | reproducer | source of truth |
+|---|---|---|---|---|---|---|
+| 1 | Zig `extern struct` align-1 by-value arg lowered byte-per-register on Xtensa (`zig blob_sum` FAIL) | `$ZIG_016` (Zig 0.16 / LLVM 21.1.0) | ✓ closed — Zig 0.17 / LLVM 22.1.4 flattens to `[N x i32]` matching clang | **callconv/frontend-patch** (Zig issue #5467 landed in 0.17.0) | `experiments/qemu-run/negative-controls.sh zig016 xtensa` → reproduces `zig blob_sum FAIL` | docs/05 §"Zig 0.17 status"; `experiments/abi-structs/sweep.sh` |
+| 2 | Zig small `{i32,i32}` by-value arg lowered to `[2 x i64]` on RISC-V (`zig point_dot` FAIL) | `$ZIG_016` (Zig 0.16, RISC-V) | ✓ closed — Zig 0.17 lowers correctly | **callconv/frontend-patch** (same #5467 family) | `experiments/qemu-run/negative-controls.sh zig016 riscv` → reproduces `zig point_dot FAIL got=-2130706553` | docs/09; `experiments/rust-zig/run.sh` |
+| 3 | D universal aggregate `byval`/`sret` lowering on Xtensa (`d_point_dot` + `d_blob_sum` FAIL) | `$LDC2_UPSTREAM` (LDC 1.42-git / upstream LLVM 22.1.2) AND the pre-2026-05-30 espressif-fork build (kept as `ldc-esp-OLD` in `toolchains.lock` for the regression tracker) | ✓ closed on canonical — `$LDC2` 1.42.0 frontend flattens to `[N x i32]` like clang, qemu xtensa = 0 D failures | **callconv/frontend-patch** (LDC 1.42.0 aggregate-flattening frontend pass added by the maintainer re-upload) | `LDC_UPSTREAM=1 ./scripts/setup.sh && experiments/ldc-fork-comparison/run.sh` | docs/05 §"LDC 1.42 status"; docs/19; docs/23 |
+| 4 | Upstream LDC needs `-output-s` literal-pool re-assembly round-trip on Xtensa | `$LDC2_UPSTREAM` (LLVM 22.1.2) | ✓ closed on canonical — direct `ldc2 -c → $LLD` works | **fork-patch** (espressif fork carries Xtensa MC layer) | `experiments/ldc-fork-comparison/run.sh` shows `-output-s` step required for upstream, not for canonical | docs/23 §workarounds |
+| 5 | Upstream LDC rejects `-mcpu=esp32s2/s3` (ldc #4919) | `$LDC2_UPSTREAM` | ✓ closed on canonical — `$LDC2 -mcpu=esp32-s2/s3` accepted | **fork-patch** (espressif fork CPU defaults) | `$LDC2_UPSTREAM -mcpu=esp32-s2 …` fails with cpu-feature error | docs/23 §workarounds |
+| 6 | No prebuilt Rust xtensa `core` library | rustc esp-rs (always) | ✓ closed — `-Z build-std=core` + `rust-src` symlinked into sysroot by `scripts/setup.sh` | **runtime-rebuild** (`core` rebuilt from source per project; not a fork change) | inspect `scripts/setup.sh` symlink + `cargo rustc -Z build-std=core` invocation | CLAUDE.md gotcha #2 |
+| 7 | LLVM-22 `llvm-link`/`opt`/`llvm-dis` for canonical LDC IR analysis (esp-clang ships only 21.1.3 binutils) | esp-clang 21.1.3 ↔ canonical LDC 22.1.4 IR analysis | ✓ closed for IR analysis via `$LDC_LLVM_DIR` (LLVM 22.1.2 binutils, opt-in `LLVM22=1`); full cross-cluster LTO inlining still needs one cluster end-to-end | **pure-composition** (parallel binutils tarball alongside esp-clang; no rebuild) | `$LDC_LLVM_DIR/bin/llvm-link` reads both 21.1.3 + 22.x bitcode | CLAUDE.md gotcha #4; docs/04 §"Two LLVM clusters" |
+| 8 | TinyGo `struct{[N]uint8}` arg lowered byte-per-register on Xtensa (mismatches clang's `[N/4 x i32]`) | TinyGo v0.41.1 (LLVM 20.1.1) | ✗ **open** — TinyGo is whole-program / out-of-FFI-matrix; closing would need a TinyGo or LLVM-20 frontend patch | **open** / out-of-matrix | docs/24 §e probe (TinyGo `.o` consumer with a byte-array struct arg corrupts when called from clang) | docs/24 §e |
+
+> Citations link to existing files; no row is marked "unverified" — each is
+> reproducible from the listed command or the documented disassembly already
+> in `build/`. New gaps that are reported but not yet reproduced should land
+> in this table with a explicit `**unverified**` marker in the "how closed"
+> cell until evidence is in tree.
+
 ## One-line verdict
 
 The shared LLVM backend gives a **shared, interoperable ABI** across the six

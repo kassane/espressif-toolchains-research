@@ -285,6 +285,28 @@ negative control — investigate before silently accepting. The historical
 for the canonical lane's success claim; without them, "0 failures on
 qemu" is just unverified text.
 
+## How the gaps closed (taxonomy)
+
+`docs/00-support-matrix.md` §"How the gaps closed (taxonomy)" classifies
+each tracked historical FFI/ABI break by the mechanism that closed it:
+
+- **callconv/frontend-patch** — Zig 0.16 align-1 + small `{i32,i32}`
+  (Zig #5467, fixed in 0.17); LDC universal byval/sret (LDC 1.42.0
+  aggregate-flattening frontend pass, 2026-05-30 maintainer re-upload).
+- **fork-patch** — espressif-fork LDC's Xtensa MC layer (drops the
+  `-output-s` re-assembly workaround); espressif-fork LDC's s2/s3 cpu
+  defaults (closes ldc #4919).
+- **runtime-rebuild** — Rust no-prebuilt-core, closed by `-Z build-std=
+  core` + `rust-src` symlinked into the sysroot (CLAUDE.md gotcha #2).
+- **pure-composition** — LLVM-22 binutils for canonical LDC IR analysis
+  via `$LDC_LLVM_DIR` (opt-in `LLVM22=1`; parallel binutils tarball,
+  no rebuild).
+- **open** — TinyGo byte-array struct arg (out-of-FFI-matrix, docs/24 §e).
+
+Each row links back to the experiment + doc that produced its evidence.
+New gaps reported but not yet reproduced land with an explicit
+`**unverified**` marker until evidence is in tree.
+
 ## Not done / next steps
 
 - [x] **Execute** the Xtensa images on qemu. The espressif qemu fork
